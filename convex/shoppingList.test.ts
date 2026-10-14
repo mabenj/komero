@@ -116,6 +116,52 @@ describe("Entries", () => {
   });
 });
 
+describe("Entry delete undo", () => {
+  test("undo puts deleted Entries back, adding to Need More done meanwhile, and is recorded", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
+
+    const deletedMaito = await ben.mutation(api.shoppingList.remove, { entryId: await entryId(ben, "Maito") });
+    const deletedCandles = await ben.mutation(api.shoppingList.remove, {
+      entryId: await entryId(ben, "Synttärikynttilät"),
+    });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await ben.mutation(api.shoppingList.restore, deletedMaito);
+    await ben.mutation(api.shoppingList.restore, deletedCandles);
+
+    expect(await lista(anna)).toEqual([
+      { group: "Jääkaappi", entries: ["Maito ×3 (Stock 1)"] },
+      { group: "Other", entries: ["Synttärikynttilät ×1"] },
+    ]);
+    const feed = await anna.query(api.activities.feed, {});
+    expect(feed.slice(0, 2).map(({ kind, productName, quantity }) => ({ kind, productName, quantity }))).toEqual([
+      { kind: "restoreEntry", productName: "Synttärikynttilät", quantity: 1 },
+      { kind: "restoreEntry", productName: "Maito", quantity: 3 },
+    ]);
+  });
+});
+
+describe("Product delete", () => {
+  test("deleting Maito takes its Entry off the list, and undo puts it back with its quantity", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+
+    const deleted = await ben.mutation(api.products.remove, { productId: maito });
+    expect(await lista(anna)).toEqual([]);
+
+    const restored = await ben.mutation(api.products.restore, deleted);
+    expect(await lista(anna)).toEqual([{ group: "Jääkaappi", entries: ["Maito ×2 (Stock 1)"] }]);
+
+    await anna.mutation(api.shoppingList.needMore, { productId: restored });
+    expect(await lista(anna)).toEqual([{ group: "Jääkaappi", entries: ["Maito ×3 (Stock 1)"] }]);
+  });
+});
+
 describe("Lista", () => {
   test("Entries are grouped by Home Location in the household's Location order, One-offs last under Other", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
