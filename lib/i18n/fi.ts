@@ -47,6 +47,12 @@ export const fi = {
   "koti.quickAddTo": "Pikalisäys: {location}",
   "koti.quickAddPlaceholder": "Tuotteen nimi ja Enter",
   "koti.quickAddDone": "Valmis",
+  "product.name": "Nimi",
+  "product.homeLocation": "Paikka",
+  "product.stock": "Kotona",
+  "product.delete": "Poista tuote",
+  "product.deleted": "{name} poistettu",
+  "product.notFound": "Tuotetta ei löytynyt. Se on ehkä poistettu.",
   "scan.comingSoon": "Skannaus tulossa pian.",
   "lista.comingSoon": "Ostoslista tulossa pian.",
 

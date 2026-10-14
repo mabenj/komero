@@ -47,6 +47,12 @@ export const en = {
   "koti.quickAddTo": "Quick add to {location}",
   "koti.quickAddPlaceholder": "Product name, then Enter",
   "koti.quickAddDone": "Done",
+  "product.name": "Name",
+  "product.homeLocation": "Location",
+  "product.stock": "At home",
+  "product.delete": "Delete Product",
+  "product.deleted": "{name} deleted",
+  "product.notFound": "Product not found. It may have been deleted.",
   "scan.comingSoon": "Scanning is coming soon.",
   "lista.comingSoon": "The Shopping List is coming soon.",
 
