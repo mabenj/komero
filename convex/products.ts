@@ -3,7 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { requireMemberId } from "./members";
 import type { Doc } from "./_generated/dataModel";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
-import { restock, type StockState, use } from "./stock";
+import { applyRestock, applyUse, type StockState } from "./stock";
 
 /** Adds a Product by name to its Home Location. A new Product starts with Stock 1. */
 export const create = mutation({
@@ -67,7 +67,7 @@ export const adjustStock = mutation({
     await requireMemberId(ctx);
     const product = await ctx.db.get(productId);
     if (product === null) throw new ConvexError("PRODUCT_NOT_FOUND");
-    const next = change === "restock" ? restock(product, 1) : use(product);
+    const next = change === "restock" ? applyRestock(product, 1) : applyUse(product);
     await ctx.db.patch(productId, next);
     return { from: product.stock, to: next.stock };
   },
@@ -83,9 +83,9 @@ export const undoStockChange = mutation({
     await requireMemberId(ctx);
     const product = await ctx.db.get(productId);
     if (product === null) throw new ConvexError("PRODUCT_NOT_FOUND");
-    let next: StockState = product;
-    if (to < from) next = restock(next, from - to);
-    for (let i = 0; i < to - from; i++) next = use(next);
+    let next: StockState = { stock: product.stock };
+    if (to < from) next = applyRestock(next, from - to);
+    for (let i = 0; i < to - from; i++) next = applyUse(next);
     await ctx.db.patch(productId, next);
   },
 });
