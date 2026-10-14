@@ -1,6 +1,7 @@
 // Finnish UI strings: the source of truth for translation keys.
 // Every visible UI string lives here. User text (Product, Location and One-off
 // names) is never translated; interpolate it with {placeholders} instead.
+// Every key also needs an English string in en.ts, or typecheck fails.
 export const fi = {
   "app.name": "Komero",
   "app.description": "Kodin varasto ja kauppalista",
@@ -35,6 +36,10 @@ export const fi = {
   "settings.title": "Asetukset",
   "settings.signedInAs": "Kirjautunut: {email}",
   "settings.logOut": "Kirjaudu ulos",
+  "settings.language": "Kieli",
+  // Language names are written in their own language in both dictionaries.
+  "settings.language.fi": "Suomi",
+  "settings.language.en": "English",
 } as const;
 
 export type MessageKey = keyof typeof fi;
