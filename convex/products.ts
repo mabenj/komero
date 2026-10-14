@@ -5,7 +5,11 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
 import { applyRestock, applyUse, type StockState } from "./stock";
 
-/** Adds a Product by name to its Home Location. A new Product starts with Stock 1. */
+/**
+ * Adds a Product by name to its Home Location. A new Product starts with Stock 1.
+ * Both the search/add field and quick-add use this; a name that already exists
+ * (in any case) is refused.
+ */
 export const create = mutation({
   args: { name: v.string(), locationId: v.id("locations") },
   handler: async (ctx, { name, locationId }) => {
@@ -13,7 +17,13 @@ export const create = mutation({
     const tidy = tidyName(name);
     if (tidy === "") throw new ConvexError("NAME_REQUIRED");
     if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
-    return await ctx.db.insert("products", { name: tidy, nameKey: nameKey(tidy), locationId, stock: 1 });
+    const key = nameKey(tidy);
+    const existing = await ctx.db
+      .query("products")
+      .withIndex("by_nameKey", (q) => q.eq("nameKey", key))
+      .first();
+    if (existing !== null) throw new ConvexError("PRODUCT_EXISTS");
+    return await ctx.db.insert("products", { name: tidy, nameKey: key, locationId, stock: 1 });
   },
 });
 

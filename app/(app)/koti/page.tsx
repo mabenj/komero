@@ -4,10 +4,12 @@ import { useMutation, useQuery } from "convex/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MinusIcon, PlusIcon } from "@/components/icons";
+import { tidyName } from "@/convex/productNames";
 import { applyRestock, applyUse } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
 import { lastLocation, rememberLocation } from "@/lib/lastLocation";
@@ -21,6 +23,7 @@ export default function KotiPage() {
   const inventory = useQuery(api.inventory.get);
   const locationInView = useLocationInView(inventory !== undefined);
   const changeStock = useStockChange();
+  const [quickAddLocation, setQuickAddLocation] = useState<Id<"locations"> | null>(null);
 
   if (inventory === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
 
@@ -29,7 +32,22 @@ export default function KotiPage() {
       <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
       {inventory.map((location) => (
         <section key={location._id} data-location-id={location._id} className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold">{location.name}</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">{location.name}</h2>
+            {quickAddLocation !== location._id && (
+              <button
+                type="button"
+                // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
+                onClick={() => flushSync(() => setQuickAddLocation(location._id))}
+                className="min-h-11 rounded-full px-3 text-sm font-medium text-zinc-600 dark:text-zinc-400"
+              >
+                {t("koti.quickAdd")}
+              </button>
+            )}
+          </div>
+          {quickAddLocation === location._id && (
+            <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
+          )}
           {location.products.length === 0 && <p className="text-sm text-zinc-500">{t("koti.noProducts")}</p>}
           <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
             {location.products.map((product) => (
@@ -86,11 +104,7 @@ function SearchAdd({
       />
       {result && (
         <div className="flex flex-col gap-2">
-          {result.duplicate && (
-            <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-              {t("koti.duplicate", { name: result.duplicate.name, location: result.duplicate.locationName })}
-            </p>
-          )}
+          {result.duplicate && <DuplicateWarning duplicate={result.duplicate} />}
           {result.matches.length > 0 && (
             <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
               {result.matches.map((product) => (
@@ -129,6 +143,68 @@ function SearchAdd({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Quick-add for filling a Location on day one: the field keeps focus, and each
+ * Enter adds the typed name as a Product here with Stock 1.
+ */
+function QuickAdd({ location, onDone }: { location: Location; onDone: () => void }) {
+  const t = useT();
+  const [text, setText] = useState("");
+  const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
+  const createProduct = useMutation(api.products.create);
+
+  const add = () => {
+    const name = tidyName(text);
+    if (name === "") return;
+    // An existing name stays in the field next to its warning, as in the search/add field.
+    if (result?.name === name && !result.canAdd) return;
+    setText("");
+    rememberLocation(location._id);
+    createProduct({ name, locationId: location._id }).catch(() => setText((current) => current || name));
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              add();
+            } else if (event.key === "Escape") onDone();
+          }}
+          autoFocus
+          placeholder={t("koti.quickAddPlaceholder")}
+          aria-label={t("koti.quickAddTo", { location: location.name })}
+          enterKeyHint="enter"
+          autoComplete="off"
+          className="min-w-0 flex-1 rounded-xl border border-zinc-300 bg-background px-4 py-3 text-base dark:border-zinc-700"
+        />
+        <button
+          type="button"
+          onClick={onDone}
+          className="min-h-11 rounded-xl bg-foreground px-4 font-semibold text-background"
+        >
+          {t("koti.quickAddDone")}
+        </button>
+      </div>
+      {result?.duplicate && <DuplicateWarning duplicate={result.duplicate} />}
+    </div>
+  );
+}
+
+function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationName: string } }) {
+  const t = useT();
+  return (
+    <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      {t("koti.duplicate", { name: duplicate.name, location: duplicate.locationName })}
+    </p>
   );
 }
 
