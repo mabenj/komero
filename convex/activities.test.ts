@@ -49,9 +49,9 @@ describe("Activity feed", () => {
     await ben.mutation(api.products.adjustStock, { productId: maito, change: "use" });
 
     expect(await feed(ben)).toEqual([
-      { kind: "use", memberName: "ben", productName: "Maito", from: 2, to: 1 },
-      { kind: "restock", memberName: "anna", productName: "Maito", from: 1, to: 2 },
-      { kind: "create", memberName: "anna", productName: "Maito", to: 1 },
+      { kind: "use", memberName: "Ben", productName: "Maito", from: 2, to: 1 },
+      { kind: "restock", memberName: "Anna", productName: "Maito", from: 1, to: 2 },
+      { kind: "create", memberName: "Anna", productName: "Maito", to: 1 },
     ]);
   });
 
@@ -67,9 +67,9 @@ describe("Activity feed", () => {
     await anna.mutation(api.products.undoStockChange, { productId: maito, ...used });
 
     expect(await feed(anna)).toEqual([
-      { kind: "undoStockChange", memberName: "anna", productName: "Maito", from: 0, to: 1 },
-      { kind: "use", memberName: "anna", productName: "Maito", from: 1, to: 0 },
-      { kind: "create", memberName: "anna", productName: "Maito", to: 1 },
+      { kind: "undoStockChange", memberName: "Anna", productName: "Maito", from: 0, to: 1 },
+      { kind: "use", memberName: "Anna", productName: "Maito", from: 1, to: 0 },
+      { kind: "create", memberName: "Anna", productName: "Maito", to: 1 },
     ]);
   });
 
@@ -85,10 +85,10 @@ describe("Activity feed", () => {
     await ben.mutation(api.products.remove, { productId: maito });
 
     expect(await feed(anna)).toEqual([
-      { kind: "delete", memberName: "ben", productName: "Maito" },
-      { kind: "rename", memberName: "anna", productName: "Maito", fromName: "Kevytmaito" },
-      { kind: "use", memberName: "anna", productName: "Kevytmaito", from: 1, to: 0 },
-      { kind: "create", memberName: "anna", productName: "Kevytmaito", to: 1 },
+      { kind: "delete", memberName: "Ben", productName: "Maito" },
+      { kind: "rename", memberName: "Anna", productName: "Maito", fromName: "Kevytmaito" },
+      { kind: "use", memberName: "Anna", productName: "Kevytmaito", from: 1, to: 0 },
+      { kind: "create", memberName: "Anna", productName: "Kevytmaito", to: 1 },
     ]);
   });
 });
@@ -102,7 +102,7 @@ describe("Product page Activity", () => {
     await ben.mutation(api.products.adjustStock, { productId: maito, change: "use" });
     await ben.mutation(api.products.adjustStock, { productId: juusto, change: "use" });
 
-    expect(await productActivities(anna, maito)).toEqual(["ben use", "anna create"]);
+    expect(await productActivities(anna, maito)).toEqual(["Ben use", "Anna create"]);
   });
 
   test("a Product deleted and brought back with undo keeps its history, and its page goes on from there", async () => {
@@ -115,15 +115,15 @@ describe("Product page Activity", () => {
     await anna.mutation(api.products.adjustStock, { productId: restored, change: "use" });
 
     expect(await productActivities(anna, restored)).toEqual([
-      "anna use",
-      "anna restore",
-      "anna delete",
-      "anna restock",
-      "anna create",
+      "Anna use",
+      "Anna restore",
+      "Anna delete",
+      "Anna restock",
+      "Anna create",
     ]);
     expect((await feed(anna)).slice(0, 2)).toEqual([
-      { kind: "use", memberName: "anna", productName: "Kahvi", from: 2, to: 1 },
-      { kind: "restore", memberName: "anna", productName: "Kahvi", to: 2 },
+      { kind: "use", memberName: "Anna", productName: "Kahvi", from: 2, to: 1 },
+      { kind: "restore", memberName: "Anna", productName: "Kahvi", to: 2 },
     ]);
   });
 });

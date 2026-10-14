@@ -4,6 +4,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ActivityList } from "@/components/ActivityList";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { LocationsSettings } from "@/components/LocationsSettings";
 import { api } from "@/convex/_generated/api";
@@ -36,6 +37,8 @@ export default function SettingsPage() {
           {t("settings.logOut")}
         </button>
       </div>
+      {/* Last, since it can be long. */}
+      <ActivityFeed />
     </div>
   );
 }
@@ -56,6 +59,18 @@ function Members() {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function ActivityFeed() {
+  const t = useT();
+  const activities = useQuery(api.activities.feed);
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-lg font-semibold">{t("activity.feed")}</h2>
+      <ActivityList activities={activities} />
     </section>
   );
 }

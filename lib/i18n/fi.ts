@@ -83,6 +83,19 @@ export const fi = {
   "settings.share": "Jaa",
   "settings.copy": "Kopioi",
   "settings.copied": "Kopioitu!",
+
+  // One per Activity kind (convex/schema.ts `activityKind`).
+  "activity.create": "{member} lisäsi tuotteen {product}",
+  "activity.rename": "{member} nimesi tuotteen {fromName} uudelleen: {product}",
+  "activity.delete": "{member} poisti tuotteen {product}",
+  "activity.restore": "{member} palautti tuotteen {product}",
+  "activity.restock": "{member} täydensi tuotetta {product}",
+  "activity.use": "{member} käytti tuotetta {product}",
+  "activity.undoStockChange": "{member} perui tuotteen {product} saldon muutoksen",
+  "activity.stockChange": "{from} → {to}",
+  "activity.feed": "Tapahtumat",
+  "activity.recent": "Viimeisimmät tapahtumat",
+  "activity.none": "Ei tapahtumia",
 } as const;
 
 export type MessageKey = keyof typeof fi;

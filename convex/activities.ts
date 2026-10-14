@@ -94,7 +94,8 @@ async function withMemberNames(ctx: QueryCtx, activities: Doc<"activities">[]) {
   }));
 }
 
-/** How the feed names a Member: the start of their email ("anna" for anna@example.com). */
+/** How the feed names a Member: the start of their email, capitalised ("Anna" for anna@example.com). */
 function memberName(member: Doc<"users"> | null) {
-  return member?.name ?? member?.email?.split("@")[0] ?? "?";
+  const name = member?.name ?? member?.email?.split("@")[0] ?? "?";
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }

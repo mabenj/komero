@@ -82,4 +82,16 @@ export const en = {
   "settings.share": "Share",
   "settings.copy": "Copy",
   "settings.copied": "Copied!",
+
+  "activity.create": "{member} added {product}",
+  "activity.rename": "{member} renamed {fromName} to {product}",
+  "activity.delete": "{member} deleted {product}",
+  "activity.restore": "{member} restored {product}",
+  "activity.restock": "{member} restocked {product}",
+  "activity.use": "{member} used {product}",
+  "activity.undoStockChange": "{member} undid a Stock change to {product}",
+  "activity.stockChange": "{from} → {to}",
+  "activity.feed": "Activity",
+  "activity.recent": "Recent Activity",
+  "activity.none": "No Activity yet",
 } satisfies Record<MessageKey, string>;
