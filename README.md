@@ -31,9 +31,11 @@ then `pnpm dev`. The first person to open the app creates the first Member.
   are not deployed.
 - Member-only Convex functions start with `await requireMemberId(ctx)` (`convex/members.ts`).
   The Convex Auth table is `users`, but in code and UI the concept is a **Member**.
-- **UI strings** all live in `lib/i18n/fi.ts` and are read with `const t = useT(); t("key")`.
-  ESLint rejects text literals in JSX. User text (Product, Location, One-off names) is never
-  translated.
+- **UI strings** all live in `lib/i18n/fi.ts`, with the English string under the same key in
+  `lib/i18n/en.ts` (a key missing from either fails typecheck). Components read them with
+  `const t = useT(); t("key")`, in the signed-in Member's language (Finnish when signed out);
+  server code such as metadata uses the Finnish `translate`. ESLint rejects text literals in
+  JSX. User text (Product, Location, One-off names) is never translated.
 
 ## Deploy (human steps)
 
