@@ -5,18 +5,8 @@ import { useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { api } from "@/convex/_generated/api";
+import { authErrorKey } from "@/lib/authErrors";
 import { useT, type MessageKey } from "@/lib/i18n";
-
-// Under Next.js, Convex Auth errors reach the client as plain Error messages.
-function errorKey(error: unknown): MessageKey {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("INVITE_INVALID")) return "auth.inviteRequired";
-  if (message.includes("Invalid password")) return "auth.passwordTooShort";
-  if (message.includes("InvalidSecret") || message.includes("InvalidAccountId")) {
-    return "auth.wrongCredentials";
-  }
-  return "auth.genericError";
-}
 
 export default function SignInPage() {
   const t = useT();
@@ -40,7 +30,7 @@ export default function SignInPage() {
       await signIn("password", form);
       router.replace("/");
     } catch (e) {
-      setError(errorKey(e));
+      setError(authErrorKey(e));
       setSubmitting(false);
     }
   }
