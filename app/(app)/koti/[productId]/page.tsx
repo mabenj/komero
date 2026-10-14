@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use } from "react";
+import { ActivityList } from "@/components/ActivityList";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -11,7 +12,7 @@ import { useT } from "@/lib/i18n";
 
 const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-4 py-2 text-base dark:border-zinc-700";
 
-/** Everything about one Product: rename it, move it to another Home Location, or delete it. */
+/** Everything about one Product: rename it, move it to another Home Location, delete it, and see its recent Activity. */
 export default function ProductPage({ params }: PageProps<"/koti/[productId]">) {
   const productId = use(params).productId as Id<"products">;
   const t = useT();
@@ -19,6 +20,7 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
   const showUndoToast = useUndoToast();
   const product = useQuery(api.products.get, { productId });
   const inventory = useQuery(api.inventory.get);
+  const activities = useQuery(api.activities.forProduct, { productId });
   const rename = useMutation(api.products.rename);
   const update = useMutation(api.products.update);
   const remove = useMutation(api.products.remove);
@@ -93,6 +95,10 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
       >
         {t("product.delete")}
       </button>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm text-zinc-500">{t("activity.recent")}</h2>
+        <ActivityList activities={activities} />
+      </section>
     </div>
   );
 }
