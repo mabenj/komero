@@ -22,4 +22,13 @@ export default defineSchema({
     name: v.string(),
     sortOrder: v.number(),
   }).index("by_sortOrder", ["sortOrder"]),
+  products: defineTable({
+    name: v.string(),
+    // The name normalised for case-insensitive matching (see productNames.ts).
+    nameKey: v.string(),
+    locationId: v.id("locations"),
+    stock: v.number(),
+  })
+    .index("by_location", ["locationId", "nameKey"])
+    .index("by_nameKey", ["nameKey"]),
 });
