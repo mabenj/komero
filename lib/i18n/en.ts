@@ -43,6 +43,12 @@ export const en = {
   "koti.use": "Use one: {name}",
   "koti.restock": "Restock one: {name}",
   "koti.stockChanged": "{name}: {from} → {to}",
+  "product.name": "Name",
+  "product.homeLocation": "Location",
+  "product.stock": "At home",
+  "product.delete": "Delete Product",
+  "product.deleted": "{name} deleted",
+  "product.notFound": "Product not found. It may have been deleted.",
   "scan.comingSoon": "Scanning is coming soon.",
   "lista.comingSoon": "The Shopping List is coming soon.",
 

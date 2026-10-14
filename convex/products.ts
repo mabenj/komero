@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { type MutationCtx, mutation, query } from "./_generated/server";
 import { requireMemberId } from "./members";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
 import { applyRestock, applyUse, type StockState } from "./stock";
 
@@ -16,6 +16,78 @@ export const create = mutation({
     return await ctx.db.insert("products", { name: tidy, nameKey: nameKey(tidy), locationId, stock: 1 });
   },
 });
+
+/** The Product page, or null once the Product has been deleted. */
+export const get = query({
+  args: { productId: v.id("products") },
+  handler: async (ctx, { productId }) => {
+    await requireMemberId(ctx);
+    const product = await ctx.db.get(productId);
+    if (product === null) return null;
+    const location = await ctx.db.get(product.locationId);
+    return {
+      _id: product._id,
+      name: product.name,
+      stock: product.stock,
+      locationId: product.locationId,
+      locationName: location?.name ?? "",
+    };
+  },
+});
+
+export const rename = mutation({
+  args: { productId: v.id("products"), name: v.string() },
+  handler: async (ctx, { productId, name }) => {
+    await requireMemberId(ctx);
+    const tidy = tidyName(name);
+    if (tidy === "") throw new ConvexError("NAME_REQUIRED");
+    await requireProduct(ctx, productId);
+    await ctx.db.patch(productId, { name: tidy, nameKey: nameKey(tidy) });
+  },
+});
+
+/** Changes a Product's details from its page. Fields left out stay as they are. */
+export const update = mutation({
+  args: { productId: v.id("products"), locationId: v.optional(v.id("locations")) },
+  handler: async (ctx, { productId, locationId }) => {
+    await requireMemberId(ctx);
+    await requireProduct(ctx, productId);
+    if (locationId !== undefined) {
+      if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
+      await ctx.db.patch(productId, { locationId });
+    }
+  },
+});
+
+/** What the delete undo toast needs to bring a deleted Product back. */
+const deletedProduct = { name: v.string(), locationId: v.id("locations"), stock: v.number() };
+
+/** Deletes a Product. Returns what `restore` needs for the undo toast. */
+export const remove = mutation({
+  args: { productId: v.id("products") },
+  handler: async (ctx, { productId }) => {
+    await requireMemberId(ctx);
+    const { name, locationId, stock } = await requireProduct(ctx, productId);
+    await ctx.db.delete(productId);
+    return { name, locationId, stock };
+  },
+});
+
+/** The delete undo toast: puts the Product back as it was. Returns its new id. */
+export const restore = mutation({
+  args: deletedProduct,
+  handler: async (ctx, { name, locationId, stock }) => {
+    await requireMemberId(ctx);
+    if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
+    return await ctx.db.insert("products", { name, nameKey: nameKey(name), locationId, stock });
+  },
+});
+
+async function requireProduct(ctx: MutationCtx, productId: Id<"products">) {
+  const product = await ctx.db.get(productId);
+  if (product === null) throw new ConvexError("PRODUCT_NOT_FOUND");
+  return product;
+}
 
 const MAX_MATCHES = 8;
 

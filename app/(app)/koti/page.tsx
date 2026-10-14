@@ -2,8 +2,9 @@
 
 import { useMutation, useQuery } from "convex/react";
 import type { OptimisticLocalStore } from "convex/browser";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type Toast, UndoToast } from "@/components/UndoToast";
+import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MinusIcon, PlusIcon } from "@/components/icons";
@@ -19,9 +20,7 @@ export default function KotiPage() {
   const t = useT();
   const inventory = useQuery(api.inventory.get);
   const locationInView = useLocationInView(inventory !== undefined);
-  const [toast, setToast] = useState<Toast | null>(null);
-  const closeToast = useCallback(() => setToast(null), []);
-  const changeStock = useStockChange(setToast);
+  const changeStock = useStockChange();
 
   if (inventory === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
 
@@ -39,7 +38,6 @@ export default function KotiPage() {
           </ul>
         </section>
       ))}
-      <UndoToast toast={toast} onClose={closeToast} />
     </div>
   );
 }
@@ -151,10 +149,10 @@ function ProductRow({
 
   return (
     <li className="flex items-center gap-3 py-1.5">
-      <div className="min-w-0 flex-1">
+      <Link href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
         <p className={`truncate ${outOfStock ? "text-zinc-400 dark:text-zinc-500" : ""}`}>{product.name}</p>
         {detail && <p className="truncate text-xs text-zinc-500">{detail}</p>}
-      </div>
+      </Link>
       <button
         type="button"
         className={buttonClass}
@@ -180,8 +178,9 @@ function ProductRow({
 }
 
 /** Applies + / – (optimistically, so taps feel instant) and offers to undo it. */
-function useStockChange(showToast: (toast: Toast) => void) {
+function useStockChange() {
   const t = useT();
+  const showUndoToast = useUndoToast();
   const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate(
     (store, { productId, change }) => setStockLocally(store, productId, (stock) => apply(stock, change)),
   );
@@ -191,13 +190,11 @@ function useStockChange(showToast: (toast: Toast) => void) {
     async (product: ProductRowData, change: StockChange) => {
       const { from, to } = await adjustStock({ productId: product._id, change });
       if (from === to) return;
-      showToast({
-        id: Date.now(),
-        message: t("koti.stockChanged", { name: product.name, from, to }),
-        undo: () => void undoStockChange({ productId: product._id, from, to }),
+      showUndoToast(t("koti.stockChanged", { name: product.name, from, to }), () => {
+        void undoStockChange({ productId: product._id, from, to });
       });
     },
-    [adjustStock, undoStockChange, showToast, t],
+    [adjustStock, undoStockChange, showUndoToast, t],
   );
 }
 

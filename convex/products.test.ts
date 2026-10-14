@@ -216,3 +216,105 @@ describe("Stock", () => {
     expect(await productsIn(ben, "Jääkaappi")).toEqual([{ name: "Maito", stock: 2 }]);
   });
 });
+
+describe("Product page", () => {
+  test("opening a Product shows its name, Home Location and Stock", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const jaakaappi = await locationId(anna, "Jääkaappi");
+    const maito = await anna.mutation(api.products.create, { name: "Maito", locationId: jaakaappi });
+    await anna.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
+
+    expect(await anna.query(api.products.get, { productId: maito })).toEqual({
+      _id: maito,
+      name: "Maito",
+      stock: 2,
+      locationId: jaakaappi,
+      locationName: "Jääkaappi",
+    });
+  });
+
+  test("Anna renames Kevytmaito to Maito and Ben's Koti shows it under the new name, sorted, Stock kept", async () => {
+    const [anna, ben] = await annaAndBen();
+    const jaakaappi = await locationId(anna, "Jääkaappi");
+    const maito = await anna.mutation(api.products.create, { name: "Kevytmaito", locationId: jaakaappi });
+    await anna.mutation(api.products.create, { name: "Juusto", locationId: jaakaappi });
+    await anna.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
+
+    await anna.mutation(api.products.rename, { productId: maito, name: "  Maito " });
+
+    expect(await productsIn(ben, "Jääkaappi")).toEqual([
+      { name: "Juusto", stock: 1 },
+      { name: "Maito", stock: 2 },
+    ]);
+    expect((await anna.query(api.products.search, { text: "maito" })).duplicate).toEqual({
+      name: "Maito",
+      locationName: "Jääkaappi",
+    });
+  });
+
+  test("a Product can't be renamed to nothing", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await anna.mutation(api.products.create, {
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+    });
+
+    await expect(anna.mutation(api.products.rename, { productId: maito, name: " " })).rejects.toThrow(
+      /NAME_REQUIRED/,
+    );
+    expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Maito", stock: 1 }]);
+  });
+
+  test("moving Kahvi from Kaappi to Jääkaappi shows it under Jääkaappi on Ben's Koti, Stock kept", async () => {
+    const [anna, ben] = await annaAndBen();
+    const kahvi = await anna.mutation(api.products.create, {
+      name: "Kahvi",
+      locationId: await locationId(anna, "Kaappi"),
+    });
+    await anna.mutation(api.products.adjustStock, { productId: kahvi, change: "restock" });
+
+    await anna.mutation(api.products.update, { productId: kahvi, locationId: await locationId(anna, "Jääkaappi") });
+
+    expect(await productsIn(ben, "Kaappi")).toEqual([]);
+    expect(await productsIn(ben, "Jääkaappi")).toEqual([{ name: "Kahvi", stock: 2 }]);
+    expect((await ben.query(api.products.get, { productId: kahvi }))?.locationName).toBe("Jääkaappi");
+  });
+
+  test("deleting Maito removes it from Koti, its page and search", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await anna.mutation(api.products.create, {
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+    });
+
+    await anna.mutation(api.products.remove, { productId: maito });
+
+    expect(await productsIn(ben, "Jääkaappi")).toEqual([]);
+    expect(await ben.query(api.products.get, { productId: maito })).toBeNull();
+    expect(await ben.query(api.products.search, { text: "maito" })).toMatchObject({
+      matches: [],
+      canAdd: true,
+      duplicate: null,
+    });
+  });
+
+  test("undoing a delete brings Kahvi back to Kaappi with its Stock", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const kahvi = await anna.mutation(api.products.create, {
+      name: "Kahvi",
+      locationId: await locationId(anna, "Kaappi"),
+    });
+    await anna.mutation(api.products.adjustStock, { productId: kahvi, change: "restock" });
+    await anna.mutation(api.products.adjustStock, { productId: kahvi, change: "restock" });
+
+    const deleted = await anna.mutation(api.products.remove, { productId: kahvi });
+    const restored = await anna.mutation(api.products.restore, deleted);
+
+    expect(await productsIn(anna, "Kaappi")).toEqual([{ name: "Kahvi", stock: 3 }]);
+    expect(await anna.query(api.products.get, { productId: restored })).toMatchObject({
+      name: "Kahvi",
+      stock: 3,
+      locationName: "Kaappi",
+    });
+  });
+});

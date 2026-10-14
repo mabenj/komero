@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { HomeIcon, ListIcon, ScanIcon, SettingsIcon } from "@/components/icons";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { UndoToastProvider } from "@/components/UndoToast";
 import { useT } from "@/lib/i18n";
 import { rememberTab, TABS, type Tab } from "@/lib/lastTab";
 
@@ -13,7 +14,8 @@ import { rememberTab, TABS, type Tab } from "@/lib/lastTab";
 export default function AppLayout({ children }: LayoutProps<"/">) {
   const t = useT();
   const pathname = usePathname();
-  const currentTab = TABS.find((tab) => pathname === `/${tab}`);
+  // A Product page (/koti/<id>) belongs to the Koti tab.
+  const currentTab = TABS.find((tab) => pathname === `/${tab}` || pathname.startsWith(`/${tab}/`));
 
   useEffect(() => {
     if (currentTab) rememberTab(currentTab);
@@ -38,7 +40,9 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         <AuthLoading>
           <p className="text-zinc-500">{t("common.loading")}</p>
         </AuthLoading>
-        <Authenticated>{children}</Authenticated>
+        <Authenticated>
+          <UndoToastProvider>{children}</UndoToastProvider>
+        </Authenticated>
       </main>
       <BottomBar current={currentTab} />
     </div>

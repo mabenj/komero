@@ -1,14 +1,33 @@
 "use client";
 
-import { useEffect } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { useT } from "@/lib/i18n";
 
-export type Toast = { id: number; message: string; undo: () => void };
+type Toast = { id: number; message: string; undo: () => void };
+type ShowUndoToast = (message: string, undo: () => void) => void;
 
 const VISIBLE_MS = 5000;
 
+const ShowUndoToastContext = createContext<ShowUndoToast>(() => {});
+
+/** Shows an undo toast that outlives the page it came from (e.g. deleting on a Product page, then back to Koti). */
+export const useUndoToast = () => useContext(ShowUndoToastContext);
+
+export function UndoToastProvider({ children }: { children: ReactNode }) {
+  const [toast, setToast] = useState<Toast | null>(null);
+  const show = useCallback<ShowUndoToast>((message, undo) => setToast({ id: Date.now(), message, undo }), []);
+  const close = useCallback(() => setToast(null), []);
+
+  return (
+    <ShowUndoToastContext value={show}>
+      {children}
+      <UndoToast toast={toast} onClose={close} />
+    </ShowUndoToastContext>
+  );
+}
+
 /** A toast above the bottom bar with an Undo button. It hides itself after a few seconds. */
-export function UndoToast({ toast, onClose }: { toast: Toast | null; onClose: () => void }) {
+function UndoToast({ toast, onClose }: { toast: Toast | null; onClose: () => void }) {
   const t = useT();
 
   useEffect(() => {

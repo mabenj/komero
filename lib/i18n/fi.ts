@@ -43,6 +43,12 @@ export const fi = {
   "koti.use": "Käytä yksi: {name}",
   "koti.restock": "Lisää yksi: {name}",
   "koti.stockChanged": "{name}: {from} → {to}",
+  "product.name": "Nimi",
+  "product.homeLocation": "Paikka",
+  "product.stock": "Kotona",
+  "product.delete": "Poista tuote",
+  "product.deleted": "{name} poistettu",
+  "product.notFound": "Tuotetta ei löytynyt. Se on ehkä poistettu.",
   "scan.comingSoon": "Skannaus tulossa pian.",
   "lista.comingSoon": "Ostoslista tulossa pian.",
 
