@@ -43,6 +43,10 @@ export const en = {
   "koti.use": "Use one: {name}",
   "koti.restock": "Restock one: {name}",
   "koti.stockChanged": "{name}: {from} → {to}",
+  "koti.quickAdd": "Quick add",
+  "koti.quickAddTo": "Quick add to {location}",
+  "koti.quickAddPlaceholder": "Product name, then Enter",
+  "koti.quickAddDone": "Done",
   "scan.comingSoon": "Scanning is coming soon.",
   "lista.comingSoon": "The Shopping List is coming soon.",
 
