@@ -21,13 +21,14 @@ async function locationId(member: MemberSession, name: string) {
 /** The ⚙ Activity feed, newest first, without ids and times. */
 async function feed(member: MemberSession) {
   const activities = await member.query(api.activities.feed, {});
-  return activities.map(({ kind, memberName, productName, from, to, fromName }) => ({
+  return activities.map(({ kind, memberName, productName, from, to, fromName, quantity }) => ({
     kind,
     memberName,
     productName,
     from,
     to,
     fromName,
+    quantity,
   }));
 }
 
@@ -89,6 +90,37 @@ describe("Activity feed", () => {
       { kind: "rename", memberName: "Anna", productName: "Maito", fromName: "Kevytmaito" },
       { kind: "use", memberName: "Anna", productName: "Kevytmaito", from: 1, to: 0 },
       { kind: "create", memberName: "Anna", productName: "Kevytmaito", to: 1 },
+    ]);
+  });
+});
+
+describe("Shopping List Activity", () => {
+  test("Need More, a One-off and an Entry deletion are recorded with the quantity on the list", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await anna.mutation(api.products.create, {
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+    });
+
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await ben.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
+    const list = await ben.query(api.shoppingList.get, {});
+    await ben.mutation(api.shoppingList.remove, { entryId: list.locations[0].entries[0]._id });
+    await ben.mutation(api.shoppingList.remove, { entryId: list.oneOffs[0]._id });
+
+    expect((await feed(anna)).slice(0, 5)).toEqual([
+      { kind: "removeEntry", memberName: "Ben", productName: "Synttärikynttilät", quantity: 1 },
+      { kind: "removeEntry", memberName: "Ben", productName: "Maito", quantity: 2 },
+      { kind: "addOneOff", memberName: "Ben", productName: "Synttärikynttilät", quantity: 1 },
+      { kind: "needMore", memberName: "Anna", productName: "Maito", quantity: 2 },
+      { kind: "needMore", memberName: "Anna", productName: "Maito", quantity: 1 },
+    ]);
+    expect(await productActivities(anna, maito)).toEqual([
+      "Ben removeEntry",
+      "Anna needMore",
+      "Anna needMore",
+      "Anna create",
     ]);
   });
 });

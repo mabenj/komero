@@ -18,6 +18,10 @@ export const activityKind = v.union(
   v.literal("restock"),
   v.literal("use"),
   v.literal("undoStockChange"),
+  v.literal("needMore"),
+  v.literal("addOneOff"),
+  v.literal("removeEntry"),
+  v.literal("restoreEntry"),
 );
 
 export default defineSchema({
@@ -56,18 +60,33 @@ export default defineSchema({
   })
     .index("by_location", ["locationId", "nameKey"])
     .index("by_nameKey", ["nameKey"]),
+  // Shopping List Entries: linked to a Product, or a One-off with its own name.
+  // At most one `toBuy` Entry per Product; ticked Entries are `inBag`.
+  entries: defineTable({
+    productId: v.optional(v.id("products")),
+    // The One-off's text; Product Entries show the Product's current name instead.
+    name: v.optional(v.string()),
+    quantity: v.number(),
+    state: v.union(v.literal("toBuy"), v.literal("inBag")),
+    createdBy: v.id("users"),
+  })
+    .index("by_state", ["state"])
+    .index("by_product", ["productId", "state"]),
   // Who changed what. The time is `_creationTime`; rows older than 90 days are purged daily.
   activities: defineTable({
     memberId: v.id("users"),
     kind: activityKind,
     // Kept after the Product is deleted; `products.restore` re-links it to the restored Product.
+    // Absent for One-offs.
     productId: v.optional(v.id("products")),
-    // The Product's name at the time, so the feed reads correctly after renames and deletes.
+    // The Product's (or One-off's) name at the time, so the feed reads correctly after renames and deletes.
     productName: v.string(),
     // Stock before and after, for Stock changes.
     from: v.optional(v.number()),
     to: v.optional(v.number()),
     // The previous name, for renames.
     fromName: v.optional(v.string()),
+    // The Entry's quantity on the Shopping List, for list changes.
+    quantity: v.optional(v.number()),
   }).index("by_product", ["productId"]),
 });
