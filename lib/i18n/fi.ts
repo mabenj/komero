@@ -6,6 +6,7 @@ export const fi = {
   "app.name": "Komero",
   "app.description": "Kodin varasto ja kauppalista",
   "common.loading": "Ladataan…",
+  "common.undo": "Kumoa",
 
   "nav.koti": "Koti",
   "nav.scan": "Skannaa",
@@ -35,6 +36,13 @@ export const fi = {
   "auth.goToSignIn": "Kirjaudu sisään",
 
   "koti.noProducts": "Ei tuotteita",
+  "koti.search": "Hae tai lisää tuote",
+  "koti.add": "+ Lisää ”{name}”",
+  "koti.addTo": "Paikka",
+  "koti.duplicate": "{name} on jo olemassa: {location}",
+  "koti.use": "Käytä yksi: {name}",
+  "koti.restock": "Lisää yksi: {name}",
+  "koti.stockChanged": "{name}: {from} → {to}",
   "scan.comingSoon": "Skannaus tulossa pian.",
   "lista.comingSoon": "Ostoslista tulossa pian.",
 
