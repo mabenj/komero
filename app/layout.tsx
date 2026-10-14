@@ -8,9 +8,17 @@ export const metadata: Metadata = {
   title: t("app.name"),
   description: t("app.description"),
   applicationName: t("app.name"),
+  appleWebApp: { capable: true, title: t("app.name"), statusBarStyle: "default" },
+  formatDetection: { telephone: false },
+  // Next only emits mobile-web-app-capable; older iOS needs the Apple-prefixed tag.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

@@ -4,6 +4,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { api } from "@/convex/_generated/api";
 import { useT } from "@/lib/i18n";
 
@@ -22,6 +23,7 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-8">
       <Members />
       <InviteLink />
+      <LanguagePicker />
       <div className="flex flex-col gap-3">
         {me && <p className="text-zinc-600 dark:text-zinc-400">{t("settings.signedInAs", { email: me.email })}</p>}
         <button

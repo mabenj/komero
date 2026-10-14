@@ -1,7 +1,8 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+import { language } from "./schema";
 
 /** The signed-in Member's id. Every Member-only function starts with this. */
 export async function requireMemberId(ctx: QueryCtx) {
@@ -34,5 +35,14 @@ export const me = query({
     const member = memberId && (await ctx.db.get(memberId));
     if (!member) return null;
     return { _id: member._id, email: member.email ?? "", language: member.language ?? "fi" };
+  },
+});
+
+/** Sets the signed-in Member's UI language, which follows them to every device. */
+export const setLanguage = mutation({
+  args: { language },
+  handler: async (ctx, args) => {
+    const memberId = await requireMemberId(ctx);
+    await ctx.db.patch(memberId, { language: args.language });
   },
 });
