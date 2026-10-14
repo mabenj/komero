@@ -4,7 +4,8 @@ import {
   nextjsMiddlewareRedirect,
 } from "@convex-dev/auth/nextjs/server";
 
-const isSignInPage = createRouteMatcher(["/signin"]);
+// Pages for people who aren't signed in yet: signing in, and joining through an Invite link.
+const isSignInPage = createRouteMatcher(["/signin", "/invite/(.*)"]);
 
 const YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
 

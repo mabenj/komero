@@ -16,9 +16,12 @@ export function newKomero() {
 export type Komero = ReturnType<typeof newKomero>;
 export type MemberSession = ReturnType<Komero["withIdentity"]>;
 
-/** Signs up through the real Password flow; returns a session as the new Member. */
-export async function signUp(t: Komero, email: string): Promise<MemberSession> {
-  return authenticate(t, { email, password: PASSWORD, flow: "signUp" });
+/**
+ * Signs up through the real Password flow, carrying an Invite token when given;
+ * returns a session as the new Member.
+ */
+export async function signUp(t: Komero, email: string, inviteToken?: string): Promise<MemberSession> {
+  return authenticate(t, { email, password: PASSWORD, flow: "signUp", ...(inviteToken && { inviteToken }) });
 }
 
 /** Signs in an existing Member; returns a session as that Member. */

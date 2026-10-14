@@ -21,6 +21,13 @@ export default defineSchema({
   })
     .index("email", ["email"])
     .index("phone", ["phone"]),
+  invites: defineTable({
+    token: v.string(),
+    createdBy: v.id("users"),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+    usedBy: v.optional(v.id("users")),
+  }).index("by_token", ["token"]),
   locations: defineTable({
     name: v.string(),
     sortOrder: v.number(),

@@ -28,6 +28,11 @@ export const fi = {
   "auth.inviteRequired": "Uusi jäsen tarvitsee kutsulinkin.",
   "auth.passwordTooShort": "Salasanassa on oltava vähintään 8 merkkiä.",
   "auth.genericError": "Jokin meni pieleen. Yritä uudelleen.",
+  "auth.accountExists": "Tällä sähköpostilla on jo tili. Kirjaudu sisään.",
+  "auth.inviteTitle": "Liity Komeroon",
+  "auth.inviteHint": "Sinut on kutsuttu. Valitse sähköposti ja salasana, niin pääset mukaan.",
+  "auth.inviteUnusable": "Tämä kutsulinkki on jo käytetty tai vanhentunut. Pyydä uusi linkki.",
+  "auth.goToSignIn": "Kirjaudu sisään",
 
   "koti.noProducts": "Ei tuotteita",
   "scan.comingSoon": "Skannaus tulossa pian.",
@@ -40,6 +45,14 @@ export const fi = {
   // Language names are written in their own language in both dictionaries.
   "settings.language.fi": "Suomi",
   "settings.language.en": "English",
+  "settings.members": "Jäsenet",
+  "settings.you": "(sinä)",
+  "settings.createInvite": "Luo kutsulinkki",
+  "settings.inviteHint": "Linkillä voi liittyä kerran, ja se on voimassa 7 päivää.",
+  "settings.inviteShareText": "Liity Komeroon:",
+  "settings.share": "Jaa",
+  "settings.copy": "Kopioi",
+  "settings.copied": "Kopioitu!",
 } as const;
 
 export type MessageKey = keyof typeof fi;
