@@ -11,7 +11,7 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-/** Activities in plain language ("Anna used Maito · 2 → 1 · 10 min ago"), newest first. */
+/** Activities in plain language ("Anna used Maito · 2 → 1 · 10 min ago", "Ben put Maito on the list · ×2 · now"), newest first. */
 export function ActivityList({ activities }: { activities: Activity[] | undefined }) {
   const t = useT();
   const now = useNow();
@@ -36,6 +36,7 @@ export function ActivityList({ activities }: { activities: Activity[] | undefine
               activity.from !== undefined &&
                 activity.to !== undefined &&
                 t("activity.stockChange", { from: activity.from, to: activity.to }),
+              activity.quantity !== undefined && t("activity.quantity", { quantity: activity.quantity }),
               ago(activity.at, now),
             ]
               .filter(Boolean)
