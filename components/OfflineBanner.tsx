@@ -1,0 +1,37 @@
+"use client";
+
+import { useConvexConnectionState } from "convex/react";
+import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
+
+// A reconnect blip shorter than this doesn't flash the banner.
+const SHOW_AFTER_MS = 1500;
+
+/**
+ * Shown while the Convex connection is down. Queries keep their last result and the
+ * Convex client holds mutations in memory until it reconnects (ADR-0001), so the
+ * banner only has to say so.
+ */
+export function OfflineBanner() {
+  const t = useT();
+  const { isWebSocketConnected, hasEverConnected, inflightMutations } = useConvexConnectionState();
+  const offline = hasEverConnected && !isWebSocketConnected;
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (!offline) return;
+    const timer = setTimeout(() => setShow(true), SHOW_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+      setShow(false);
+    };
+  }, [offline]);
+
+  if (!show) return null;
+  return (
+    <div role="status" className="bg-amber-400 px-4 py-1 text-center text-sm font-medium text-black">
+      {t("offline.banner")}
+      {inflightMutations > 0 && ` · ${t("offline.pending")}`}
+    </div>
+  );
+}

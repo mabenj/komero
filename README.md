@@ -34,6 +34,10 @@ then `pnpm dev`. The first person to open the app creates the first Member.
 - **UI strings** all live in `lib/i18n/fi.ts` and are read with `const t = useT(); t("key")`.
   ESLint rejects text literals in JSX. User text (Product, Location, One-off names) is never
   translated.
+- **App icon**: `public/icons/icon.svg` is the source. After changing it, re-render the PNGs with
+  `convert -density 300 public/icons/icon.svg -resize N -alpha off <file>` for
+  `public/icons/icon-192.png`, `public/icons/icon-512.png` and `app/apple-icon.png` (180).
+  Keep the glyph inside the central 80% so the 512 icon also works as maskable.
 
 ## Deploy (human steps)
 

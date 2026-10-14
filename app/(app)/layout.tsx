@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { HomeIcon, ListIcon, ScanIcon, SettingsIcon } from "@/components/icons";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { useT } from "@/lib/i18n";
 import { rememberTab, TABS, type Tab } from "@/lib/lastTab";
 
@@ -20,15 +21,18 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-xl flex-col">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-background px-4 py-3 dark:border-zinc-800">
-        <h1 className="text-xl font-bold">{t(currentTab ? `nav.${currentTab}` : "nav.settings")}</h1>
-        <Link
-          href="/settings"
-          aria-label={t("nav.settings")}
-          className="-m-2 rounded-full p-2 text-zinc-600 dark:text-zinc-300"
-        >
-          <SettingsIcon />
-        </Link>
+      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-background pt-[env(safe-area-inset-top)] dark:border-zinc-800">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h1 className="text-xl font-bold">{t(currentTab ? `nav.${currentTab}` : "nav.settings")}</h1>
+          <Link
+            href="/settings"
+            aria-label={t("nav.settings")}
+            className="-m-2 rounded-full p-2 text-zinc-600 dark:text-zinc-300"
+          >
+            <SettingsIcon />
+          </Link>
+        </div>
+        <OfflineBanner />
       </header>
       <main className="flex-1 px-4 py-4 pb-28">
         <AuthLoading>

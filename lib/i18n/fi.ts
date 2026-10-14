@@ -12,6 +12,9 @@ export const fi = {
   "nav.settings": "Asetukset",
   "nav.back": "Takaisin",
 
+  "offline.banner": "Offline",
+  "offline.pending": "muutokset lähetetään, kun yhteys palaa",
+
   "auth.signInTitle": "Kirjaudu sisään",
   "auth.firstRunTitle": "Luo ensimmäinen tili",
   "auth.firstRunHint": "Komerossa ei ole vielä jäseniä. Luo ensimmäinen tili, niin pääset alkuun.",
