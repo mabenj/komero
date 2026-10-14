@@ -1,6 +1,14 @@
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
-import { type MemberSession, newKomero, signIn, signUp } from "./test.helpers";
+import { type MemberSession, newKomero, signUp } from "./test.helpers";
+
+/** A household of two Members: Anna signs up first and invites Ben. */
+async function annaAndBen() {
+  const t = newKomero();
+  const anna = await signUp(t, "anna@example.com");
+  const ben = await signUp(t, "ben@example.com", await anna.mutation(api.invites.create, {}));
+  return [anna, ben] as const;
+}
 
 async function locationId(member: MemberSession, name: string) {
   const inventory = await member.query(api.inventory.get, {});
@@ -151,39 +159,35 @@ describe("Stock", () => {
     expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Maito", stock: 0 }]);
   });
 
-  test("two phones tapping – on the same Product at the same moment both count", async () => {
-    const t = newKomero();
-    const annasPhone = await signUp(t, "anna@example.com");
-    const annasTablet = await signIn(t, "anna@example.com");
-    const maito = await annasPhone.mutation(api.products.create, {
+  test("Anna and Ben tapping – on the same Product at the same moment both count", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await anna.mutation(api.products.create, {
       name: "Maito",
-      locationId: await locationId(annasPhone, "Jääkaappi"),
+      locationId: await locationId(anna, "Jääkaappi"),
     });
-    await annasPhone.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
-    await annasPhone.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
+    await anna.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
+    await anna.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
 
     await Promise.all([
-      annasPhone.mutation(api.products.adjustStock, { productId: maito, change: "use" }),
-      annasTablet.mutation(api.products.adjustStock, { productId: maito, change: "use" }),
+      anna.mutation(api.products.adjustStock, { productId: maito, change: "use" }),
+      ben.mutation(api.products.adjustStock, { productId: maito, change: "use" }),
     ]);
 
-    expect(await productsIn(annasPhone, "Jääkaappi")).toEqual([{ name: "Maito", stock: 1 }]);
+    expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Maito", stock: 1 }]);
   });
 
-  test("undoing a – puts the package back without losing another phone's change in between", async () => {
-    const t = newKomero();
-    const annasPhone = await signUp(t, "anna@example.com");
-    const annasTablet = await signIn(t, "anna@example.com");
-    const maito = await annasPhone.mutation(api.products.create, {
+  test("undoing a – puts the package back without losing Ben's change in between", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await anna.mutation(api.products.create, {
       name: "Maito",
-      locationId: await locationId(annasPhone, "Jääkaappi"),
+      locationId: await locationId(anna, "Jääkaappi"),
     });
 
-    const change = await annasPhone.mutation(api.products.adjustStock, { productId: maito, change: "use" });
-    await annasTablet.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
-    await annasPhone.mutation(api.products.undoStockChange, { productId: maito, ...change });
+    const change = await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" });
+    await ben.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
+    await anna.mutation(api.products.undoStockChange, { productId: maito, ...change });
 
-    expect(await productsIn(annasPhone, "Jääkaappi")).toEqual([{ name: "Maito", stock: 2 }]);
+    expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Maito", stock: 2 }]);
   });
 
   test("undoing a – that hit the floor at 0 changes nothing", async () => {
@@ -200,17 +204,15 @@ describe("Stock", () => {
     expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Maito", stock: 0 }]);
   });
 
-  test("a Stock change on one phone shows on another without a refresh", async () => {
-    const t = newKomero();
-    const annasPhone = await signUp(t, "anna@example.com");
-    const annasTablet = await signIn(t, "anna@example.com");
-    const maito = await annasPhone.mutation(api.products.create, {
+  test("a Stock change on Anna's phone shows on Ben's without a refresh", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await anna.mutation(api.products.create, {
       name: "Maito",
-      locationId: await locationId(annasPhone, "Jääkaappi"),
+      locationId: await locationId(anna, "Jääkaappi"),
     });
 
-    await annasPhone.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
+    await anna.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
 
-    expect(await productsIn(annasTablet, "Jääkaappi")).toEqual([{ name: "Maito", stock: 2 }]);
+    expect(await productsIn(ben, "Jääkaappi")).toEqual([{ name: "Maito", stock: 2 }]);
   });
 });

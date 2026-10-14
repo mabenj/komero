@@ -6,6 +6,7 @@ export const en = {
   "app.name": "Komero",
   "app.description": "Home inventory and shopping list",
   "common.loading": "Loading…",
+  "common.undo": "Undo",
 
   "nav.koti": "Home",
   "nav.scan": "Scan",
@@ -35,6 +36,13 @@ export const en = {
   "auth.goToSignIn": "Sign in",
 
   "koti.noProducts": "No Products",
+  "koti.search": "Search or add a Product",
+  "koti.add": "+ Add “{name}”",
+  "koti.addTo": "Location",
+  "koti.duplicate": "{name} already exists in {location}",
+  "koti.use": "Use one: {name}",
+  "koti.restock": "Restock one: {name}",
+  "koti.stockChanged": "{name}: {from} → {to}",
   "scan.comingSoon": "Scanning is coming soon.",
   "lista.comingSoon": "The Shopping List is coming soon.",
 
