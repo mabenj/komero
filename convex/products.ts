@@ -4,6 +4,7 @@ import { recordActivity, relinkActivities } from "./activities";
 import { requireMemberId } from "./members";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
+import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingList";
 import { applyRestock, applyUse, type StockState } from "./stock";
 
 /**
@@ -80,29 +81,31 @@ const deletedProduct = {
   name: v.string(),
   locationId: v.id("locations"),
   stock: v.number(),
+  entries: removedEntries,
 };
 
-/** Deletes a Product. Returns what `restore` needs for the undo toast. */
+/** Deletes a Product and its Shopping List Entries. Returns what `restore` needs for the undo toast. */
 export const remove = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, { productId }) => {
     const memberId = await requireMemberId(ctx);
     const product = await requireProduct(ctx, productId);
     const { name, locationId, stock } = product;
+    const entries = await removeEntriesOf(ctx, productId);
     await ctx.db.delete(productId);
     await recordActivity(ctx, memberId, "delete", product);
-    return { productId, name, locationId, stock };
+    return { productId, name, locationId, stock, entries };
   },
 });
 
 /**
- * The delete undo toast: puts the Product back as it was. Returns its new id,
- * which takes over the deleted Product's Activities.
+ * The delete undo toast: puts the Product back as it was, with its Shopping
+ * List Entries. Returns its new id, which takes over the deleted Product's Activities.
  * If its Home Location was deleted meanwhile, it goes to the first Location.
  */
 export const restore = mutation({
   args: deletedProduct,
-  handler: async (ctx, { productId: deletedId, name, locationId, stock }) => {
+  handler: async (ctx, { productId: deletedId, name, locationId, stock, entries }) => {
     const memberId = await requireMemberId(ctx);
     const home =
       (await ctx.db.get(locationId)) ??
@@ -110,6 +113,7 @@ export const restore = mutation({
     if (home === null) throw new ConvexError("LOCATION_NOT_FOUND");
     const productId = await ctx.db.insert("products", { name, nameKey: nameKey(name), locationId: home._id, stock });
     await relinkActivities(ctx, deletedId, productId);
+    await restoreEntriesOf(ctx, productId, entries);
     await recordActivity(ctx, memberId, "restore", { _id: productId, name }, { to: stock });
     return productId;
   },

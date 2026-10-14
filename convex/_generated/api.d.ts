@@ -18,6 +18,7 @@ import type * as locations from "../locations.js";
 import type * as members from "../members.js";
 import type * as productNames from "../productNames.js";
 import type * as products from "../products.js";
+import type * as shoppingList from "../shoppingList.js";
 import type * as stock from "../stock.js";
 
 import type {
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   members: typeof members;
   productNames: typeof productNames;
   products: typeof products;
+  shoppingList: typeof shoppingList;
   stock: typeof stock;
 }>;
 

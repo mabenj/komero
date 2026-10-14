@@ -6,18 +6,19 @@ import type { activityKind } from "./schema";
 
 export type ActivityKind = Infer<typeof activityKind>;
 
-/** Details some kinds carry: the Stock change, or the name before a rename. */
-type ActivityDetails = { from?: number; to?: number; fromName?: string };
+/** Details some kinds carry: the Stock change, the name before a rename, or the quantity on the list. */
+type ActivityDetails = { from?: number; to?: number; fromName?: string; quantity?: number };
 
 /**
- * Records that `memberId` did `kind` to a Product. Call it from the mutation
- * that makes the change, so the Activity is written in the same transaction.
+ * Records that `memberId` did `kind` to a Product, or to a One-off (no `_id`).
+ * Call it from the mutation that makes the change, so the Activity is written
+ * in the same transaction.
  */
 export async function recordActivity(
   ctx: MutationCtx,
   memberId: Id<"users">,
   kind: ActivityKind,
-  product: { _id: Id<"products">; name: string },
+  product: { _id?: Id<"products">; name: string },
   details: ActivityDetails = {},
 ) {
   await ctx.db.insert("activities", { memberId, kind, productId: product._id, productName: product.name, ...details });

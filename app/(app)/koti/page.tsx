@@ -9,6 +9,7 @@ import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MinusIcon, PlusIcon } from "@/components/icons";
+import { SwipeToNeedMore } from "@/components/NeedMore";
 import { tidyName } from "@/convex/productNames";
 import { applyRestock, applyUse } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
@@ -208,7 +209,10 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
   );
 }
 
-/** A Product with its Stock and inline – / +. Out of Stock Products stay listed, dimmed. */
+/**
+ * A Product with its Stock and inline – / +; swipe it left for Need More.
+ * Out of Stock Products stay listed, dimmed.
+ */
 function ProductRow({
   product,
   detail,
@@ -224,7 +228,7 @@ function ProductRow({
     "flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 text-xl disabled:opacity-30 dark:border-zinc-700";
 
   return (
-    <li className="flex items-center gap-3 py-1.5">
+    <SwipeToNeedMore productId={product._id}>
       <Link href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
         <p className={`truncate ${outOfStock ? "text-zinc-400 dark:text-zinc-500" : ""}`}>{product.name}</p>
         {detail && <p className="truncate text-xs text-zinc-500">{detail}</p>}
@@ -249,7 +253,7 @@ function ProductRow({
       >
         <PlusIcon width={20} height={20} />
       </button>
-    </li>
+    </SwipeToNeedMore>
   );
 }
 
