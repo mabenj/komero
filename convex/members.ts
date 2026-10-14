@@ -16,6 +16,16 @@ export const isFirstRun = query({
   handler: async (ctx) => (await ctx.db.query("users").first()) === null,
 });
 
+/** Everyone with access to Komero, oldest first. */
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireMemberId(ctx);
+    const members = await ctx.db.query("users").collect();
+    return members.map((member) => ({ _id: member._id, email: member.email ?? "" }));
+  },
+});
+
 /** The signed-in Member, or null when signed out. */
 export const me = query({
   args: {},
