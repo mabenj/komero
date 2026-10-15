@@ -1,27 +1,39 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
 import { type PointerEvent, type ReactNode, useCallback, useRef, useState } from "react";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useT } from "@/lib/i18n";
+import { needMoreLocally, quantityAfterNeedMore } from "@/lib/listUpdates";
 
-/** Need More with a toast saying how many are now on the list, which can undo it. */
+type Product = { _id: Id<"products">; name: string };
+type Added = { entryId: Id<"entries">; quantity: number };
+
+/**
+ * Need More, shown on the list at once (even offline), with a toast saying
+ * how many are now on the list, which can undo it.
+ */
 export function useNeedMore() {
-  const needMore = useMutation(api.shoppingList.needMore);
+  const convex = useConvex();
+  const needMore = useMutation(api.shoppingList.needMore).withOptimisticUpdate(needMoreLocally);
   const showNeedMoreToast = useNeedMoreToast();
 
   return useCallback(
-    async (productId: Id<"products">) => {
-      const { entryId, name, quantity } = await needMore({ productId });
-      showNeedMoreToast({ entryId, name, quantity });
+    (product: Product) => {
+      const list = convex.watchQuery(api.shoppingList.get, {}).localQueryResult();
+      const quantity = quantityAfterNeedMore(list, product._id);
+      showNeedMoreToast({ name: product.name, quantity }, needMore({ productId: product._id }));
     },
-    [needMore, showNeedMoreToast],
+    [convex, needMore, showNeedMoreToast],
   );
 }
 
-/** The toast after Need More (also from a scan): how many are now on the list, and undo. */
+/**
+ * The toast after Need More (also from a scan): how many are now on the list,
+ * and undo, which waits for the server's Entry if it hasn't arrived yet.
+ */
 export function useNeedMoreToast() {
   const t = useT();
   const showUndoToast = useUndoToast();
@@ -29,8 +41,9 @@ export function useNeedMoreToast() {
   const remove = useMutation(api.shoppingList.remove);
 
   return useCallback(
-    ({ entryId, name, quantity }: { entryId: Id<"entries">; name: string; quantity: number }) => {
-      showUndoToast(t("lista.onList", { name, quantity }), () => {
+    (shown: { name: string; quantity: number }, added: Added | Promise<Added>) => {
+      showUndoToast(t("lista.onList", shown), async () => {
+        const { entryId, quantity } = await added;
         if (quantity === 1) void remove({ entryId });
         else void setQuantity({ entryId, quantity: quantity - 1 });
       });
@@ -45,7 +58,7 @@ const SWIPE_DISTANCE = 80;
  * A Koti row that does Need More when swiped left. Vertical scrolling still
  * works, and a swipe doesn't count as a tap on the row.
  */
-export function SwipeToNeedMore({ productId, children }: { productId: Id<"products">; children: ReactNode }) {
+export function SwipeToNeedMore({ product, children }: { product: Product; children: ReactNode }) {
   const t = useT();
   const needMore = useNeedMore();
   const [offset, setOffset] = useState(0);
@@ -72,7 +85,7 @@ export function SwipeToNeedMore({ productId, children }: { productId: Id<"produc
     setOffset(Math.min(0, Math.max(dx, -SWIPE_DISTANCE * 1.5)));
   };
   const onPointerEnd = () => {
-    if (offset <= -SWIPE_DISTANCE) void needMore(productId);
+    if (offset <= -SWIPE_DISTANCE) needMore(product);
     swiped.current = offset < -8;
     start.current = null;
     setDragging(false);
@@ -84,13 +97,13 @@ export function SwipeToNeedMore({ productId, children }: { productId: Id<"produc
       <div
         aria-hidden="true"
         className={`absolute inset-0 flex items-center justify-end px-4 text-sm font-semibold ${
-          offset <= -SWIPE_DISTANCE ? "bg-emerald-600 text-white" : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+          offset <= -SWIPE_DISTANCE ? "bg-accent text-accent-foreground" : "bg-accent/15 text-accent"
         }`}
       >
         {t("lista.needMore")}
       </div>
       <div
-        className="relative flex items-center gap-3 bg-background py-1.5"
+        className="relative flex min-h-14 items-center gap-3 bg-surface px-4 py-1.5"
         style={{
           transform: `translateX(${offset}px)`,
           transition: dragging ? "none" : "transform 150ms",

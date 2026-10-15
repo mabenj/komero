@@ -1,18 +1,27 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Cupboard } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
-import { CheckIcon, MinusIcon, PlusIcon, TrashIcon } from "@/components/icons";
+import { CheckIcon, TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
+import { NumberStepper, stepButton } from "@/components/NumberStepper";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useT } from "@/lib/i18n";
+import {
+  putAwayAllLocally,
+  putAwayLocally,
+  removeLocally,
+  setQuantityLocally,
+  tickLocally,
+  untickLocally,
+} from "@/lib/listUpdates";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
-import { field, primaryButton, textLink } from "@/lib/styles";
+import { cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
 
 type Entry = {
   _id: Id<"entries">;
@@ -23,35 +32,54 @@ type Entry = {
   asksForDate?: boolean;
 };
 
+// How long "All put away!" shows after Put Away empties the Bag.
+const ALL_PUT_AWAY_MS = 4000;
+
 /** The shared Shopping List: to-buy Entries grouped by Location, then One-offs under "Other", then the Bag. */
 export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
+  const [allPutAway, setAllPutAway] = useState(false);
+
+  useEffect(() => {
+    if (!allPutAway) return;
+    const timer = setTimeout(() => setAllPutAway(false), ALL_PUT_AWAY_MS);
+    return () => clearTimeout(timer);
+  }, [allPutAway]);
 
   if (list === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
-  const empty = list.locations.length === 0 && list.oneOffs.length === 0 && list.bag.length === 0;
+  const nothingToBuy = list.locations.length === 0 && list.oneOffs.length === 0;
+  // An undo that refills the Bag ends the moment.
+  const showAllPutAway = allPutAway && list.bag.length === 0;
   return (
     <div className="flex flex-col gap-6">
       <AddToList />
-      {empty && <EmptyLista />}
+      {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
+      {nothingToBuy && list.bag.length === 0 && <CupboardNote allPutAway={showAllPutAway} />}
       {list.locations.map((location) => (
         <EntryGroup key={location._id} title={location.name} entries={location.entries} />
       ))}
       {list.oneOffs.length > 0 && <EntryGroup title={t("lista.other")} entries={list.oneOffs} />}
-      {list.bag.length > 0 && <Bag entries={list.bag} />}
+      {list.bag.length > 0 && <Bag entries={list.bag} onEmptied={() => setAllPutAway(true)} />}
+      {showAllPutAway && !nothingToBuy && <CupboardNote allPutAway />}
     </div>
   );
 }
 
-/** Nothing to buy: the cupboard and a short, friendly line. */
-function EmptyLista() {
+/**
+ * The cupboard with a short, friendly line: nothing to buy, or for a moment
+ * after Put Away empties the Bag, "All put away!".
+ */
+function CupboardNote({ allPutAway }: { allPutAway: boolean }) {
   const t = useT();
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-4 text-center">
+    <div role="status" className="flex flex-col items-center gap-3 px-6 py-4 text-center">
       <Cupboard />
-      <h2 className="font-display text-2xl">{t("lista.emptyTitle")}</h2>
-      <p className="text-stone-600 dark:text-stone-400">{t("lista.emptyHint")}</p>
+      <h2 className="font-display text-2xl">{t(allPutAway ? "lista.allPutAwayTitle" : "lista.emptyTitle")}</h2>
+      <p className="text-stone-600 dark:text-stone-400">
+        {t(allPutAway ? "lista.allPutAwayHint" : "lista.emptyHint")}
+      </p>
     </div>
   );
 }
@@ -73,9 +101,9 @@ function AddToList() {
     setText("");
     addOneOff({ name }).catch(() => setText((current) => current || name));
   };
-  const pick = (productId: Id<"products">) => {
+  const pick = (product: { _id: Id<"products">; name: string }) => {
     setText("");
-    void needMore(productId);
+    needMore(product);
   };
 
   return (
@@ -99,7 +127,7 @@ function AddToList() {
             <li key={product._id}>
               <button
                 type="button"
-                onClick={() => pick(product._id)}
+                onClick={() => pick(product)}
                 className="flex min-h-11 w-full items-center justify-between gap-3 py-1.5 text-left"
               >
                 <span className="truncate">{product.name}</span>
@@ -129,9 +157,9 @@ function AddToList() {
 
 function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
   return (
-    <section className="flex flex-col gap-1">
-      <h2 className="font-display text-lg">{title}</h2>
-      <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
+    <section className="flex flex-col gap-1.5">
+      <h2 className="px-1 font-display text-lg">{title}</h2>
+      <ul className={`${cardList} flex flex-col`}>
         {entries.map((entry) => (
           <EntryRow key={entry._id} entry={entry} />
         ))}
@@ -144,13 +172,14 @@ function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
  * "In the bag": Entries ticked off in the shop, put away one at a time or all
  * at once. "Put away all" first asks for a date for each Product with an Expiry Kind.
  */
-function Bag({ entries }: { entries: Entry[] }) {
+function Bag({ entries, onEmptied }: { entries: Entry[]; onEmptied: () => void }) {
   const t = useT();
-  const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll);
+  const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll).withOptimisticUpdate(putAwayAllLocally);
   const showPutAway = usePutAwayToast();
-  const putAwayAll = async (expiryDates?: Record<string, string>) => {
-    const { putAway } = await putAwayAllEntries({ expiryDates });
-    showPutAway(t("lista.putAwayAllDone", { count: putAway.length }), putAway);
+  const putAwayAll = (expiryDates?: Record<string, string>) => {
+    const done = putAwayAllEntries({ expiryDates }).then(({ putAway }) => putAway);
+    showPutAway(t("lista.putAwayAllDone", { count: entries.length }), done);
+    onEmptied();
   };
   const [prompts, setPrompts] = useState<{ asking: Entry[]; index: number; dates: Record<string, string> } | null>(
     null,
@@ -160,7 +189,7 @@ function Bag({ entries }: { entries: Entry[] }) {
     const asking = entries.filter(
       (entry, i) => entry.asksForDate && entries.findIndex((e) => e.productId === entry.productId) === i,
     );
-    if (asking.length === 0) void putAwayAll();
+    if (asking.length === 0) putAwayAll();
     else setPrompts({ asking, index: 0, dates: {} });
   };
   const answer = (date: string | undefined) => {
@@ -172,12 +201,12 @@ function Bag({ entries }: { entries: Entry[] }) {
       return;
     }
     setPrompts(null);
-    void putAwayAll(dates);
+    putAwayAll(dates);
   };
 
   return (
-    <section className="flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-2">
+    <section className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2 px-1">
         <h2 className="font-display text-lg">{t("lista.bag")}</h2>
         {!prompts && (
           <button
@@ -198,83 +227,61 @@ function Bag({ entries }: { entries: Entry[] }) {
           onCancel={() => setPrompts(null)}
         />
       )}
-      <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
+      <ul className={`${cardList} flex flex-col`}>
         {entries.map((entry) => (
-          <EntryRow key={entry._id} entry={entry} inBag />
+          <EntryRow key={entry._id} entry={entry} inBag onEmptied={entries.length === 1 ? onEmptied : undefined} />
         ))}
       </ul>
     </section>
   );
 }
 
-const roundButton =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-stone-300 disabled:opacity-30 dark:border-stone-700";
+const tickButton =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-stone-300 dark:border-stone-700";
 
 /**
- * One Entry: a tick toggle, its name (and the Product's Stock at home), then a
- * quantity stepper and delete on the list, or Put away in the Bag. A One-off
- * can be made into a Product.
+ * One Entry: a tick toggle, its name (and the Product's Stock at home), then
+ * its quantity as a number that opens –, + and delete on the list, or the
+ * quantity and Put away in the Bag. A One-off can be made into a Product.
+ * Every change and its toast show at once, even on a weak signal in the shop.
  */
-function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
+function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: boolean; onEmptied?: () => void }) {
   const t = useT();
   const [makingProduct, setMakingProduct] = useState(false);
   const [askingDate, setAskingDate] = useState(false);
   const showUndoToast = useUndoToast();
-  const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate((store, args) => {
-    const list = store.getQuery(api.shoppingList.get, {});
-    if (!list) return;
-    const update = <E extends Entry>(e: E): E => (e._id === args.entryId ? { ...e, quantity: args.quantity } : e);
-    store.setQuery(api.shoppingList.get, {}, {
-      locations: list.locations.map((location) => ({ ...location, entries: location.entries.map(update) })),
-      oneOffs: list.oneOffs.map(update),
-      bag: list.bag,
-    });
-  });
-  // Ticking moves the Entry to the Bag straight away, even with a bad signal in the shop.
-  const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate((store, args) => {
-    const list = store.getQuery(api.shoppingList.get, {});
-    if (!list) return;
-    const ticked = [...list.locations.flatMap((location) => location.entries), ...list.oneOffs].find(
-      (e) => e._id === args.entryId,
-    );
-    if (!ticked) return;
-    const others = <E extends Entry>(e: E) => e._id !== args.entryId;
-    store.setQuery(api.shoppingList.get, {}, {
-      locations: list.locations
-        .map((location) => ({ ...location, entries: location.entries.filter(others) }))
-        .filter((location) => location.entries.length > 0),
-      oneOffs: list.oneOffs.filter(others),
-      bag: [...list.bag, ticked].sort((a, b) => a.name.localeCompare(b.name, "fi")),
-    });
-  });
-  const untick = useMutation(api.shoppingList.untick);
-  const putAwayEntry = useMutation(api.shoppingList.putAway);
+  const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
+  const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate(tickLocally);
+  const untick = useMutation(api.shoppingList.untick).withOptimisticUpdate(untickLocally);
+  const putAwayEntry = useMutation(api.shoppingList.putAway).withOptimisticUpdate(putAwayLocally);
   const showPutAway = usePutAwayToast();
-  const putAway = async (expiryDate?: string) => {
-    const done = await putAwayEntry({ entryId: entry._id, expiryDate });
-    showPutAway(t("lista.putAwayDone", { name: entry.name }), done.putAway);
-  };
-  const remove = useMutation(api.shoppingList.remove);
+  const remove = useMutation(api.shoppingList.remove).withOptimisticUpdate(removeLocally);
   const restore = useMutation(api.shoppingList.restore);
 
-  const tickEntry = async () => {
-    await tick({ entryId: entry._id });
+  const putAway = (expiryDate?: string) => {
+    const done = putAwayEntry({ entryId: entry._id, expiryDate }).then(({ putAway }) => putAway);
+    showPutAway(t("lista.putAwayDone", { name: entry.name }), done);
+    onEmptied?.();
+  };
+  const tickEntry = () => {
+    void tick({ entryId: entry._id });
     showUndoToast(t("lista.ticked", { name: entry.name }), () => void untick({ entryId: entry._id }));
   };
-  const deleteEntry = async () => {
-    const deleted = await remove({ entryId: entry._id });
-    showUndoToast(t("lista.deleted", { name: deleted.name }), () => void restore(deleted));
+  const deleteEntry = () => {
+    void remove({ entryId: entry._id });
+    const deleted = { productId: entry.productId, name: entry.name, quantity: entry.quantity };
+    showUndoToast(t("lista.deleted", { name: entry.name }), () => void restore(deleted));
   };
 
   return (
-    <li className="flex flex-col gap-2 py-1.5">
-      <div className="flex items-center gap-2">
+    <li className="flex flex-col gap-2 px-4 py-1.5">
+      <div className="flex min-h-11 items-center gap-2">
         <button
           type="button"
-          className={`${roundButton} ${inBag ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-600" : ""}`}
+          className={`${tickButton} ${inBag ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-600" : ""}`}
           aria-label={t(inBag ? "lista.untick" : "lista.tick", { name: entry.name })}
           aria-pressed={inBag}
-          onClick={() => void (inBag ? untick({ entryId: entry._id }) : tickEntry())}
+          onClick={() => (inBag ? void untick({ entryId: entry._id }) : tickEntry())}
         >
           {inBag && <CheckIcon width={20} height={20} />}
         </button>
@@ -291,49 +298,38 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
         </div>
         {inBag ? (
           <>
-            <span className="w-8 text-center font-semibold tabular-nums">
+            <span className="min-w-8 text-center font-display text-lg text-stone-500 tabular-nums">
               {t("lista.quantity", { quantity: entry.quantity })}
             </span>
             <button
               type="button"
-              className="min-h-11 shrink-0 rounded-xl border border-stone-300 px-3 font-semibold dark:border-stone-700"
+              className={`${secondaryButton} min-h-11 shrink-0 px-3`}
               aria-label={t("lista.putAwayName", { name: entry.name })}
-              onClick={() => (entry.asksForDate ? setAskingDate(true) : void putAway())}
+              onClick={() => (entry.asksForDate ? setAskingDate(true) : putAway())}
             >
               {t("lista.putAway")}
             </button>
           </>
         ) : (
-          <>
-            <button
-              type="button"
-              className={roundButton}
-              disabled={entry.quantity <= 1}
-              aria-label={t("lista.decrease", { name: entry.name })}
-              onClick={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity - 1 })}
-            >
-              <MinusIcon width={20} height={20} />
-            </button>
-            <span className="w-8 text-center font-semibold tabular-nums">
-              {t("lista.quantity", { quantity: entry.quantity })}
-            </span>
-            <button
-              type="button"
-              className={roundButton}
-              aria-label={t("lista.increase", { name: entry.name })}
-              onClick={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity + 1 })}
-            >
-              <PlusIcon width={20} height={20} />
-            </button>
-            <button
-              type="button"
-              className="flex h-11 w-11 shrink-0 items-center justify-center text-stone-500"
-              aria-label={t("lista.delete", { name: entry.name })}
-              onClick={() => void deleteEntry()}
-            >
-              <TrashIcon width={20} height={20} />
-            </button>
-          </>
+          <NumberStepper
+            value={t("lista.quantity", { quantity: entry.quantity })}
+            label={t("lista.changeQuantity", { name: entry.name, quantity: entry.quantity })}
+            onDecrease={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity - 1 })}
+            decreaseLabel={t("lista.decrease", { name: entry.name })}
+            decreaseDisabled={entry.quantity <= 1}
+            onIncrease={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity + 1 })}
+            increaseLabel={t("lista.increase", { name: entry.name })}
+            extra={
+              <button
+                type="button"
+                className={stepButton}
+                aria-label={t("lista.delete", { name: entry.name })}
+                onClick={deleteEntry}
+              >
+                <TrashIcon width={18} height={18} />
+              </button>
+            }
+          />
         )}
       </div>
       {makingProduct && <MakeProduct entry={entry} onDone={() => setMakingProduct(false)} />}
@@ -342,7 +338,7 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
           name={entry.name}
           onAnswer={(expiryDate) => {
             setAskingDate(false);
-            void putAway(expiryDate);
+            putAway(expiryDate);
           }}
           onCancel={() => setAskingDate(false)}
         />
