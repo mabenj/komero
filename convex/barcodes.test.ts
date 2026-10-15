@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { type MemberSession, newKomero, signUp } from "./test.helpers";
 
 const MAITO_VALIO = "6408430000012";
@@ -155,6 +156,80 @@ describe("Add mode", () => {
     expect(await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" })).toMatchObject({
       expiryKind: "bestBefore",
     });
+  });
+});
+
+describe("The date prompt on Add scans", () => {
+  async function expiryOf(member: MemberSession, productId: Id<"products">) {
+    const page = await member.query(api.products.get, { productId });
+    return { stock: page?.stock, date: page?.expiryDate };
+  }
+
+  test("a dated Restock via scan: from Out of Stock the date becomes the Expiry Date, then the earlier date is kept", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "useBy" });
+    await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" });
+
+    const first = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
+    expect(first).toMatchObject({ action: "restock", from: 0, to: 1, asksForDate: true });
+    await anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-10-25" });
+    expect(await expiryOf(anna, maito)).toEqual({ stock: 1, date: "2026-10-25" });
+
+    await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
+    await anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-10-30" });
+    expect(await expiryOf(anna, maito)).toEqual({ stock: 2, date: "2026-10-25" });
+
+    await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
+    await anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-10-20" });
+    expect(await expiryOf(anna, maito)).toEqual({ stock: 3, date: "2026-10-20" });
+  });
+
+  test("a scan that Puts Away Maito from the Bag asks too, and Maito's old date is gone once it was used up", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "bestBefore", expiryDate: "2026-10-18" });
+    await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "use" });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    const [entry] = (await anna.query(api.shoppingList.get, {})).locations[0].entries;
+    await anna.mutation(api.shoppingList.tick, { entryId: entry._id });
+
+    const scanned = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
+    expect(scanned).toMatchObject({ action: "putAway", from: 0, to: 1, asksForDate: true });
+    await anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-10-28" });
+
+    expect(await expiryOf(anna, maito)).toEqual({ stock: 1, date: "2026-10-28" });
+    expect(await bag(anna)).toEqual([]);
+  });
+
+  test("Products with no Expiry Kind never ask, and Use and Need more scans never ask", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    expect(await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" })).toMatchObject({
+      asksForDate: false,
+    });
+
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "useBy" });
+
+    for (const mode of ["use", "needMore"] as const) {
+      expect(await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode })).toMatchObject({
+        asksForDate: false,
+      });
+    }
+  });
+
+  test("a date for a Product with no Expiry Kind, or a date that isn't a calendar day, changes nothing", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+
+    await anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-10-25" });
+    expect(await expiryOf(anna, maito)).toEqual({ stock: 1, date: null });
+
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "useBy" });
+    await expect(anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-02-30" })).rejects.toThrow(
+      "EXPIRY_DATE_INVALID",
+    );
+    expect(await expiryOf(anna, maito)).toEqual({ stock: 1, date: null });
   });
 });
 

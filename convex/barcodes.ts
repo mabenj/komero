@@ -6,6 +6,7 @@ import { requireMemberId } from "./members";
 import { nameKey, tidyName } from "./productNames";
 import { changeStock } from "./products";
 import { needMoreOf, putAwayOneFromBag } from "./shoppingList";
+import { applyRestock, isDate } from "./stock";
 
 /** The scan modes, chosen before scanning. */
 export const scanMode = v.union(v.literal("add"), v.literal("use"), v.literal("needMore"));
@@ -92,11 +93,31 @@ export const linkNew = mutation({
 });
 
 /**
+ * The answer to the date prompt after an Add scan: the date printed on the
+ * scanned package, applied as if it had come with the Restock. The scan's
+ * undated Restock cleared the Expiry Date if Stock was 0 before it and kept it
+ * otherwise, so keeping the earlier of that and this date gives the same
+ * result: the new date from 0, the earlier of the two after.
+ */
+export const dateScan = mutation({
+  args: { productId: v.id("products"), expiryDate: v.string() },
+  handler: async (ctx, { productId, expiryDate }) => {
+    await requireMemberId(ctx);
+    if (!isDate(expiryDate)) throw new ConvexError("EXPIRY_DATE_INVALID");
+    const product = await ctx.db.get(productId);
+    if (product === null) throw new ConvexError("PRODUCT_NOT_FOUND");
+    if (product.stock === 0) return;
+    await ctx.db.patch(productId, applyRestock(product, 0, expiryDate));
+  },
+});
+
+/**
  * Applies the scan mode to a Product. Add Puts Away one package from the Bag
  * if the Bag has the Product, and otherwise Restocks 1; Use Uses 1; Need more
  * does Need More. Returns what the scan confirmation shows: the Product, how
- * its Stock changed and whether it crossed into Running Low, its Expiry Kind
- * (for the date prompt), and for Need more the Entry and its quantity (for undo).
+ * its Stock changed and whether it crossed into Running Low, its Expiry Kind,
+ * whether to ask for the package's date (an Add of a Product with an Expiry
+ * Kind; `dateScan` takes the answer), and for Need more the Entry and its quantity (for undo).
  */
 async function applyMode(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">, mode: ScanMode) {
   const base = {
@@ -104,6 +125,7 @@ async function applyMode(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"
     productId: product._id,
     name: product.name,
     expiryKind: product.expiryKind ?? null,
+    asksForDate: mode === "add" && product.expiryKind !== undefined,
   };
   const unchanged = { from: product.stock, to: product.stock, crossedIntoRunningLow: false };
   switch (mode) {
