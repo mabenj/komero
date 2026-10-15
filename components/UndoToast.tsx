@@ -41,20 +41,20 @@ export function UndoToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<Toast | null>(null);
   const lastId = useRef(0);
   const show = useCallback<ShowUndoToast>((message, undo, action) => {
-    const shown = (id: number): ShownToast => {
+    const handleFor = (id: number): ShownToast => {
       const ifShowing = (next: Toast | null) => setToast((current) => (current?.id === id ? next : current));
       return {
         close: () => ifShowing(null),
         replace: (message, undo, action) => {
           const next = ++lastId.current;
           ifShowing({ id: next, message, undo, action });
-          return shown(next);
+          return handleFor(next);
         },
       };
     };
     const id = ++lastId.current;
     setToast({ id, message, undo, action });
-    return shown(id);
+    return handleFor(id);
   }, []);
   const close = useCallback(() => setToast(null), []);
 
