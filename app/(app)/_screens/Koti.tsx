@@ -11,7 +11,7 @@ import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ChevronDownIcon, ScanIcon } from "@/components/icons";
-import { Fold, Reveal, settle, useLayoutMotion } from "@/components/motion";
+import { Fold, Reveal, settle, useLayoutMotion, useRowMotion } from "@/components/motion";
 import { NeedsAttention, statusText } from "@/components/NeedsAttention";
 import { SwipeToNeedMore } from "@/components/NeedMore";
 import { NumberStepper } from "@/components/NumberStepper";
@@ -25,10 +25,11 @@ import {
   isRunningLow,
   type StockState,
 } from "@/convex/stock";
-import { formatDay, localToday } from "@/lib/dates";
+import { localToday, relativeExpiry } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
 import { changeStockLocally } from "@/lib/listUpdates";
 import { foldedLocations, lastLocation, rememberFoldedLocations, rememberLocation } from "@/lib/remembered";
+import { type SortColumn, type SortDirection, sortProducts } from "@/lib/sortProducts";
 import { cardList, field, primaryButton } from "@/lib/styles";
 
 type StockChange = "restock" | "use";
@@ -36,6 +37,7 @@ type StockChange = "restock" | "use";
 const noMore = { expiryKind: null, minimumStock: "" };
 const moreFieldClass = `${field} w-full px-3`;
 type Location = { _id: Id<"locations">; name: string };
+type Sort = { column: SortColumn; direction: SortDirection };
 type ProductRowData = {
   _id: Id<"products">;
   name: string;
@@ -56,12 +58,19 @@ export default function KotiScreen() {
   const changeStock = useStockChange();
   const [quickAddLocation, setQuickAddLocation] = useState<Id<"locations"> | null>(null);
   const [folded, toggleFolded] = useFoldedLocations();
+  // One sort for every Location; it starts by name each time Koti opens.
+  const [sort, setSort] = useState<Sort>({ column: "name", direction: "asc" });
+  const sortBy = (column: SortColumn) =>
+    setSort((current) => ({
+      column,
+      direction: current.column === column && current.direction === "asc" ? "desc" : "asc",
+    }));
   const layout = useLayoutMotion();
 
   if (inventory === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
   const empty = inventory.every((location) => location.products.length === 0);
-  // One layout group, so a part that opens or a row that leaves moves everything below it smoothly.
+  // One layout group, so a part that opens moves the Locations below it smoothly; table rows themselves stay still.
   return (
     <LayoutGroup>
       <div className="flex flex-col gap-6">
@@ -137,13 +146,13 @@ export default function KotiScreen() {
                 <Fold key="products" id={`products-${location._id}`}>
                   <div className="pt-1.5">
                     {location.products.length > 0 ? (
-                      <ul className={`${cardList} flex flex-col overflow-hidden`}>
-                        <AnimatePresence initial={false}>
-                          {location.products.map((product) => (
-                            <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
-                          ))}
-                        </AnimatePresence>
-                      </ul>
+                      <ProductTable
+                        label={location.name}
+                        products={location.products}
+                        sort={sort}
+                        onSort={sortBy}
+                        onChangeStock={changeStock}
+                      />
                     ) : (
                       !empty && (
                         <p className={`${cardList} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
@@ -178,7 +187,7 @@ function SearchAdd({
   locationInView,
   onChangeStock,
 }: {
-  locations: Location[];
+  locations: (Location & { products: ProductRowData[] })[];
   locationInView: Id<"locations"> | null;
   onChangeStock: (product: ProductRowData, change: StockChange) => void;
 }) {
@@ -187,6 +196,9 @@ function SearchAdd({
   const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
   const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
   const createProduct = useMutation(api.products.create);
+  const rowMotion = useRowMotion();
+  // Search results don't carry Expiry Dates or Minimum Stock; the inventory does.
+  const inventoryById = new Map(locations.flatMap((location) => location.products.map((product) => [product._id, product])));
 
   const remembered = locations.find((location) => location._id === lastLocation())?._id;
   const locationId = pickedLocation ?? locationInView ?? remembered ?? locations[0]?._id;
@@ -231,13 +243,14 @@ function SearchAdd({
           {result.matches.length > 0 && (
             <ul className={`${cardList} flex flex-col overflow-hidden`}>
               <AnimatePresence initial={false}>
-                {result.matches.map((product) => (
-                  <ProductRow
-                    key={product._id}
-                    product={product}
-                    detail={product.locationName}
-                    onChangeStock={onChangeStock}
-                  />
+                {result.matches.map((match) => (
+                  <motion.li key={match._id} {...rowMotion}>
+                    <MatchRow
+                      product={inventoryById.get(match._id) ?? match}
+                      locationName={match.locationName}
+                      onChangeStock={onChangeStock}
+                    />
+                  </motion.li>
                 ))}
               </AnimatePresence>
             </ul>
@@ -411,56 +424,160 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
   );
 }
 
+const tableRow = "flex items-center gap-2 px-4";
+const columns: SortColumn[] = ["name", "expiry", "stock"];
+// Fixed widths, so the columns line up across Locations; Stock grows while its stepper is open.
+const cellWidths: Record<SortColumn, string> = {
+  name: "min-w-0 flex-1",
+  expiry: "w-24 shrink-0 truncate",
+  stock: "flex min-w-16 shrink-0 justify-end",
+};
+
 /**
- * A Product with its Expiry Date under its name, coloured by what it means
- * today, a mark when it is Running Low, and its Stock as a number that opens – / +; swipe it left for Need
- * More. Out of Stock Products stay listed, dimmed.
+ * A Location's Products as a table: Name · Expiry Date · Stock. Tapping a
+ * column header sorts every Location by it, and again reverses the order.
+ * On phones it runs edge to edge.
  */
-function ProductRow({
-  product,
-  detail,
+function ProductTable({
+  label,
+  products,
+  sort,
+  onSort,
   onChangeStock,
 }: {
-  product: ProductRowData;
-  detail?: string;
+  label: string;
+  products: ProductRowData[];
+  sort: Sort;
+  onSort: (column: SortColumn) => void;
   onChangeStock: (product: ProductRowData, change: StockChange) => void;
 }) {
   const t = useT();
   const lang = useLang();
-  const outOfStock = product.stock === 0;
-  const { expiryKind, expiryDate } = product;
-  const status = expiryKind && expiryDate && expiryStatus({ stock: 1, expiryKind, expiryDate }, localToday());
-  const low = lowNotOut(product);
-
   return (
-    <SwipeToNeedMore product={product}>
-      <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
-        <p className={`truncate ${outOfStock ? "text-stone-400 dark:text-stone-500" : ""}`}>{product.name}</p>
-        {(detail || expiryDate || outOfStock || low) && (
-          <p className="flex gap-2 text-xs tabular-nums">
-            {detail && <span className="truncate text-stone-500">{detail}</span>}
-            {expiryKind && expiryDate ? (
-              <span className={`truncate ${status ? statusText[status] : "text-stone-500"}`}>
-                {t(`expiry.${expiryKind}`, { date: formatDay(expiryDate, lang) })}
-              </span>
-            ) : (
-              outOfStock && <span className="text-stone-400">{t("koti.out")}</span>
-            )}
-            {low && <span className={`shrink-0 ${statusText.runningLow}`}>{t("attention.runningLow")}</span>}
-          </p>
-        )}
-      </AppLink>
-      <NumberStepper
-        value={product.stock}
-        label={t("koti.changeStock", { name: product.name, stock: product.stock })}
-        dimmed={outOfStock}
-        onDecrease={() => onChangeStock(product, "use")}
-        decreaseLabel={t("koti.use", { name: product.name })}
-        decreaseDisabled={outOfStock}
-        onIncrease={() => onChangeStock(product, "restock")}
-        increaseLabel={t("koti.restock", { name: product.name })}
-      />
+    <div
+      role="table"
+      aria-label={label}
+      className={`${cardList} overflow-hidden max-sm:-mx-4 max-sm:rounded-none max-sm:shadow-none`}
+    >
+      <div role="row" className={`${tableRow} min-h-9 text-xs font-semibold text-stone-500`}>
+        {columns.map((column) => {
+          const sorted = sort.column === column;
+          return (
+            <div
+              key={column}
+              role="columnheader"
+              aria-sort={sorted ? (sort.direction === "asc" ? "ascending" : "descending") : undefined}
+              className={cellWidths[column]}
+            >
+              <button type="button" onClick={() => onSort(column)} className="-my-1 flex min-h-11 items-center gap-0.5">
+                {t(`koti.column.${column}`)}
+                {sorted && <span aria-hidden="true">{sort.direction === "asc" ? "↑" : "↓"}</span>}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {sortProducts(products, sort.column, sort.direction, lang).map((product) => (
+        <ProductRow key={product._id} product={product} onChangeStock={onChangeStock} />
+      ))}
+    </div>
+  );
+}
+
+const dimmedName = "text-stone-400 dark:text-stone-500";
+
+/**
+ * A Product in its Location's table: its name, how far off its Expiry Date is,
+ * and its Stock as a number that opens – / +; swipe it left for Need More.
+ * Out of Stock Products stay listed, dimmed.
+ */
+function ProductRow({
+  product,
+  onChangeStock,
+}: {
+  product: ProductRowData;
+  onChangeStock: (product: ProductRowData, change: StockChange) => void;
+}) {
+  return (
+    <SwipeToNeedMore product={product} role="row" className={`${tableRow} min-h-9 text-sm`}>
+      <div role="cell" className={cellWidths.name}>
+        <AppLink
+          href={`/koti/${product._id}`}
+          className={`-my-1 flex min-h-11 items-center ${product.stock === 0 ? dimmedName : ""}`}
+        >
+          <span className="truncate">{product.name}</span>
+        </AppLink>
+      </div>
+      <div role="cell" className={cellWidths.expiry}>
+        <ExpiryDate product={product} />
+      </div>
+      <div role="cell" className={cellWidths.stock}>
+        <StockStepper product={product} onChangeStock={onChangeStock} />
+      </div>
     </SwipeToNeedMore>
+  );
+}
+
+/** A Product found by Koti's search: its name, its Location and Expiry Date under it, and its Stock. */
+function MatchRow({
+  product,
+  locationName,
+  onChangeStock,
+}: {
+  product: ProductRowData;
+  locationName: string;
+  onChangeStock: (product: ProductRowData, change: StockChange) => void;
+}) {
+  return (
+    <SwipeToNeedMore product={product} className="flex min-h-11 items-center gap-3 px-4 py-1 text-sm">
+      <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
+        <p className={`truncate ${product.stock === 0 ? dimmedName : ""}`}>{product.name}</p>
+        <p className="flex gap-2 text-xs">
+          <span className="truncate text-stone-500">{locationName}</span>
+          <ExpiryDate product={product} />
+        </p>
+      </AppLink>
+      <StockStepper product={product} onChangeStock={onChangeStock} />
+    </SwipeToNeedMore>
+  );
+}
+
+/** How far off a Product's Expiry Date is, coloured by what it means today; nothing without one. */
+function ExpiryDate({ product }: { product: ProductRowData }) {
+  const lang = useLang();
+  const { expiryKind, expiryDate } = product;
+  if (!expiryKind || !expiryDate) return null;
+  const today = localToday();
+  const status = expiryStatus({ stock: 1, expiryKind, expiryDate }, today);
+  return (
+    <span className={`shrink-0 tabular-nums ${status ? statusText[status] : "text-stone-500"}`}>
+      {relativeExpiry(expiryDate, today, lang)}
+    </span>
+  );
+}
+
+/** A Product's Stock as a number that opens – / +: amber when Running Low, dimmed when Out of Stock. */
+function StockStepper({
+  product,
+  onChangeStock,
+}: {
+  product: ProductRowData;
+  onChangeStock: (product: ProductRowData, change: StockChange) => void;
+}) {
+  const t = useT();
+  const outOfStock = product.stock === 0;
+  return (
+    <NumberStepper
+      text={String(product.stock)}
+      label={t("koti.changeStock", { name: product.name, stock: product.stock })}
+      dimmed={outOfStock}
+      runningLow={lowNotOut(product)}
+      onDecrease={() => onChangeStock(product, "use")}
+      decreaseLabel={t("koti.use", { name: product.name })}
+      decreaseDisabled={outOfStock}
+      onIncrease={() => onChangeStock(product, "restock")}
+      increaseLabel={t("koti.restock", { name: product.name })}
+    />
   );
 }
 

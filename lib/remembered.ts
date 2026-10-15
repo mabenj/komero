@@ -47,3 +47,8 @@ export const lastLocation = location.get;
 const folded = remembered("komero.foldedLocations", (stored): stored is string => stored !== "");
 export const rememberFoldedLocations = (ids: string[]) => folded.set(ids.join(","));
 export const foldedLocations = (): string[] => folded.get()?.split(",") ?? [];
+
+// Whether Kauppalista's Bag is folded shut; it starts open.
+const bag = remembered("komero.bagFolded", oneOf(["folded", "open"] as const));
+export const rememberBagFolded = (folded: boolean) => bag.set(folded ? "folded" : "open");
+export const bagFolded = () => bag.get() === "folded";

@@ -10,8 +10,8 @@ import { Sheet } from "@/components/Sheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { AttentionStatus } from "@/convex/stock";
-import { localToday } from "@/lib/dates";
-import { useT } from "@/lib/i18n";
+import { localToday, relativeExpiry } from "@/lib/dates";
+import { useLang, useT } from "@/lib/i18n";
 import { quantityAfterNeedMore } from "@/lib/listUpdates";
 import { card, primaryButton, secondaryButton } from "@/lib/styles";
 
@@ -24,7 +24,7 @@ const dots: Record<AttentionStatus, string> = {
   runningLow: "bg-stone-400",
 };
 
-/** Status text: red for expired, amber for check it or expiring soon, grey otherwise (also on Koti's rows). */
+/** Status text: red for expired, amber for check it or expiring soon, grey otherwise (also Koti's Expiry Dates). */
 export const statusText: Record<AttentionStatus, string> = {
   expired: "font-semibold text-red-700 dark:text-red-400",
   checkIt: "text-amber-700 dark:text-amber-400",
@@ -34,14 +34,25 @@ export const statusText: Record<AttentionStatus, string> = {
 
 /**
  * The top of Koti: a row of chips, scrolled sideways, for the Products that
- * need attention on the phone's date, most urgent first. A chip opens the
- * Product page, except a Running Low one, which asks to do Need More first.
+ * need attention on the phone's date, most urgent first, with how far off
+ * their Expiry Date is. A chip opens the Product page, except a Running Low one, which asks to do Need More first.
  * Hidden when nothing needs attention; it fades in and out, and Koti below it
  * slides to make room.
  */
 export function NeedsAttention() {
   const t = useT();
-  const products = useQuery(api.inventory.needsAttention, { today: localToday() });
+  const lang = useLang();
+  const today = localToday();
+  const products = useQuery(api.inventory.needsAttention, { today });
+  // Needs Attention doesn't send Expiry Dates; Koti's own inventory has them.
+  const inventory = useQuery(api.inventory.get);
+  const expiryDates = new Map(
+    inventory?.flatMap((location) => location.products.map((product) => [product._id, product.expiryDate])),
+  );
+  const expirySuffix = (product: { _id: Id<"products">; attention: AttentionStatus }) => {
+    const expiryDate = expiryDates.get(product._id);
+    return product.attention !== "runningLow" && expiryDate ? ` · ${relativeExpiry(expiryDate, today, lang)}` : "";
+  };
   const sectionMotion = useSectionMotion();
   const [asking, setAsking] = useState<Product | null>(null);
 
@@ -60,16 +71,17 @@ export function NeedsAttention() {
                       event.preventDefault();
                       setAsking(product);
                     }}
-                    className={`${card} flex min-h-11 items-center gap-2 px-3 py-2`}
+                    className={`${card} flex min-h-11 items-center gap-2 px-2.5 py-1`}
                   >
                     <span
                       aria-hidden="true"
-                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${dots[product.attention]}`}
+                      className={`h-2 w-2 shrink-0 rounded-full ${dots[product.attention]}`}
                     />
                     <span className="flex flex-col">
                       <span className="text-sm font-medium">{product.name}</span>
                       <span className={`text-xs ${statusText[product.attention]}`}>
                         {t(`attention.${product.attention}`)}
+                        {expirySuffix(product)}
                       </span>
                     </span>
                   </AppLink>

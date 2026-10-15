@@ -27,7 +27,7 @@ _Avoid_: EAN, code
 
 **Location**:
 A place at home where the household keeps its Products, such as the fridge, freezer, cupboard, bathroom or cleaning closet. The household defines its own Locations. Each Product belongs to exactly one Location, and all of its Stock is counted there.
-_Avoid_: Category, Home Location, storage, place, room
+_Avoid_: komero, Category, Home Location, storage, place, room
 
 **Stock**:
 How many packages of a Product are at home. An opened package counts as one.

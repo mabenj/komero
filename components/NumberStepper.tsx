@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { MinusIcon, PlusIcon } from "@/components/icons";
-import { RollingNumber, useEnterExit } from "@/components/motion";
+import { useEnterExit } from "@/components/motion";
 import { useT } from "@/lib/i18n";
 
 export const stepButton =
@@ -15,13 +15,13 @@ export const stepButton =
  * – and + (and `extra`, such as delete) for this row only. It stays open while
  * the Member keeps counting, and closes on OK, Escape, or a tap anywhere
  * outside it, which includes another row's number, so one row is open at a time.
- * The number rolls up or down as it changes.
+ * The pill is small, but its tap area is the full 44px, reaching into the row's padding.
  */
 export function NumberStepper({
-  value,
-  text = String(value),
+  text,
   label,
   dimmed = false,
+  runningLow = false,
   onDecrease,
   decreaseLabel,
   decreaseDisabled = false,
@@ -29,13 +29,14 @@ export function NumberStepper({
   increaseLabel,
   extra,
 }: {
-  value: number;
-  /** How the number is shown, e.g. "×2"; the number itself when not given. */
-  text?: string;
+  /** The number as shown, e.g. "2" or "×2". */
+  text: string;
   /** What the pill opens, e.g. "Change Stock: Milk, 2 at home". */
   label: string;
   /** Out of Stock: an outlined, dimmed pill. */
   dimmed?: boolean;
+  /** Running Low: the number in amber. */
+  runningLow?: boolean;
   onDecrease: () => void;
   decreaseLabel: string;
   decreaseDisabled?: boolean;
@@ -68,7 +69,7 @@ export function NumberStepper({
     pill.current?.focus();
   };
 
-  const number = <RollingNumber value={value}>{text}</RollingNumber>;
+  const tone = dimmed ? "text-stone-400" : runningLow ? "text-amber-700 dark:text-amber-400" : "";
   return (
     <AnimatePresence mode="popLayout" initial={false}>
       {open ? (
@@ -90,9 +91,7 @@ export function NumberStepper({
           >
             <MinusIcon width={18} height={18} />
           </button>
-          <span className={`min-w-7 text-center font-display text-lg tabular-nums ${dimmed ? "text-stone-400" : ""}`}>
-            {number}
-          </span>
+          <span className={`min-w-7 text-center font-display text-base tabular-nums ${tone}`}>{text}</span>
           {/* Opening moves focus here, since the pill it replaced is gone. */}
           <button type="button" className={stepButton} aria-label={increaseLabel} onClick={onIncrease} autoFocus>
             <PlusIcon width={18} height={18} />
@@ -113,13 +112,15 @@ export function NumberStepper({
             type="button"
             aria-label={label}
             onClick={() => setOpen(true)}
-            className={`min-h-11 min-w-12 rounded-full px-3 font-display text-xl tabular-nums ${
-              dimmed
-                ? "text-stone-400 ring-1 ring-stone-300 ring-inset dark:ring-stone-700"
-                : "bg-stone-100 dark:bg-stone-800"
-            }`}
+            className="-my-1 flex min-h-11 min-w-11 items-center justify-center"
           >
-            {number}
+            <span
+              className={`min-w-9 rounded-full px-2 py-0.5 text-center font-display text-base tabular-nums ${tone} ${
+                dimmed ? "ring-1 ring-stone-300 ring-inset dark:ring-stone-700" : "bg-stone-100 dark:bg-stone-800"
+              }`}
+            >
+              {text}
+            </span>
           </button>
         </motion.span>
       )}

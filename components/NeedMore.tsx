@@ -3,7 +3,7 @@
 import { useConvex, useMutation } from "convex/react";
 import { animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import { type PointerEvent, type ReactNode, useCallback, useRef, useState } from "react";
-import { crossFade, swipeBack, useRowMotion } from "@/components/motion";
+import { crossFade, swipeBack } from "@/components/motion";
 import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -61,13 +61,21 @@ const sample = (event: PointerEvent): PointerSample => ({ x: event.clientX, y: e
  * A Koti row that does Need More when swiped left (see `lib/swipe`). It
  * follows the finger, shows the moment letting go would do Need More with a
  * haptic, and springs back at the speed it was let go. Vertical scrolling still
- * works, and a swipe doesn't count as a tap on the row. In `AnimatePresence`,
- * the row slides in when added and out when deleted.
+ * works, and a swipe doesn't count as a tap on the row.
  */
-export function SwipeToNeedMore({ product, children }: { product: Product; children: ReactNode }) {
+export function SwipeToNeedMore({
+  product,
+  role,
+  className,
+  children,
+}: {
+  product: Product;
+  role?: string;
+  className: string;
+  children: ReactNode;
+}) {
   const t = useT();
   const needMore = useNeedMore();
-  const rowMotion = useRowMotion();
   const reduced = useReducedMotion();
   const x = useMotionValue(0);
   const opacity = useMotionValue(1);
@@ -137,7 +145,8 @@ export function SwipeToNeedMore({ product, children }: { product: Product; child
   };
 
   return (
-    <motion.li {...rowMotion} className="relative overflow-hidden">
+    // Clipped sideways only, so a control's 44px tap area can reach past the row's height.
+    <div role={role} className="relative overflow-x-clip">
       <div
         aria-hidden="true"
         className={`absolute inset-0 flex items-center justify-end px-4 text-sm font-semibold transition-colors ${
@@ -147,7 +156,7 @@ export function SwipeToNeedMore({ product, children }: { product: Product; child
         <motion.span className="inline-block" animate={{ scale: showArmed ? 1.1 : 1 }}>{t("lista.needMore")}</motion.span>
       </div>
       <motion.div
-        className="relative flex min-h-14 items-center gap-3 bg-surface px-4 py-1.5"
+        className={`relative bg-surface ${className}`}
         style={{ x, opacity, touchAction: "pan-y" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -162,6 +171,6 @@ export function SwipeToNeedMore({ product, children }: { product: Product; child
       >
         {children}
       </motion.div>
-    </motion.li>
+    </div>
   );
 }

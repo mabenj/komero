@@ -18,13 +18,15 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
   const pathname = usePathname();
   // A Product page (/koti/<id>) belongs to the Koti tab.
   const currentTab = TABS.find((tab) => pathname === `/${tab}` || pathname.startsWith(`/${tab}/`));
+  // Koti's tables use a wide screen; the other tabs read better in a narrow column.
+  const width = currentTab === "koti" ? "max-w-4xl" : "max-w-xl";
 
   useEffect(() => {
     if (currentTab) rememberTab(currentTab);
   }, [currentTab]);
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-xl flex-col">
+    <div className={`mx-auto flex min-h-dvh ${width} flex-col`}>
       <header className="material sticky top-0 z-10 pt-[env(safe-area-inset-top)]">
         <div className="flex items-center justify-between px-4 py-3">
           <h1 className="font-display text-2xl">
@@ -52,12 +54,12 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           </MotionProvider>
         </Authenticated>
       </main>
-      <BottomBar current={currentTab} />
+      <BottomBar current={currentTab} width={width} />
     </div>
   );
 }
 
-function BottomBar({ current }: { current: Tab | undefined }) {
+function BottomBar({ current, width }: { current: Tab | undefined; width: string }) {
   const t = useT();
   const tabClass = (tab: Tab) =>
     `flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${
@@ -68,7 +70,7 @@ function BottomBar({ current }: { current: Tab | undefined }) {
     <nav className="material fixed inset-x-0 bottom-0 z-10 pb-[env(safe-area-inset-bottom)]">
       <ChromeFade edge="bottom" />
       {/* Positioned, so the Scan button above the bar paints over the fade instead of under it. */}
-      <div className="relative mx-auto flex max-w-xl items-end">
+      <div className={`relative mx-auto flex ${width} items-end`}>
         <AppLink href="/koti" className={tabClass("koti")} aria-current={current === "koti" ? "page" : undefined}>
           <HomeIcon />
           {t("nav.koti")}
