@@ -7,7 +7,7 @@ import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useUndoToast } from "@/components/UndoToast";
+import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ChevronDownIcon, ScanIcon } from "@/components/icons";
@@ -17,7 +17,7 @@ import { SwipeToNeedMore } from "@/components/NeedMore";
 import { NumberStepper } from "@/components/NumberStepper";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { tidyName } from "@/convex/productNames";
-import { applyRestock, applyUse, type ExpiryKind, expiryStatus } from "@/convex/stock";
+import { applyRestock, applyUse, type ExpiryKind, expiryStatus, type StockState } from "@/convex/stock";
 import { formatDay, localToday } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
 import { changeStockLocally } from "@/lib/listUpdates";
@@ -392,30 +392,41 @@ function ProductRow({
   );
 }
 
+const stockRule = (change: StockChange) => (change === "restock" ? (state: StockState) => applyRestock(state, 1) : applyUse);
+
 /**
- * Applies + / – (optimistically, so taps feel instant) and offers to undo it.
- * When the change makes the Product Running Low, the toast says so and offers
- * Need More; nothing goes on the list unless it is tapped.
+ * Applies + / – (optimistically, so taps feel instant) and, at the tap, shows
+ * the Stock it changes to with Undo. Only the server knows the Minimum Stock,
+ * so when it answers that the change made the Product Running Low, the
+ * "running low" toast takes over and offers Need More; nothing goes on the
+ * list unless it is tapped.
  */
 function useStockChange() {
   const t = useT();
-  const showUndoToast = useUndoToast();
+  const showChangeToast = useChangeToast();
   const showRunningLow = useRunningLowToast();
   const undoStockChange = useUndoStockChange();
   const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate((store, { productId, change }) =>
-    changeStockLocally(store, productId, change === "restock" ? (state) => applyRestock(state, 1) : applyUse),
+    changeStockLocally(store, productId, stockRule(change)),
   );
 
   return useCallback(
-    async (product: ProductRowData, change: StockChange) => {
-      const changed = await adjustStock({ productId: product._id, change });
-      const { from, to } = changed;
+    (product: ProductRowData, change: StockChange) => {
+      const from = product.stock;
+      const to = stockRule(change)({ stock: from }).stock;
       if (from === to) return;
-      const undo = undoStockChange(product, changed);
-      if (changed.crossedIntoRunningLow) showRunningLow(product, undo);
-      else showUndoToast(t("koti.stockChanged", { name: product.name, from, to }), undo);
+      const changed = adjustStock({ productId: product._id, change });
+      const shown = showChangeToast(t("koti.stockChanged", { name: product.name, from, to }), changed, (done) =>
+        undoStockChange(product, done)(),
+      );
+      changed.then(
+        (done) => {
+          if (done.crossedIntoRunningLow) showRunningLow(product, undoStockChange(product, done), shown);
+        },
+        () => {},
+      );
     },
-    [adjustStock, undoStockChange, showUndoToast, showRunningLow, t],
+    [adjustStock, undoStockChange, showChangeToast, showRunningLow, t],
   );
 }
 
