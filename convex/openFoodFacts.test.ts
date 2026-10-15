@@ -95,7 +95,13 @@ describe("Open Food Facts suggestions for an unknown barcode", () => {
       expiryKind: suggestion.expiryKind,
     });
 
-    expect(linked).toMatchObject({ name: "Maito", action: "restock", to: 1, expiryKind: "bestBefore" });
+    expect(linked).toMatchObject({
+      name: "Maito",
+      action: "restock",
+      to: 1,
+      expiryKind: "bestBefore",
+      asksForDate: true,
+    });
     expect(await anna.query(api.products.get, { productId: linked.productId })).toMatchObject({
       expiryKind: "bestBefore",
     });
@@ -114,7 +120,7 @@ describe("Open Food Facts suggestions for an unknown barcode", () => {
       expiryKind: suggestion.expiryKind,
     });
 
-    expect(linked).toMatchObject({ name: "Tiskiaine", to: 1, expiryKind: null });
+    expect(linked).toMatchObject({ name: "Tiskiaine", to: 1, expiryKind: null, asksForDate: false });
     expect(await anna.query(api.products.get, { productId: linked.productId })).toMatchObject({ expiryKind: null });
   });
 
