@@ -4,9 +4,11 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { Cupboard } from "@/components/Cupboard";
 import { api } from "@/convex/_generated/api";
 import { authErrorKey } from "@/lib/authErrors";
 import { useT, type MessageKey } from "@/lib/i18n";
+import { field, primaryButton } from "@/lib/styles";
 
 export default function SignInPage() {
   const t = useT();
@@ -17,7 +19,7 @@ export default function SignInPage() {
   const [submitting, setSubmitting] = useState(false);
 
   if (isFirstRun === undefined) {
-    return <p className="p-6 text-center text-zinc-500">{t("common.loading")}</p>;
+    return <p className="p-6 text-center text-stone-500">{t("common.loading")}</p>;
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -37,12 +39,15 @@ export default function SignInPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 p-6">
-      <h1 className="text-3xl font-bold">{t("app.name")}</h1>
+      <div className="flex flex-col items-center gap-2">
+        <Cupboard className="h-32 w-32" />
+        <h1 className="font-display text-4xl">{t("app.name")}</h1>
+      </div>
       <div className="flex flex-col gap-2">
         <h2 className="text-xl font-semibold">
           {isFirstRun ? t("auth.firstRunTitle") : t("auth.signInTitle")}
         </h2>
-        {isFirstRun && <p className="text-zinc-600 dark:text-zinc-400">{t("auth.firstRunHint")}</p>}
+        {isFirstRun && <p className="text-stone-600 dark:text-stone-400">{t("auth.firstRunHint")}</p>}
       </div>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
@@ -52,7 +57,7 @@ export default function SignInPage() {
             type="email"
             autoComplete="email"
             required
-            className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+            className={`${field} px-3 py-3`}
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -63,19 +68,19 @@ export default function SignInPage() {
             autoComplete={isFirstRun ? "new-password" : "current-password"}
             minLength={8}
             required
-            className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+            className={`${field} px-3 py-3`}
           />
-          {isFirstRun && <span className="text-sm text-zinc-500">{t("auth.passwordHint")}</span>}
+          {isFirstRun && <span className="text-sm text-stone-500">{t("auth.passwordHint")}</span>}
         </label>
         {error && (
-          <p role="alert" className="text-red-600">
+          <p role="alert" className="text-amber-700 dark:text-amber-400">
             {t(error)}
           </p>
         )}
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-lg bg-foreground py-3 text-lg font-semibold text-background disabled:opacity-50"
+          className={`${primaryButton} py-3 text-lg`}
         >
           {isFirstRun ? t("auth.createAccount") : t("auth.signIn")}
         </button>

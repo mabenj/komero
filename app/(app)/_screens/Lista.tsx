@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
+import { Cupboard } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
 import { CheckIcon, MinusIcon, PlusIcon, TrashIcon } from "@/components/icons";
@@ -11,6 +12,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useT } from "@/lib/i18n";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
+import { field, primaryButton, textLink } from "@/lib/styles";
 
 type Entry = {
   _id: Id<"entries">;
@@ -26,18 +28,30 @@ export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
 
-  if (list === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
+  if (list === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
   const empty = list.locations.length === 0 && list.oneOffs.length === 0 && list.bag.length === 0;
   return (
     <div className="flex flex-col gap-6">
       <AddToList />
-      {empty && <p className="text-zinc-500">{t("lista.empty")}</p>}
+      {empty && <EmptyLista />}
       {list.locations.map((location) => (
         <EntryGroup key={location._id} title={location.name} entries={location.entries} />
       ))}
       {list.oneOffs.length > 0 && <EntryGroup title={t("lista.other")} entries={list.oneOffs} />}
       {list.bag.length > 0 && <Bag entries={list.bag} />}
+    </div>
+  );
+}
+
+/** Nothing to buy: the cupboard and a short, friendly line. */
+function EmptyLista() {
+  const t = useT();
+  return (
+    <div className="flex flex-col items-center gap-3 px-6 py-4 text-center">
+      <Cupboard />
+      <h2 className="font-display text-2xl">{t("lista.emptyTitle")}</h2>
+      <p className="text-stone-600 dark:text-stone-400">{t("lista.emptyHint")}</p>
     </div>
   );
 }
@@ -77,10 +91,10 @@ function AddToList() {
         aria-label={t("lista.search")}
         enterKeyHint="done"
         autoComplete="off"
-        className="w-full rounded-xl border border-zinc-300 bg-background px-4 py-3 text-base dark:border-zinc-700"
+        className={`${field} w-full px-4 py-3`}
       />
       {result && (
-        <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+        <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
           {result.matches.map((product) => (
             <li key={product._id}>
               <button
@@ -89,7 +103,7 @@ function AddToList() {
                 className="flex min-h-11 w-full items-center justify-between gap-3 py-1.5 text-left"
               >
                 <span className="truncate">{product.name}</span>
-                <span className="shrink-0 text-sm text-zinc-500">
+                <span className="shrink-0 text-sm text-stone-500">
                   {t("lista.stock", { stock: product.stock })}
                 </span>
               </button>
@@ -100,7 +114,7 @@ function AddToList() {
               <button
                 type="button"
                 onClick={add}
-                className="mt-1 min-h-11 w-full truncate rounded-xl bg-foreground px-4 py-2 text-left font-semibold text-background"
+                className={`${primaryButton} mt-1 min-h-11 w-full truncate px-4 py-2 text-left`}
               >
                 {t("lista.addOneOff", { name: result.name })}
               </button>
@@ -116,8 +130,8 @@ function AddToList() {
 function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
   return (
     <section className="flex flex-col gap-1">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+      <h2 className="font-display text-lg">{title}</h2>
+      <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
         {entries.map((entry) => (
           <EntryRow key={entry._id} entry={entry} />
         ))}
@@ -164,12 +178,12 @@ function Bag({ entries }: { entries: Entry[] }) {
   return (
     <section className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{t("lista.bag")}</h2>
+        <h2 className="font-display text-lg">{t("lista.bag")}</h2>
         {!prompts && (
           <button
             type="button"
             onClick={start}
-            className="min-h-11 rounded-xl bg-foreground px-4 py-2 font-semibold text-background"
+            className={`${primaryButton} min-h-11 px-4 py-2`}
           >
             {t("lista.putAwayAll")}
           </button>
@@ -184,7 +198,7 @@ function Bag({ entries }: { entries: Entry[] }) {
           onCancel={() => setPrompts(null)}
         />
       )}
-      <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+      <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
         {entries.map((entry) => (
           <EntryRow key={entry._id} entry={entry} inBag />
         ))}
@@ -194,7 +208,7 @@ function Bag({ entries }: { entries: Entry[] }) {
 }
 
 const roundButton =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-300 disabled:opacity-30 dark:border-zinc-700";
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-stone-300 disabled:opacity-30 dark:border-stone-700";
 
 /**
  * One Entry: a tick toggle, its name (and the Product's Stock at home), then a
@@ -265,12 +279,12 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
           {inBag && <CheckIcon width={20} height={20} />}
         </button>
         <div className="min-w-0 flex-1">
-          <p className={`truncate ${inBag ? "text-zinc-500" : ""}`}>{entry.name}</p>
+          <p className={`truncate ${inBag ? "text-stone-500" : ""}`}>{entry.name}</p>
           {entry.stock !== undefined && (
-            <p className="truncate text-xs text-zinc-500">{t("lista.stock", { stock: entry.stock })}</p>
+            <p className="truncate text-xs text-stone-500">{t("lista.stock", { stock: entry.stock })}</p>
           )}
           {entry.productId === undefined && !makingProduct && (
-            <button type="button" className="text-xs text-zinc-500 underline" onClick={() => setMakingProduct(true)}>
+            <button type="button" className={`${textLink} text-xs`} onClick={() => setMakingProduct(true)}>
               {t("lista.makeProduct")}
             </button>
           )}
@@ -282,7 +296,7 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
             </span>
             <button
               type="button"
-              className="min-h-11 shrink-0 rounded-xl border border-zinc-300 px-3 font-semibold dark:border-zinc-700"
+              className="min-h-11 shrink-0 rounded-xl border border-stone-300 px-3 font-semibold dark:border-stone-700"
               aria-label={t("lista.putAwayName", { name: entry.name })}
               onClick={() => (entry.asksForDate ? setAskingDate(true) : void putAway())}
             >
@@ -313,7 +327,7 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
             </button>
             <button
               type="button"
-              className="flex h-11 w-11 shrink-0 items-center justify-center text-zinc-500"
+              className="flex h-11 w-11 shrink-0 items-center justify-center text-stone-500"
               aria-label={t("lista.delete", { name: entry.name })}
               onClick={() => void deleteEntry()}
             >
@@ -355,7 +369,6 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
     rememberLocation(locationId);
     onDone();
   };
-  const fieldClass = "min-h-11 rounded-xl border border-zinc-300 bg-background px-3 dark:border-zinc-700";
 
   return (
     <form
@@ -371,14 +384,14 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
         aria-label={t("product.name")}
         autoComplete="off"
         autoFocus
-        className={`${fieldClass} w-full text-base`}
+        className={`${field} w-full px-3`}
       />
       <div className="flex items-center gap-2">
         <select
           value={locationId}
           onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
           aria-label={t("product.homeLocation")}
-          className={`${fieldClass} min-w-0 flex-1`}
+          className={`${field} min-w-0 flex-1 px-3`}
         >
           {inventory.map((location) => (
             <option key={location._id} value={location._id}>
@@ -386,10 +399,10 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
             </option>
           ))}
         </select>
-        <button type="button" className="min-h-11 px-3 text-zinc-500" onClick={onDone}>
+        <button type="button" className="min-h-11 px-3 text-stone-500" onClick={onDone}>
           {t("common.cancel")}
         </button>
-        <button type="submit" className="min-h-11 rounded-xl bg-foreground px-4 font-semibold text-background">
+        <button type="submit" className={`${primaryButton} min-h-11 px-4`}>
           {t("common.save")}
         </button>
       </div>

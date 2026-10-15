@@ -5,9 +5,11 @@ import { useQuery } from "convex/react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { Cupboard } from "@/components/Cupboard";
 import { api } from "@/convex/_generated/api";
 import { authErrorKey } from "@/lib/authErrors";
 import { useT, type MessageKey } from "@/lib/i18n";
+import { field, primaryButton, textLink } from "@/lib/styles";
 
 /** Opened from an Invite link: the invited person picks an email and password. */
 export default function InvitePage() {
@@ -38,12 +40,15 @@ export default function InvitePage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 p-6">
-      <h1 className="text-3xl font-bold">{t("app.name")}</h1>
-      {isUsable === undefined && <p className="text-zinc-500">{t("common.loading")}</p>}
+      <div className="flex flex-col items-center gap-2">
+        <Cupboard className="h-32 w-32" />
+        <h1 className="font-display text-4xl">{t("app.name")}</h1>
+      </div>
+      {isUsable === undefined && <p className="text-stone-500">{t("common.loading")}</p>}
       {isUsable === false && !submitting && (
         <div className="flex flex-col gap-4">
           <p role="alert">{t("auth.inviteUnusable")}</p>
-          <Link href="/signin" className="font-semibold underline">
+          <Link href="/signin" className={textLink}>
             {t("auth.goToSignIn")}
           </Link>
         </div>
@@ -52,7 +57,7 @@ export default function InvitePage() {
         <>
           <div className="flex flex-col gap-2">
             <h2 className="text-xl font-semibold">{t("auth.inviteTitle")}</h2>
-            <p className="text-zinc-600 dark:text-zinc-400">{t("auth.inviteHint")}</p>
+            <p className="text-stone-600 dark:text-stone-400">{t("auth.inviteHint")}</p>
           </div>
           <form onSubmit={submit} className="flex flex-col gap-4">
             <label className="flex flex-col gap-1">
@@ -62,7 +67,7 @@ export default function InvitePage() {
                 type="email"
                 autoComplete="email"
                 required
-                className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+                className={`${field} px-3 py-3`}
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -73,19 +78,19 @@ export default function InvitePage() {
                 autoComplete="new-password"
                 minLength={8}
                 required
-                className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+                className={`${field} px-3 py-3`}
               />
-              <span className="text-sm text-zinc-500">{t("auth.passwordHint")}</span>
+              <span className="text-sm text-stone-500">{t("auth.passwordHint")}</span>
             </label>
             {error && (
-              <p role="alert" className="text-red-600">
+              <p role="alert" className="text-amber-700 dark:text-amber-400">
                 {t(error)}
               </p>
             )}
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg bg-foreground py-3 text-lg font-semibold text-background disabled:opacity-50"
+              className={`${primaryButton} py-3 text-lg`}
             >
               {t("auth.createAccount")}
             </button>
