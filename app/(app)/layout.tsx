@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { HomeIcon, ListIcon, ScanIcon, SettingsIcon } from "@/components/icons";
 import { KeepOfflineData } from "@/components/KeepOfflineData";
+import { MotionProvider } from "@/components/motion";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { UndoToastProvider } from "@/components/UndoToast";
 import { useT } from "@/lib/i18n";
@@ -46,7 +47,9 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         </AuthLoading>
         <Authenticated>
           <KeepOfflineData />
-          <UndoToastProvider>{children}</UndoToastProvider>
+          <MotionProvider>
+            <UndoToastProvider>{children}</UndoToastProvider>
+          </MotionProvider>
         </Authenticated>
       </main>
       <BottomBar current={currentTab} />
