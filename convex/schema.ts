@@ -60,6 +60,8 @@ export default defineSchema({
     nameKey: v.string(),
     locationId: v.id("locations"),
     stock: v.number(),
+    // Optional: Stock at or below it means Running Low (see stock.ts).
+    minimumStock: v.optional(v.number()),
   })
     .index("by_location", ["locationId", "nameKey"])
     .index("by_nameKey", ["nameKey"]),

@@ -65,7 +65,7 @@ describe("Activity feed", () => {
     const used = await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" });
     await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" });
 
-    await anna.mutation(api.products.undoStockChange, { productId: maito, ...used });
+    await anna.mutation(api.products.undoStockChange, { productId: maito, from: used.from, to: used.to });
 
     expect(await feed(anna)).toEqual([
       { kind: "undoStockChange", memberName: "Anna", productName: "Maito", from: 0, to: 1 },

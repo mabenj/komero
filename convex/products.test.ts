@@ -147,11 +147,11 @@ describe("Stock", () => {
       locationId: await locationId(anna, "Jääkaappi"),
     });
 
-    expect(await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" })).toEqual({
+    expect(await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" })).toMatchObject({
       from: 1,
       to: 0,
     });
-    expect(await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" })).toEqual({
+    expect(await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" })).toMatchObject({
       from: 0,
       to: 0,
     });
@@ -185,7 +185,7 @@ describe("Stock", () => {
 
     const change = await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" });
     await ben.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
-    await anna.mutation(api.products.undoStockChange, { productId: maito, ...change });
+    await anna.mutation(api.products.undoStockChange, { productId: maito, from: change.from, to: change.to });
 
     expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Maito", stock: 2 }]);
   });
@@ -199,7 +199,7 @@ describe("Stock", () => {
     await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" });
 
     const noop = await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" });
-    await anna.mutation(api.products.undoStockChange, { productId: maito, ...noop });
+    await anna.mutation(api.products.undoStockChange, { productId: maito, from: noop.from, to: noop.to });
 
     expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Maito", stock: 0 }]);
   });
@@ -218,7 +218,7 @@ describe("Stock", () => {
 });
 
 describe("Product page", () => {
-  test("opening a Product shows its name, Home Location and Stock", async () => {
+  test("opening a Product shows its name, Home Location, Stock and Minimum Stock", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const jaakaappi = await locationId(anna, "Jääkaappi");
     const maito = await anna.mutation(api.products.create, { name: "Maito", locationId: jaakaappi });
@@ -228,6 +228,7 @@ describe("Product page", () => {
       _id: maito,
       name: "Maito",
       stock: 2,
+      minimumStock: null,
       locationId: jaakaappi,
       locationName: "Jääkaappi",
     });
