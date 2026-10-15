@@ -169,7 +169,12 @@ async function applyMode(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"
     expiryKind: product.expiryKind ?? null,
     asksForDate: mode === "add" && product.expiryKind !== undefined,
   };
-  const unchanged = { from: product.stock, to: product.stock, crossedIntoRunningLow: false };
+  const unchanged = {
+    from: product.stock,
+    to: product.stock,
+    expiryDateBefore: product.expiryDate,
+    crossedIntoRunningLow: false,
+  };
   switch (mode) {
     case "add": {
       const fromBag = await putAwayOneFromBag(ctx, memberId, product);

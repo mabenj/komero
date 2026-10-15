@@ -34,6 +34,20 @@ export function applyUse(product: StockState): StockState {
   return { stock, expiryDate: stock === 0 ? undefined : product.expiryDate };
 }
 
+/**
+ * Undo of a Stock change from `from` to `to` (a + or –, a scan, a Put Away):
+ * the change is reversed on top of the current Stock, so changes made on other
+ * phones in between are kept, and the Expiry Date goes back to what it was
+ * before the change (`expiryDateBefore`), cleared if Stock ends up at 0.
+ */
+export function applyUndo(
+  product: StockState,
+  { from, to, expiryDateBefore }: { from: number; to: number; expiryDateBefore?: string },
+): StockState {
+  const stock = Math.max(0, product.stock - (to - from));
+  return { stock, expiryDate: stock > 0 && product.expiryKind ? expiryDateBefore : undefined };
+}
+
 /** Whether `text` is a real calendar day written "YYYY-MM-DD", the form Expiry Dates are kept in. */
 export function isDate(text: string): boolean {
   const time = Date.parse(`${text}T00:00:00Z`);

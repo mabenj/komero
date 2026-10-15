@@ -279,7 +279,7 @@ export async function putAwayOneFromBag(ctx: MutationCtx, memberId: Id<"users">,
   const next = applyRestock(product, 1);
   await ctx.db.patch(product._id, next);
   await recordActivity(ctx, memberId, "putAway", product, { from: product.stock, to: next.stock, quantity: 1 });
-  return { from: product.stock, to: next.stock };
+  return { from: product.stock, to: next.stock, expiryDateBefore: product.expiryDate };
 }
 
 /**
