@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 const stroke = {
   stroke: "currentColor",
   // Screen pixels: every stroke is non-scaling (globals.css), so the squeezed doors match the body.
@@ -33,5 +35,30 @@ export function Cupboard({ className = "h-40 w-40" }: { className?: string }) {
         <line x1="114" y1="96" x2="114" y2="120" />
       </g>
     </svg>
+  );
+}
+
+/**
+ * The cupboard over a heading and a short line, for empty screens and rare
+ * moments such as "All put away!"; `children` go under the line.
+ */
+export function CupboardNote({
+  title,
+  hint,
+  role,
+  children,
+}: {
+  title: string;
+  hint: string;
+  role?: "status";
+  children?: ReactNode;
+}) {
+  return (
+    <div role={role} className="flex flex-col items-center gap-3 px-6 py-4 text-center">
+      <Cupboard />
+      <h2 className="font-display text-2xl">{title}</h2>
+      <p className="text-stone-600 dark:text-stone-400">{hint}</p>
+      {children}
+    </div>
   );
 }

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { Reveal } from "@/components/motion";
+import { crossFade, Reveal } from "@/components/motion";
 import { Sheet } from "@/components/Sheet";
 import { useNeedMoreToast } from "@/components/NeedMore";
 import { usePutAwayToast, useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
@@ -16,7 +16,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
 import type { ExpiryKind } from "@/convex/stock";
-import { tick } from "@/lib/haptics";
+import { haptic } from "@/lib/haptics";
 import { useT } from "@/lib/i18n";
 import { card, field, primaryButton, secondaryButton } from "@/lib/styles";
 import { lastLocation, lastScanMode, rememberLocation, rememberScanMode } from "@/lib/remembered";
@@ -110,7 +110,7 @@ function Scanning({
   const onCode = async (code: string) => {
     // Confirm the read at once, before the server has answered.
     setReads((count) => count + 1);
-    tick();
+    haptic();
     const result = await scan({ code, mode });
     if (result.unknown) setUnknownCode((current) => current ?? result.code);
     else scanned(result);
@@ -209,7 +209,7 @@ function ReadFlash() {
       className="pointer-events-none absolute inset-0 rounded-2xl bg-accent/20 ring-4 ring-accent ring-inset"
       initial={reduced ? { opacity: 1 } : { opacity: 1, scale: 1.04 }}
       animate={reduced ? { opacity: 0 } : { opacity: 0, scale: 1 }}
-      transition={reduced ? { duration: 0.2, ease: "easeOut" } : { duration: 0.5, ease: "easeOut" }}
+      transition={reduced ? crossFade : { duration: 0.5, ease: "easeOut" }}
     />
   );
 }

@@ -3,11 +3,11 @@
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { AppLink } from "@/components/AppLink";
-import { Cupboard } from "@/components/Cupboard";
+import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useUndoToast } from "@/components/UndoToast";
+import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ChevronDownIcon, ScanIcon } from "@/components/icons";
@@ -17,7 +17,7 @@ import { SwipeToNeedMore } from "@/components/NeedMore";
 import { NumberStepper } from "@/components/NumberStepper";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { tidyName } from "@/convex/productNames";
-import { applyRestock, applyUse, type ExpiryKind, expiryStatus } from "@/convex/stock";
+import { applyRestock, applyUse, type ExpiryKind, expiryStatus, type StockState } from "@/convex/stock";
 import { formatDay, localToday } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
 import { changeStockLocally } from "@/lib/listUpdates";
@@ -262,10 +262,7 @@ function Disclosure({ summary, children }: { summary: string; children: ReactNod
 function EmptyKoti() {
   const t = useT();
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-4 text-center">
-      <Cupboard />
-      <h2 className="font-display text-2xl">{t("koti.emptyTitle")}</h2>
-      <p className="text-stone-600 dark:text-stone-400">{t("koti.emptyHint")}</p>
+    <CupboardNote title={t("koti.emptyTitle")} hint={t("koti.emptyHint")}>
       <AppLink
         href="/scan"
         className="mt-1 flex min-h-12 items-center gap-2 rounded-full bg-accent px-6 font-semibold text-accent-foreground"
@@ -273,7 +270,7 @@ function EmptyKoti() {
         <ScanIcon width={20} height={20} />
         {t("nav.scan")}
       </AppLink>
-    </div>
+    </CupboardNote>
   );
 }
 
@@ -395,30 +392,41 @@ function ProductRow({
   );
 }
 
+const stockRule = (change: StockChange) => (change === "restock" ? (state: StockState) => applyRestock(state, 1) : applyUse);
+
 /**
- * Applies + / – (optimistically, so taps feel instant) and offers to undo it.
- * When the change makes the Product Running Low, the toast says so and offers
- * Need More; nothing goes on the list unless it is tapped.
+ * Applies + / – (optimistically, so taps feel instant) and, at the tap, shows
+ * the Stock it changes to with Undo. Only the server knows the Minimum Stock,
+ * so when it answers that the change made the Product Running Low, the
+ * "running low" toast takes over and offers Need More; nothing goes on the
+ * list unless it is tapped.
  */
 function useStockChange() {
   const t = useT();
-  const showUndoToast = useUndoToast();
+  const showChangeToast = useChangeToast();
   const showRunningLow = useRunningLowToast();
   const undoStockChange = useUndoStockChange();
   const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate((store, { productId, change }) =>
-    changeStockLocally(store, productId, change === "restock" ? (state) => applyRestock(state, 1) : applyUse),
+    changeStockLocally(store, productId, stockRule(change)),
   );
 
   return useCallback(
-    async (product: ProductRowData, change: StockChange) => {
-      const changed = await adjustStock({ productId: product._id, change });
-      const { from, to } = changed;
+    (product: ProductRowData, change: StockChange) => {
+      const from = product.stock;
+      const to = stockRule(change)({ stock: from }).stock;
       if (from === to) return;
-      const undo = undoStockChange(product, changed);
-      if (changed.crossedIntoRunningLow) showRunningLow(product, undo);
-      else showUndoToast(t("koti.stockChanged", { name: product.name, from, to }), undo);
+      const changed = adjustStock({ productId: product._id, change });
+      const shown = showChangeToast(t("koti.stockChanged", { name: product.name, from, to }), changed, (done) =>
+        undoStockChange(product, done)(),
+      );
+      changed.then(
+        (done) => {
+          if (done.crossedIntoRunningLow) showRunningLow(product, undoStockChange(product, done), shown);
+        },
+        () => {},
+      );
     },
-    [adjustStock, undoStockChange, showUndoToast, showRunningLow, t],
+    [adjustStock, undoStockChange, showChangeToast, showRunningLow, t],
   );
 }
 

@@ -3,14 +3,14 @@
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { createContext, useContext, useEffect, useState } from "react";
-import { Cupboard } from "@/components/Cupboard";
+import { CupboardNote } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
 import { CheckIcon, TrashIcon } from "@/components/icons";
 import { landInBag, Reveal, RollingNumber, settle, useRowMotion, useSectionMotion } from "@/components/motion";
 import { useNeedMore } from "@/components/NeedMore";
 import { NumberStepper, stepButton } from "@/components/NumberStepper";
-import { useUndoToast } from "@/components/UndoToast";
+import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey } from "@/convex/productNames";
@@ -39,27 +39,28 @@ type Entry = {
 const ALL_PUT_AWAY_MS = 4000;
 
 /**
- * What an Entry stands for, the same on the list and in the Bag, and before
- * and after the server gives a new Entry its id: its Product, or a One-off's name.
+ * The Product an Entry is for, or the One-off's name: the same on the list
+ * and in the Bag, and before and after the server gives a new Entry its id.
  */
-const thingOf = (entry: Entry) => entry.productId ?? `oneOff:${nameKey(entry.name)}`;
+type ProductOrOneOff = string;
+const productOrOneOff = (entry: Entry): ProductOrOneOff => entry.productId ?? `oneOff:${nameKey(entry.name)}`;
 
 /**
  * Rows moving between the list and the Bag (a Tick, or taking it back out):
- * the thing that just moved, and the things listed only once, which are the
- * ones that can move.
+ * the Product or One-off that just moved, and those with a single Entry
+ * across the list and the Bag, which are the ones whose row can move.
  */
-const Moving = createContext<{ moved: string | null; onMove: (thing: string | null) => void; movable: Set<string> }>({
-  moved: null,
-  onMove: () => {},
-  movable: new Set(),
-});
+const BagMoves = createContext<{
+  moved: ProductOrOneOff | null;
+  onMove: (moved: ProductOrOneOff | null) => void;
+  listedOnce: Set<ProductOrOneOff>;
+}>({ moved: null, onMove: () => {}, listedOnce: new Set() });
 
-/** The things listed exactly once across the list and the Bag. */
-function listedOnce(entries: Entry[]) {
-  const counts = new Map<string, number>();
-  for (const entry of entries) counts.set(thingOf(entry), (counts.get(thingOf(entry)) ?? 0) + 1);
-  return new Set([...counts].filter(([, count]) => count === 1).map(([thing]) => thing));
+/** The Products and One-offs with exactly one of these Entries. */
+function listedOnceIn(entries: Entry[]) {
+  const counts = new Map<ProductOrOneOff, number>();
+  for (const entry of entries) counts.set(productOrOneOff(entry), (counts.get(productOrOneOff(entry)) ?? 0) + 1);
+  return new Set([...counts].filter(([, count]) => count === 1).map(([listed]) => listed));
 }
 
 /** The shared Shopping List: to-buy Entries grouped by Location, then One-offs under "Other", then the Bag. */
@@ -67,7 +68,7 @@ export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
   const [allPutAway, setAllPutAway] = useState(false);
-  const [moved, setMoved] = useState<string | null>(null);
+  const [moved, setMoved] = useState<ProductOrOneOff | null>(null);
 
   useEffect(() => {
     if (!allPutAway) return;
@@ -80,15 +81,15 @@ export default function ListaScreen() {
   const nothingToBuy = list.locations.length === 0 && list.oneOffs.length === 0;
   // An undo that refills the Bag ends the moment.
   const showAllPutAway = allPutAway && list.bag.length === 0;
-  const movable = listedOnce([...list.locations.flatMap((location) => location.entries), ...list.oneOffs, ...list.bag]);
+  const listedOnce = listedOnceIn([...list.locations.flatMap((location) => location.entries), ...list.oneOffs, ...list.bag]);
   // One layout group, so a row that moves or leaves moves everything below it smoothly.
   return (
     <LayoutGroup>
-      <Moving value={{ moved, onMove: setMoved, movable }}>
+      <BagMoves value={{ moved, onMove: setMoved, listedOnce }}>
         <div className="flex flex-col gap-6">
           <AddToList />
           {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
-          {nothingToBuy && list.bag.length === 0 && <CupboardNote allPutAway={showAllPutAway} />}
+          {nothingToBuy && list.bag.length === 0 && <ListNote allPutAway={showAllPutAway} />}
           <AnimatePresence initial={false}>
             {list.locations.map((location) => (
               <EntryGroup key={location._id} title={location.name} entries={location.entries} />
@@ -96,9 +97,9 @@ export default function ListaScreen() {
             {list.oneOffs.length > 0 && <EntryGroup key="oneOffs" title={t("lista.other")} entries={list.oneOffs} />}
             {list.bag.length > 0 && <Bag key="bag" entries={list.bag} onEmptied={() => setAllPutAway(true)} />}
           </AnimatePresence>
-          {showAllPutAway && !nothingToBuy && <CupboardNote allPutAway />}
+          {showAllPutAway && !nothingToBuy && <ListNote allPutAway />}
         </div>
-      </Moving>
+      </BagMoves>
     </LayoutGroup>
   );
 }
@@ -107,16 +108,14 @@ export default function ListaScreen() {
  * The cupboard with a short, friendly line: nothing to buy, or for a moment
  * after Put Away empties the Bag, "All put away!".
  */
-function CupboardNote({ allPutAway }: { allPutAway: boolean }) {
+function ListNote({ allPutAway }: { allPutAway: boolean }) {
   const t = useT();
   return (
-    <div role="status" className="flex flex-col items-center gap-3 px-6 py-4 text-center">
-      <Cupboard />
-      <h2 className="font-display text-2xl">{t(allPutAway ? "lista.allPutAwayTitle" : "lista.emptyTitle")}</h2>
-      <p className="text-stone-600 dark:text-stone-400">
-        {t(allPutAway ? "lista.allPutAwayHint" : "lista.emptyHint")}
-      </p>
-    </div>
+    <CupboardNote
+      role="status"
+      title={t(allPutAway ? "lista.allPutAwayTitle" : "lista.emptyTitle")}
+      hint={t(allPutAway ? "lista.allPutAwayHint" : "lista.emptyHint")}
+    />
   );
 }
 
@@ -199,8 +198,8 @@ function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
       <ul className={`${cardList} flex flex-col`}>
         <AnimatePresence initial={false}>
           {entries.map((entry) => (
-            // On the list a thing has one Entry, so the row stays when the server gives it a new id.
-            <EntryRow key={thingOf(entry)} entry={entry} />
+            // On the list a Product or One-off has one Entry, so the row stays when the server gives it a new id.
+            <EntryRow key={productOrOneOff(entry)} entry={entry} />
           ))}
         </AnimatePresence>
       </ul>
@@ -299,7 +298,7 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   const t = useT();
   const [makingProduct, setMakingProduct] = useState(false);
   const [askingDate, setAskingDate] = useState(false);
-  const showUndoToast = useUndoToast();
+  const showChangeToast = useChangeToast();
   const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
   const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate(tickLocally);
   const untick = useMutation(api.shoppingList.untick).withOptimisticUpdate(untickLocally);
@@ -309,9 +308,9 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   const restore = useMutation(api.shoppingList.restore);
   const rowMotion = useRowMotion();
   const reduced = useReducedMotion();
-  const { moved, onMove, movable } = useContext(Moving);
-  const thing = thingOf(entry);
-  const moving = moved === thing && !reduced;
+  const { moved, onMove, listedOnce } = useContext(BagMoves);
+  const listed = productOrOneOff(entry);
+  const moving = moved === listed && !reduced;
 
   const putAway = (expiryDate?: string) => {
     const done = putAwayEntry({ entryId: entry._id, expiryDate }).then(({ putAway }) => putAway);
@@ -319,28 +318,26 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
     onEmptied?.();
   };
   const tickEntry = () => {
-    onMove(thing);
-    void tick({ entryId: entry._id });
-    showUndoToast(t("lista.ticked", { name: entry.name }), () => {
-      onMove(thing);
-      void untick({ entryId: entry._id });
+    onMove(listed);
+    showChangeToast(t("lista.ticked", { name: entry.name }), tick({ entryId: entry._id }), () => {
+      onMove(listed);
+      return untick({ entryId: entry._id });
     });
   };
   const untickEntry = () => {
-    onMove(thing);
+    onMove(listed);
     void untick({ entryId: entry._id });
   };
   const deleteEntry = () => {
-    void remove({ entryId: entry._id });
     const deleted = { productId: entry.productId, name: entry.name, quantity: entry.quantity };
-    showUndoToast(t("lista.deleted", { name: entry.name }), () => void restore(deleted));
+    showChangeToast(t("lista.deleted", { name: entry.name }), remove({ entryId: entry._id }), () => restore(deleted));
   };
 
   return (
     <motion.li
       {...rowMotion}
-      // A thing on screen twice (say, in the Bag and on the list again) doesn't move between them.
-      layoutId={movable.has(thing) ? thing : undefined}
+      // A Product on screen twice (say, in the Bag and on the list again) doesn't move between them.
+      layoutId={listedOnce.has(listed) ? listed : undefined}
       // A row that moved arrives as itself, not fading in.
       initial={moving ? false : rowMotion.initial}
       transition={{ ...rowMotion.transition, layout: moving && inBag ? landInBag : settle }}

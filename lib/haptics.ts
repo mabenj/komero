@@ -1,10 +1,10 @@
 let iosSwitch: HTMLLabelElement | undefined;
 
 /**
- * One short haptic tick, e.g. when a barcode is read. Does nothing where the
+ * One short haptic tap, e.g. when a barcode is read. Does nothing where the
  * phone can't do it.
  */
-export function tick() {
+export function haptic() {
   try {
     if (typeof navigator.vibrate === "function") {
       navigator.vibrate(10);

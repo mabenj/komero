@@ -16,6 +16,18 @@ type Entry = ShoppingList["bag"][number];
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "fi");
 
+/** The Product with this id, in whichever Location it is. */
+function findProduct(inventory: Inventory | undefined, productId: Id<"products">) {
+  return inventory?.flatMap((location) => location.products).find((p) => p._id === productId);
+}
+
+type EntryChange = <E extends Entry>(entry: E) => E;
+
+/** The list's Location groups, with `change` made to each of their Entries. */
+function changeInLocations(list: ShoppingList, change: EntryChange) {
+  return list.locations.map((location) => ({ ...location, entries: location.entries.map(change) }));
+}
+
 function updateList(store: OptimisticLocalStore, change: (list: ShoppingList) => ShoppingList) {
   const list = store.getQuery(api.shoppingList.get, {});
   if (list) store.setQuery(api.shoppingList.get, {}, change(list));
@@ -24,7 +36,7 @@ function updateList(store: OptimisticLocalStore, change: (list: ShoppingList) =>
 /** Need More: the Product's Entry on the list gets one more, or it goes on the list once. */
 export function needMoreLocally(store: OptimisticLocalStore, { productId }: { productId: Id<"products"> }) {
   const inventory = store.getQuery(api.inventory.get, {});
-  const product = inventory?.flatMap((location) => location.products).find((p) => p._id === productId);
+  const product = findProduct(inventory, productId);
   if (!product) return;
   const entry = {
     // The server makes the real Entry; until then it goes by its Product.
@@ -35,7 +47,7 @@ export function needMoreLocally(store: OptimisticLocalStore, { productId }: { pr
     stock: product.stock,
     asksForDate: product.expiryKind !== null,
   };
-  updateList(store, (list) => addToBuy(list, entry, inventory));
+  updateList(store, (list) => withEntryAdded(list, entry, inventory));
 }
 
 /** How many of a Product are on the list after Need More, for the toast shown at the tap. */
@@ -49,9 +61,9 @@ export function setQuantityLocally(
   store: OptimisticLocalStore,
   { entryId, quantity }: { entryId: Id<"entries">; quantity: number },
 ) {
-  const update = <E extends Entry>(e: E): E => (e._id === entryId ? { ...e, quantity } : e);
+  const update: EntryChange = (e) => (e._id === entryId ? { ...e, quantity } : e);
   updateList(store, (list) => ({
-    locations: list.locations.map((location) => ({ ...location, entries: location.entries.map(update) })),
+    locations: changeInLocations(list, update),
     oneOffs: list.oneOffs.map(update),
     bag: list.bag,
   }));
@@ -92,27 +104,24 @@ export function untickLocally(store: OptimisticLocalStore, { entryId }: { entryI
   updateList(store, (list) => {
     const entry = list.bag.find((e) => e._id === entryId);
     if (!entry) return list;
-    return addToBuy({ ...list, bag: list.bag.filter((e) => e !== entry) }, entry, inventory);
+    return withEntryAdded({ ...list, bag: list.bag.filter((e) => e !== entry) }, entry, inventory);
   });
 }
 
 /**
- * Adds an Entry to the list as the server's `addToList` does: its quantity
+ * The list with an Entry added, as the server's `addToList` adds it: its quantity
  * joins the Entry for the same Product or One-off name if there is one;
  * otherwise it goes in its Product's Home Location group, or among the One-offs.
  */
-function addToBuy(list: ShoppingList, entry: Entry, inventory: Inventory | undefined): ShoppingList {
-  const join = <E extends Entry>(e: E): E => (same(e, entry) ? { ...e, quantity: e.quantity + entry.quantity } : e);
+function withEntryAdded(list: ShoppingList, entry: Entry, inventory: Inventory | undefined): ShoppingList {
+  const join: EntryChange = (e) => (same(e, entry) ? { ...e, quantity: e.quantity + entry.quantity } : e);
   if (!("productId" in entry)) {
     return list.oneOffs.some((e) => same(e, entry))
       ? { ...list, oneOffs: list.oneOffs.map(join) }
       : { ...list, oneOffs: [...list.oneOffs, entry].sort(byName) };
   }
   if (list.locations.some((location) => location.entries.some((e) => same(e, entry)))) {
-    return {
-      ...list,
-      locations: list.locations.map((location) => ({ ...location, entries: location.entries.map(join) })),
-    };
+    return { ...list, locations: changeInLocations(list, join) };
   }
   const home = inventory?.find((location) => location.products.some((p) => p._id === entry.productId));
   if (!inventory || !home) return list;
@@ -166,7 +175,7 @@ export function changeStockLocally(
 ) {
   const inventory = store.getQuery(api.inventory.get, {});
   const page = store.getQuery(api.products.get, { productId });
-  const product = inventory?.flatMap((location) => location.products).find((p) => p._id === productId) ?? page;
+  const product = findProduct(inventory, productId) ?? page;
   if (!product) return;
   const next = rule({
     stock: product.stock,
@@ -192,9 +201,9 @@ export function changeStockLocally(
     const matches = value.matches.map((p) => (p._id === productId ? { ...p, stock } : p));
     store.setQuery(api.products.search, args, { ...value, matches });
   }
-  const withStock = <E extends Entry>(e: E): E => ("productId" in e && e.productId === productId ? { ...e, stock } : e);
+  const withStock: EntryChange = (e) => ("productId" in e && e.productId === productId ? { ...e, stock } : e);
   updateList(store, (list) => ({
-    locations: list.locations.map((location) => ({ ...location, entries: location.entries.map(withStock) })),
+    locations: changeInLocations(list, withStock),
     oneOffs: list.oneOffs,
     bag: list.bag.map(withStock),
   }));

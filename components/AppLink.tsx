@@ -12,14 +12,18 @@ import { arrive, backFrom, leave } from "@/lib/screenHistory";
  * back to a full page load when that fails.
  */
 export function navigate(href: string, { replace = false } = {}) {
-  const { history } = window;
+  const { history, location } = window;
+  const samePath = new URL(href, location.href).pathname === location.pathname;
   if (replace) history.replaceState(arrive(history.state, { replace }), "", href);
   else {
     // Remembered for when Back returns to this screen (see `useScrollRestore` in the app's screens).
     history.replaceState(leave(history.state, window.scrollY), "");
     history.pushState(arrive(history.state, { replace }), "", href);
   }
-  window.scrollTo(0, 0);
+  // A new path scrolls once its screen has rendered (`useScrollRestore`), after
+  // a Product page's `CoveredScreen` has kept its place. The same path, such as
+  // the current tab tapped again, scrolls to the top now.
+  if (samePath) window.scrollTo(0, 0);
 }
 
 /** Back to the previous screen of the app, or to Koti when the page was opened directly. */

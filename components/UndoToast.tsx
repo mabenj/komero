@@ -4,26 +4,58 @@ import { AnimatePresence, motion } from "motion/react";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useEnterExit } from "@/components/motion";
 import { useT } from "@/lib/i18n";
+import { undoOnceDone } from "@/lib/undoOnceDone";
 
 /** A button shown next to Undo, such as "Add to list" on the Running Low toast. */
 export type ToastAction = { label: string; run: () => void };
 type Toast = { id: number; message: string; undo?: () => void; action?: ToastAction };
 /** Without `undo`, the toast is a plain confirmation (e.g. a scan that Put Away from the Bag). */
-type ShowUndoToast = (message: string, undo?: () => void, action?: ToastAction) => void;
+type ShowUndoToast = (message: string, undo?: () => void, action?: ToastAction) => ShownToast;
+/** A toast that was shown, which can be closed or replaced as long as no newer toast has taken its place. */
+export type ShownToast = { close: () => void; replace: ShowUndoToast };
 
 const VISIBLE_MS = 5000;
 
-const ShowUndoToastContext = createContext<ShowUndoToast>(() => {});
+const noToast: ShowUndoToast = () => ({ close: () => {}, replace: noToast });
+const ShowUndoToastContext = createContext<ShowUndoToast>(noToast);
 
 /** Shows an undo toast that outlives the page it came from (e.g. deleting on a Product page, then back to Koti). */
 export const useUndoToast = () => useContext(ShowUndoToastContext);
 
+/**
+ * Shows a toast at the tap for a change sent to the server: it goes away if
+ * the change fails, and its Undo waits for the change (see `undoOnceDone`).
+ */
+export function useChangeToast() {
+  const showUndoToast = useUndoToast();
+  return useCallback(
+    <R,>(message: string, change: R | Promise<R>, undo: (done: R) => unknown, action?: ToastAction) => {
+      const shown: ShownToast = showUndoToast(message, undoOnceDone(change, undo, () => shown.close()), action);
+      return shown;
+    },
+    [showUndoToast],
+  );
+}
+
 export function UndoToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<Toast | null>(null);
-  const show = useCallback<ShowUndoToast>(
-    (message, undo, action) => setToast({ id: Date.now(), message, undo, action }),
-    [],
-  );
+  const lastId = useRef(0);
+  const show = useCallback<ShowUndoToast>((message, undo, action) => {
+    const handleFor = (id: number): ShownToast => {
+      const ifShowing = (next: Toast | null) => setToast((current) => (current?.id === id ? next : current));
+      return {
+        close: () => ifShowing(null),
+        replace: (message, undo, action) => {
+          const next = ++lastId.current;
+          ifShowing({ id: next, message, undo, action });
+          return handleFor(next);
+        },
+      };
+    };
+    const id = ++lastId.current;
+    setToast({ id, message, undo, action });
+    return handleFor(id);
+  }, []);
   const close = useCallback(() => setToast(null), []);
 
   return (
