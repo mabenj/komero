@@ -34,6 +34,9 @@ export function applyUse(product: StockState): StockState {
   return { stock, expiryDate: stock === 0 ? undefined : product.expiryDate };
 }
 
+/** What undoing a Stock change needs: the Stock before and after, and the Expiry Date before. */
+export const stockChange = v.object({ from: v.number(), to: v.number(), expiryDateBefore: v.optional(v.string()) });
+
 /**
  * Undo of a Stock change from `from` to `to` (a + or –, a scan, a Put Away):
  * the change is reversed on top of the current Stock, so changes made on other
@@ -42,7 +45,7 @@ export function applyUse(product: StockState): StockState {
  */
 export function applyUndo(
   product: StockState,
-  { from, to, expiryDateBefore }: { from: number; to: number; expiryDateBefore?: string },
+  { from, to, expiryDateBefore }: Infer<typeof stockChange>,
 ): StockState {
   const stock = Math.max(0, product.stock - (to - from));
   return { stock, expiryDate: stock > 0 && product.expiryKind ? expiryDateBefore : undefined };

@@ -167,6 +167,7 @@ export const en = {
   "activity.tick": "{member} put {product} in the bag",
   "activity.untick": "{member} took {product} out of the bag",
   "activity.putAway": "{member} put away {product}",
+  "activity.undoPutAway": "{member} put {product} back in the bag",
   "activity.stockChange": "{from} → {to}",
   "activity.quantity": "×{quantity}",
   "activity.feed": "Activity",

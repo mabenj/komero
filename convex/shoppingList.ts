@@ -5,7 +5,7 @@ import { recordActivity } from "./activities";
 import { requireMemberId } from "./members";
 import { findOrCreateProduct } from "./newProduct";
 import { nameKey, tidyName } from "./productNames";
-import { applyRestock, isDate } from "./stock";
+import { applyRestock, applyUndo, isDate, stockChange } from "./stock";
 
 type ListedEntry = { _id: Id<"entries">; name: string; quantity: number };
 // `asksForDate`: the Product has an Expiry Kind, so Put Away prompts for a date.
@@ -112,36 +112,38 @@ export async function needMoreOf(ctx: MutationCtx, memberId: Id<"users">, produc
 }
 
 /**
- * Adds `amount` to the to-buy Entry for a Product or a One-off name, creating
- * it if there is none, so the list never holds the same thing twice.
+ * Adds `quantity` to the Entry for a Product or a One-off name in `state` (on
+ * the list, or in the Bag when a Put Away is undone), creating it if there is
+ * none, so the list never holds the same thing twice.
  */
 async function addToList(
   ctx: MutationCtx,
   memberId: Id<"users">,
-  what: { product: Doc<"products"> } | { name: string },
-  amount: number,
+  productOrOneOff: { product: Doc<"products"> } | { name: string },
+  quantity: number,
+  state: "toBuy" | "inBag" = "toBuy",
 ) {
   const existing =
-    "product" in what
+    "product" in productOrOneOff
       ? await ctx.db
           .query("entries")
-          .withIndex("by_product", (q) => q.eq("productId", what.product._id).eq("state", "toBuy"))
-          .unique()
+          .withIndex("by_product", (q) => q.eq("productId", productOrOneOff.product._id).eq("state", state))
+          .first()
       : (
           await ctx.db
             .query("entries")
-            .withIndex("by_state", (q) => q.eq("state", "toBuy"))
+            .withIndex("by_state", (q) => q.eq("state", state))
             .collect()
-        ).find((entry) => entry.productId === undefined && nameKey(entry.name ?? "") === nameKey(what.name));
-  const name = "product" in what ? what.product.name : (existing?.name ?? what.name);
-  if (existing === null || existing === undefined) {
-    const link = "product" in what ? { productId: what.product._id } : { name };
-    const entryId = await ctx.db.insert("entries", { ...link, quantity: amount, state: "toBuy", createdBy: memberId });
-    return { entryId, name, quantity: amount };
+        ).find((entry) => entry.productId === undefined && nameKey(entry.name ?? "") === nameKey(productOrOneOff.name));
+  const name = "product" in productOrOneOff ? productOrOneOff.product.name : (existing?.name ?? productOrOneOff.name);
+  if (!existing) {
+    const link = "product" in productOrOneOff ? { productId: productOrOneOff.product._id } : { name };
+    const entryId = await ctx.db.insert("entries", { ...link, quantity, state, createdBy: memberId });
+    return { entryId, name, quantity };
   }
-  const quantity = existing.quantity + amount;
-  await ctx.db.patch(existing._id, { quantity });
-  return { entryId: existing._id, name, quantity };
+  const total = existing.quantity + quantity;
+  await ctx.db.patch(existing._id, { quantity: total });
+  return { entryId: existing._id, name, quantity: total };
 }
 
 /** The Entry's quantity stepper. The quantity stays at least 1; removing an Entry is `remove`. */
@@ -208,17 +210,28 @@ export const untick = mutation({
     const memberId = await requireMemberId(ctx);
     const entry = await requireEntry(ctx, entryId);
     if (entry.state === "toBuy") return;
-    const what = await named(ctx, entry);
+    const productOrOneOff = await named(ctx, entry);
     await ctx.db.delete(entryId);
-    await addToList(ctx, memberId, "_id" in what ? { product: what } : what, entry.quantity);
-    await recordActivity(ctx, memberId, "untick", what, { quantity: entry.quantity });
+    const listed = "_id" in productOrOneOff ? { product: productOrOneOff } : productOrOneOff;
+    await addToList(ctx, memberId, listed, entry.quantity);
+    await recordActivity(ctx, memberId, "untick", productOrOneOff, { quantity: entry.quantity });
   },
 });
 
 /**
+ * What undoing a Put Away needs for each Entry: the Product, how many were put
+ * away and the Stock change (see `applyUndo`), or a One-off's name and quantity.
+ */
+const putAwayRecord = v.union(
+  v.object({ productId: v.id("products"), quantity: v.number(), ...stockChange.fields }),
+  v.object({ name: v.string(), quantity: v.number() }),
+);
+type PutAwayRecord = Infer<typeof putAwayRecord>;
+
+/**
  * Put Away of one Entry from the Bag: Restocks its Product by the Entry's
  * quantity, with the date from the prompt if one was given (Skip gives none);
- * a One-off just disappears.
+ * a One-off just disappears. Returns what `undoPutAway` needs.
  */
 export const putAway = mutation({
   args: { entryId: v.id("entries"), expiryDate: v.optional(v.string()) },
@@ -226,11 +239,14 @@ export const putAway = mutation({
     const memberId = await requireMemberId(ctx);
     const entry = await requireEntry(ctx, entryId);
     if (entry.state !== "inBag") throw new ConvexError("ENTRY_NOT_IN_BAG");
-    await putAwayEntry(ctx, memberId, entry, requireDate(expiryDate));
+    return { putAway: [await putAwayEntry(ctx, memberId, entry, requireDate(expiryDate))] };
   },
 });
 
-/** "Put away all": Put Away of every Entry in the Bag, with the dates from the prompts by Product. */
+/**
+ * "Put away all": Put Away of every Entry in the Bag, with the dates from the
+ * prompts by Product. Returns what `undoPutAway` needs.
+ */
 export const putAwayAll = mutation({
   args: { expiryDates: v.optional(v.record(v.id("products"), v.string())) },
   handler: async (ctx, { expiryDates = {} }) => {
@@ -239,10 +255,12 @@ export const putAwayAll = mutation({
       .query("entries")
       .withIndex("by_state", (q) => q.eq("state", "inBag"))
       .collect();
+    const putAway: PutAwayRecord[] = [];
     for (const entry of bag) {
       const expiryDate = entry.productId && requireDate(expiryDates[entry.productId]);
-      await putAwayEntry(ctx, memberId, entry, expiryDate);
+      putAway.push(await putAwayEntry(ctx, memberId, entry, expiryDate));
     }
+    return { putAway };
   },
 });
 
@@ -251,22 +269,41 @@ function requireDate(date: string | undefined) {
   return date;
 }
 
-async function putAwayEntry(ctx: MutationCtx, memberId: Id<"users">, entry: Doc<"entries">, expiryDate?: string) {
-  const what = await named(ctx, entry);
+async function putAwayEntry(
+  ctx: MutationCtx,
+  memberId: Id<"users">,
+  entry: Doc<"entries">,
+  expiryDate?: string,
+): Promise<PutAwayRecord> {
+  const productOrOneOff = await named(ctx, entry);
+  const { quantity } = entry;
   await ctx.db.delete(entry._id);
-  if (!("_id" in what)) {
-    await recordActivity(ctx, memberId, "putAway", what, { quantity: entry.quantity });
-    return;
+  if (!("_id" in productOrOneOff)) {
+    await recordActivity(ctx, memberId, "putAway", productOrOneOff, { quantity });
+    return { name: productOrOneOff.name, quantity };
   }
-  const next = applyRestock(what, entry.quantity, expiryDate);
-  await ctx.db.patch(what._id, next);
-  await recordActivity(ctx, memberId, "putAway", what, { from: what.stock, to: next.stock, quantity: entry.quantity });
+  return await restockFromBag(ctx, memberId, productOrOneOff, quantity, expiryDate);
+}
+
+/** Restocks a Product by `quantity` taken from the Bag, and records the Put Away. */
+async function restockFromBag(
+  ctx: MutationCtx,
+  memberId: Id<"users">,
+  product: Doc<"products">,
+  quantity: number,
+  expiryDate?: string,
+) {
+  const next = applyRestock(product, quantity, expiryDate);
+  await ctx.db.patch(product._id, next);
+  await recordActivity(ctx, memberId, "putAway", product, { from: product.stock, to: next.stock, quantity });
+  return { productId: product._id, quantity, from: product.stock, to: next.stock, expiryDateBefore: product.expiryDate };
 }
 
 /**
  * Put Away of one package of a Product from the Bag (a scan in Add mode): its
  * Entry's quantity goes down by 1, and the Entry leaves the Bag at 0. Returns
- * the Stock before and after, or null when the Bag has none of the Product.
+ * the Stock before and after and what `undoPutAway` needs, or null when the
+ * Bag has none of the Product.
  */
 export async function putAwayOneFromBag(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">) {
   const entry = await ctx.db
@@ -276,11 +313,39 @@ export async function putAwayOneFromBag(ctx: MutationCtx, memberId: Id<"users">,
   if (entry === null) return null;
   if (entry.quantity > 1) await ctx.db.patch(entry._id, { quantity: entry.quantity - 1 });
   else await ctx.db.delete(entry._id);
-  const next = applyRestock(product, 1);
-  await ctx.db.patch(product._id, next);
-  await recordActivity(ctx, memberId, "putAway", product, { from: product.stock, to: next.stock, quantity: 1 });
-  return { from: product.stock, to: next.stock, expiryDateBefore: product.expiryDate };
+  const putAway = await restockFromBag(ctx, memberId, product, 1);
+  return { from: putAway.from, to: putAway.to, expiryDateBefore: putAway.expiryDateBefore, putAway: [putAway] };
 }
+
+/**
+ * The undo toast after Put Away, "Put away all" or an Add scan that took a
+ * package from the Bag: each Entry goes back into the Bag (joining an Entry
+ * there for the same thing), and each Product's Stock and Expiry Date go back
+ * as they were (see `applyUndo`). A Product deleted since is skipped.
+ */
+export const undoPutAway = mutation({
+  args: { putAway: v.array(putAwayRecord) },
+  handler: async (ctx, { putAway }) => {
+    const memberId = await requireMemberId(ctx);
+    for (const record of putAway) {
+      if (!("productId" in record)) {
+        const { name } = await addToList(ctx, memberId, { name: record.name }, record.quantity, "inBag");
+        await recordActivity(ctx, memberId, "undoPutAway", { name }, { quantity: record.quantity });
+        continue;
+      }
+      const product = await ctx.db.get(record.productId);
+      if (product === null) continue;
+      await addToList(ctx, memberId, { product }, record.quantity, "inBag");
+      const next = applyUndo(product, record);
+      await ctx.db.patch(product._id, next);
+      await recordActivity(ctx, memberId, "undoPutAway", product, {
+        from: product.stock,
+        to: next.stock,
+        quantity: record.quantity,
+      });
+    }
+  },
+});
 
 /**
  * Turns a One-off into a Product in the chosen Home Location, Out of Stock (it

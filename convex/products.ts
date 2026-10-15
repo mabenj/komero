@@ -6,7 +6,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { createProduct, requireMinimumStock } from "./newProduct";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
 import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingList";
-import { applyRestock, applyUndo, applyUse, crossedIntoRunningLow, expiryKind, isDate } from "./stock";
+import { applyRestock, applyUndo, applyUse, crossedIntoRunningLow, expiryKind, isDate, stockChange } from "./stock";
 
 /**
  * Adds a Product by name to its Home Location. A new Product starts with Stock 1.
@@ -280,9 +280,6 @@ export async function changeStock(
   };
 }
 
-/** What undoing a Stock change needs: the Stock before and after, and the Expiry Date before. */
-export const undoneStockChange = { from: v.number(), to: v.number(), expiryDateBefore: v.optional(v.string()) };
-
 /**
  * The undo toast after + / – or a scan: reverses the Stock change on top of
  * the current Stock, so changes made on other phones in between are kept, and
@@ -290,7 +287,7 @@ export const undoneStockChange = { from: v.number(), to: v.number(), expiryDateB
  * undo made the Product Running Low, for the "running low" toast.
  */
 export const undoStockChange = mutation({
-  args: { productId: v.id("products"), ...undoneStockChange },
+  args: { productId: v.id("products"), ...stockChange.fields },
   handler: async (ctx, { productId, ...undone }) => {
     const memberId = await requireMemberId(ctx);
     const product = await requireProduct(ctx, productId);

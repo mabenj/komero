@@ -169,6 +169,7 @@ export const fi = {
   "activity.tick": "{member} laittoi kassiin: {product}",
   "activity.untick": "{member} otti kassista: {product}",
   "activity.putAway": "{member} laittoi paikalleen: {product}",
+  "activity.undoPutAway": "{member} palautti kassiin: {product}",
   "activity.stockChange": "{from} → {to}",
   "activity.quantity": "×{quantity}",
   "activity.feed": "Tapahtumat",

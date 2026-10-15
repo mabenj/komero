@@ -26,6 +26,7 @@ export const activityKind = v.union(
   v.literal("tick"),
   v.literal("untick"),
   v.literal("putAway"),
+  v.literal("undoPutAway"),
 );
 
 export default defineSchema({

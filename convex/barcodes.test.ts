@@ -144,6 +144,22 @@ describe("Add mode", () => {
     ]);
   });
 
+  test("undoing a scan that took Maito from the Bag puts it back in the Bag and takes the package off Stock", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    const [entry] = (await anna.query(api.shoppingList.get, {})).locations[0].entries;
+    await anna.mutation(api.shoppingList.tick, { entryId: entry._id });
+
+    const scanned = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
+    if (scanned.unknown || scanned.action !== "putAway") throw new Error("expected a Put Away from the Bag");
+    await anna.mutation(api.shoppingList.undoPutAway, { putAway: scanned.putAway });
+
+    expect(await bag(anna)).toEqual(["Maito ×2"]);
+    expect(await stockOf(anna, "Maito")).toBe(1);
+  });
+
   test("a scan tells the Product's Expiry Kind, so the date prompt shows only for Products with one", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const maito = await maitoWithBarcode(anna);
