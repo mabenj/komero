@@ -98,7 +98,7 @@ describe("Running Low", () => {
 
     await use(anna, maito);
 
-    expect(await anna.query(api.shoppingList.get, {})).toEqual({ locations: [], oneOffs: [] });
+    expect(await anna.query(api.shoppingList.get, {})).toEqual({ locations: [], oneOffs: [], bag: [] });
   });
 
   test("undoing a delete brings Vessapaperi back with its Minimum Stock", async () => {
