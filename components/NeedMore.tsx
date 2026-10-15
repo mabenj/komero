@@ -1,7 +1,9 @@
 "use client";
 
 import { useConvex, useMutation } from "convex/react";
+import { motion } from "motion/react";
 import { type PointerEvent, type ReactNode, useCallback, useRef, useState } from "react";
+import { useRowMotion } from "@/components/motion";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -56,7 +58,8 @@ const SWIPE_DISTANCE = 80;
 
 /**
  * A Koti row that does Need More when swiped left. Vertical scrolling still
- * works, and a swipe doesn't count as a tap on the row.
+ * works, and a swipe doesn't count as a tap on the row. In `AnimatePresence`,
+ * the row slides in when added and out when deleted.
  */
 export function SwipeToNeedMore({ product, children }: { product: Product; children: ReactNode }) {
   const t = useT();
@@ -65,6 +68,7 @@ export function SwipeToNeedMore({ product, children }: { product: Product; child
   const [dragging, setDragging] = useState(false);
   const start = useRef<{ x: number; y: number } | null>(null);
   const swiped = useRef(false);
+  const rowMotion = useRowMotion();
 
   const onPointerDown = (event: PointerEvent) => {
     if (event.pointerType === "mouse") return;
@@ -93,7 +97,7 @@ export function SwipeToNeedMore({ product, children }: { product: Product; child
   };
 
   return (
-    <li className="relative overflow-hidden">
+    <motion.li {...rowMotion} className="relative overflow-hidden">
       <div
         aria-hidden="true"
         className={`absolute inset-0 flex items-center justify-end px-4 text-sm font-semibold ${
@@ -122,6 +126,6 @@ export function SwipeToNeedMore({ product, children }: { product: Product; child
       >
         {children}
       </div>
-    </li>
+    </motion.li>
   );
 }

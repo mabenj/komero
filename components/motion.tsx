@@ -1,7 +1,7 @@
 "use client";
 
-import { MotionConfig, type Transition, useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
+import { AnimatePresence, MotionConfig, motion, type Transition, useReducedMotion } from "motion/react";
+import { type ReactNode, useState } from "react";
 
 // Motion for the whole app (spec #19 "Motion"): springs start from wherever a
 // thing is on screen, so every animation can be interrupted, and they move only
@@ -44,4 +44,66 @@ export function useEnterExit(hidden: Hidden) {
  */
 export function useLayoutMotion() {
   return useReducedMotion() ? undefined : ("position" as const);
+}
+
+/** Props for a list row that slides in when added and back out when deleted or put away. */
+export function useRowMotion() {
+  return { layout: useLayoutMotion(), ...useEnterExit({ x: -24, opacity: 0 }) };
+}
+
+/** Props for a section of a list that fades in and out, and slides to its new place. */
+export function useSectionMotion() {
+  return { layout: useLayoutMotion(), ...useEnterExit({ opacity: 0 }) };
+}
+
+/**
+ * Something that opens under what was tapped, such as a date prompt, and
+ * closes the same way. Render it inside `AnimatePresence`.
+ */
+export function Reveal({ children, className }: { children: ReactNode; className?: string }) {
+  const reveal = useEnterExit({ y: -8, opacity: 0 });
+  return (
+    <motion.div {...reveal} className={className}>
+      {children}
+    </motion.div>
+  );
+}
+
+const roll = {
+  enter: (direction: number) => ({ y: `${direction * 100}%`, opacity: 0 }),
+  shown: { y: "0%", opacity: 1 },
+  leave: (direction: number) => ({ y: `${direction * -100}%`, opacity: 0 }),
+};
+
+/**
+ * A number (shown as `children`, e.g. "×2") that rolls up when `value` grows
+ * and down when it shrinks; under reduced motion it cross-fades.
+ */
+export function RollingNumber({ value, children }: { value: number; children: ReactNode }) {
+  const reduced = useReducedMotion();
+  const [shown, setShown] = useState(value);
+  const [direction, setDirection] = useState(1);
+  if (value !== shown) {
+    setShown(value);
+    setDirection(value > shown ? 1 : -1);
+  }
+  const rolling = reduced ? 0 : direction;
+
+  return (
+    <span className="relative inline-flex justify-center overflow-hidden">
+      <AnimatePresence mode="popLayout" initial={false} custom={rolling}>
+        <motion.span
+          key={value}
+          custom={rolling}
+          variants={roll}
+          initial="enter"
+          animate="shown"
+          exit="leave"
+          transition={reduced ? crossFade : settle}
+        >
+          {children}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
 }

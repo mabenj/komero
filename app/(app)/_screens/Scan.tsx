@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
+import { Reveal } from "@/components/motion";
 import { Sheet } from "@/components/Sheet";
 import { useNeedMoreToast } from "@/components/NeedMore";
 import { usePutAwayToast, useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
@@ -126,17 +127,21 @@ function Scanning({
           </button>
         ))}
       </div>
-      {awaitingDate && (
-        <DatePrompt
-          key={`${awaitingDate.productId}-${awaitingDate.to}`}
-          name={awaitingDate.name}
-          answerLabel={t("common.save")}
-          onAnswer={(expiryDate) => {
-            setAwaitingDate(null);
-            if (expiryDate) void dateScan({ productId: awaitingDate.productId, expiryDate });
-          }}
-        />
-      )}
+      <AnimatePresence initial={false}>
+        {awaitingDate && (
+          <Reveal key="awaitingDate">
+            <DatePrompt
+              key={`${awaitingDate.productId}-${awaitingDate.to}`}
+              name={awaitingDate.name}
+              answerLabel={t("common.save")}
+              onAnswer={(expiryDate) => {
+                setAwaitingDate(null);
+                if (expiryDate) void dateScan({ productId: awaitingDate.productId, expiryDate });
+              }}
+            />
+          </Reveal>
+        )}
+      </AnimatePresence>
       {cameraError ? (
         <p className="rounded-xl bg-amber-100 px-4 py-3 text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">
           {t("scan.cameraError")}
