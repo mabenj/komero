@@ -92,6 +92,7 @@ export const fi = {
   "scan.mode.useHint": "Paketti käytetty: −1",
   "scan.mode.needMoreHint": "Tyhjä paketti: kauppalistalle",
   "scan.hint": "Osoita kameralla viivakoodia",
+  "scan.starting": "Kamera käynnistyy…",
   "scan.stop": "Lopeta",
   "scan.cameraError": "Kamera ei käynnistynyt. Anna Komerolle lupa käyttää kameraa selaimen asetuksista, niin jatketaan.",
   "scan.restocked": "{name} +1 · kotona {stock}",

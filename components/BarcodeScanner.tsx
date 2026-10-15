@@ -7,6 +7,8 @@ type Props = {
   onCode: (code: string) => void;
   /** The camera didn't start: permission denied, no camera, or not HTTPS. */
   onError?: (err: unknown) => void;
+  /** The camera's video is playing. */
+  onReady?: () => void;
   /** Stops decoding (the camera stays on), e.g. while the unknown barcode sheet is open. */
   paused?: boolean;
 };
@@ -31,10 +33,11 @@ export function prepareScanner() {
  * and using the same decoder everywhere gives the same codes on every phone).
  * The camera turns off when this unmounts.
  */
-export default function BarcodeScanner({ onCode, onError, paused = false }: Props) {
+export default function BarcodeScanner({ onCode, onError, onReady, paused = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const emitCode = useEffectEvent((code: string) => onCode(code));
   const emitError = useEffectEvent((err: unknown) => onError?.(err));
+  const emitReady = useEffectEvent(() => onReady?.());
   const isPaused = useEffectEvent(() => paused);
 
   useEffect(() => {
@@ -56,6 +59,8 @@ export default function BarcodeScanner({ onCode, onError, paused = false }: Prop
         const video = videoRef.current!;
         video.srcObject = stream;
         await video.play();
+        if (cancelled) return;
+        emitReady();
 
         const tick = async () => {
           if (cancelled) return;
