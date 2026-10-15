@@ -82,18 +82,22 @@ export default function KotiScreen() {
                   aria-expanded={!folded.has(location._id)}
                   aria-controls={`products-${location._id}`}
                   onClick={() => toggleFolded(location._id)}
-                  className="flex min-h-11 w-full items-center gap-2 text-left"
+                  className="flex min-h-11 w-full items-center gap-1.5 text-left"
                 >
-                  <span className="font-display text-lg">{location.name}</span>
-                  <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
-                  <LowCount products={location.products} />
                   <motion.span
                     animate={{ rotate: folded.has(location._id) ? -90 : 0 }}
                     transition={settle}
                     className="flex text-stone-400"
                   >
-                    <ChevronDownIcon width={18} height={18} />
+                    <ChevronDownIcon width={16} height={16} />
                   </motion.span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-display text-lg">{location.name}</span>
+                    <span className="text-xs font-semibold text-stone-400 tabular-nums">
+                      {location.products.length}
+                    </span>
+                    <LowCount products={location.products} />
+                  </span>
                 </button>
               </h2>
               {quickAddLocation !== location._id && (
@@ -124,7 +128,7 @@ export default function KotiScreen() {
               {folded.has(location._id) ? (
                 location.products.length > 0 && (
                   <Fold key="names">
-                    <p className="truncate px-1 pt-0.5 text-sm text-stone-500">
+                    <p className="truncate pt-0.5 pr-1 pl-[26px] text-sm text-stone-500">
                       {location.products.map((product) => product.name).join(", ")}
                     </p>
                   </Fold>
