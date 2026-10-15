@@ -345,7 +345,20 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
             className="h-5 w-5 accent-accent"
           />
         </label>
-        <p className={`min-w-0 flex-1 truncate ${inBag ? "text-stone-400 line-through" : ""}`}>{entry.name}</p>
+        {/* The Stock line sits under the name, so the box and the quantity centre on both lines. */}
+        <div className="flex min-w-0 flex-1 flex-col py-2">
+          <p className={`truncate ${inBag ? "text-stone-400 line-through" : ""}`}>{entry.name}</p>
+          {!inBag && (entry.stock !== undefined || !makingProduct) && (
+            <p className="truncate text-xs text-stone-500">
+              {entry.stock !== undefined && t("lista.stock", { stock: entry.stock })}
+              {entry.productId === undefined && !makingProduct && (
+                <button type="button" className={textLink} onClick={() => setMakingProduct(true)}>
+                  {t("lista.makeProduct")}
+                </button>
+              )}
+            </p>
+          )}
+        </div>
         {inBag ? (
           <>
             <span className="text-stone-400 tabular-nums">{t("lista.quantity", { quantity: entry.quantity })}</span>
@@ -394,16 +407,6 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
           />
         )}
       </div>
-      {!inBag && (entry.stock !== undefined || !makingProduct) && (
-        <p className="-mt-1.5 truncate pb-1.5 pl-10 text-xs text-stone-500">
-          {entry.stock !== undefined && t("lista.stock", { stock: entry.stock })}
-          {entry.productId === undefined && !makingProduct && (
-            <button type="button" className={textLink} onClick={() => setMakingProduct(true)}>
-              {t("lista.makeProduct")}
-            </button>
-          )}
-        </p>
-      )}
       {makingProduct && <MakeProduct entry={entry} onDone={() => setMakingProduct(false)} />}
       {askingDate && (
         <div className="pb-2">
