@@ -10,6 +10,7 @@
 
 import type * as activities from "../activities.js";
 import type * as auth from "../auth.js";
+import type * as barcodes from "../barcodes.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as inventory from "../inventory.js";
@@ -30,6 +31,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   activities: typeof activities;
   auth: typeof auth;
+  barcodes: typeof barcodes;
   crons: typeof crons;
   http: typeof http;
   inventory: typeof inventory;

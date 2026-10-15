@@ -102,7 +102,7 @@ export const addOneOff = mutation({
 });
 
 /** Need More of a Product. Returns the Entry and its new quantity, for the undo toast. */
-async function needMoreOf(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">) {
+export async function needMoreOf(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">) {
   const added = await addToList(ctx, memberId, { product }, 1);
   await recordActivity(ctx, memberId, "needMore", product, { quantity: added.quantity });
   return added;
@@ -246,6 +246,25 @@ async function putAwayEntry(ctx: MutationCtx, memberId: Id<"users">, entry: Doc<
   const next = applyRestock(what, entry.quantity);
   await ctx.db.patch(what._id, next);
   await recordActivity(ctx, memberId, "putAway", what, { from: what.stock, to: next.stock, quantity: entry.quantity });
+}
+
+/**
+ * Put Away of one package of a Product from the Bag (a scan in Add mode): its
+ * Entry's quantity goes down by 1, and the Entry leaves the Bag at 0. Returns
+ * the Stock before and after, or null when the Bag has none of the Product.
+ */
+export async function putAwayOneFromBag(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">) {
+  const entry = await ctx.db
+    .query("entries")
+    .withIndex("by_product", (q) => q.eq("productId", product._id).eq("state", "inBag"))
+    .first();
+  if (entry === null) return null;
+  if (entry.quantity > 1) await ctx.db.patch(entry._id, { quantity: entry.quantity - 1 });
+  else await ctx.db.delete(entry._id);
+  const next = applyRestock(product, 1);
+  await ctx.db.patch(product._id, next);
+  await recordActivity(ctx, memberId, "putAway", product, { from: product.stock, to: next.stock, quantity: 1 });
+  return { from: product.stock, to: next.stock };
 }
 
 /**

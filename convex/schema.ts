@@ -65,6 +65,13 @@ export default defineSchema({
   })
     .index("by_location", ["locationId", "nameKey"])
     .index("by_nameKey", ["nameKey"]),
+  // Barcodes: each code (normalised, see barcodes.ts) belongs to one Product; a Product can have many.
+  barcodes: defineTable({
+    code: v.string(),
+    productId: v.id("products"),
+  })
+    .index("by_code", ["code"])
+    .index("by_product", ["productId"]),
   // Shopping List Entries: linked to a Product, or a One-off with its own name.
   // At most one `toBuy` Entry per Product; ticked Entries are `inBag`.
   entries: defineTable({
