@@ -10,10 +10,13 @@ import { type ReactNode, useState } from "react";
 /** The default spring: critically damped, so nothing overshoots. */
 export const settle: Transition = { type: "spring", bounce: 0, visualDuration: 0.35 };
 
-/** The one spring with a little bounce, for an Entry landing in the Bag. */
+/** A spring with a little bounce, for an Entry landing in the Bag. */
 export const landInBag: Transition = { type: "spring", bounce: 0.25, visualDuration: 0.45 };
 
-const crossFade: Transition = { duration: 0.15, ease: "easeOut" };
+/** A swiped row springing back with a little bounce; give it the release `velocity`. */
+export const swipeBack: Transition = { type: "spring", bounce: 0.25, visualDuration: 0.4 };
+
+export const crossFade: Transition = { duration: 0.15, ease: "easeOut" };
 
 /** The defaults for every animation in the signed-in app. */
 export function MotionProvider({ children }: { children: ReactNode }) {
