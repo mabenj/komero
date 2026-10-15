@@ -164,7 +164,7 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
       <Barcodes barcodes={product.barcodes} />
       <button
         type="button"
-        onClick={() => void needMore(productId)}
+        onClick={() => needMore(product)}
         className={`${primaryButton} py-3 text-lg`}
       >
         {t("lista.needMore")}

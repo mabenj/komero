@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import type { OptimisticLocalStore } from "convex/browser";
 import { AppLink } from "@/components/AppLink";
 import { Cupboard } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
@@ -10,16 +9,18 @@ import { flushSync } from "react-dom";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { MinusIcon, PlusIcon, ScanIcon } from "@/components/icons";
-import { NeedsAttention } from "@/components/NeedsAttention";
+import { ScanIcon } from "@/components/icons";
+import { NeedsAttention, statusText } from "@/components/NeedsAttention";
 import { SwipeToNeedMore } from "@/components/NeedMore";
+import { NumberStepper } from "@/components/NumberStepper";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { tidyName } from "@/convex/productNames";
 import { applyRestock, applyUse, type ExpiryKind, expiryStatus } from "@/convex/stock";
 import { formatDay, localToday } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
+import { changeStockLocally } from "@/lib/listUpdates";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
-import { field, primaryButton } from "@/lib/styles";
+import { cardList, field, primaryButton } from "@/lib/styles";
 
 type StockChange = "restock" | "use";
 
@@ -49,9 +50,12 @@ export default function KotiScreen() {
       <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
       {empty ? <EmptyKoti /> : <NeedsAttention />}
       {inventory.map((location) => (
-        <section key={location._id} data-location-id={location._id} className="flex flex-col gap-1">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-display text-lg">{location.name}</h2>
+        <section key={location._id} data-location-id={location._id} className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <h2 className="flex items-baseline gap-2">
+              <span className="font-display text-lg">{location.name}</span>
+              <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
+            </h2>
             {quickAddLocation !== location._id && (
               <button
                 type="button"
@@ -66,14 +70,15 @@ export default function KotiScreen() {
           {quickAddLocation === location._id && (
             <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
           )}
-          {location.products.length === 0 && !empty && (
-            <p className="text-sm text-stone-500">{t("koti.noProducts")}</p>
+          {location.products.length > 0 ? (
+            <ul className={`${cardList} flex flex-col overflow-hidden`}>
+              {location.products.map((product) => (
+                <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
+              ))}
+            </ul>
+          ) : (
+            !empty && <p className={`${cardList} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
           )}
-          <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
-            {location.products.map((product) => (
-              <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
-            ))}
-          </ul>
         </section>
       ))}
     </div>
@@ -105,13 +110,17 @@ function SearchAdd({
 
   // A name that already exists can still be added with the button, next to its
   // warning; Enter, typed while searching for it, doesn't add a second one.
-  const add = async ({ fromEnter = false } = {}) => {
+  // The field clears at once, ready for the next name; the typed one comes back if adding fails.
+  const add = ({ fromEnter = false } = {}) => {
     if (!result?.name || !locationId || !minimumStockValid || (fromEnter && !result.canAdd)) return;
-    await createProduct({ name: result.name, locationId, minimumStock, expiryKind: more.expiryKind ?? undefined });
-    rememberLocation(locationId);
+    const typed = text;
     setText("");
     setPickedLocation(null);
     setMore(noMore);
+    rememberLocation(locationId);
+    createProduct({ name: result.name, locationId, minimumStock, expiryKind: more.expiryKind ?? undefined }).catch(
+      () => setText((current) => current || typed),
+    );
   };
 
   return (
@@ -121,7 +130,7 @@ function SearchAdd({
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") void add({ fromEnter: true });
+          if (event.key === "Enter") add({ fromEnter: true });
         }}
         placeholder={t("koti.search")}
         aria-label={t("koti.search")}
@@ -133,7 +142,7 @@ function SearchAdd({
         <div className="flex flex-col gap-2">
           {result.duplicate && <DuplicateWarning duplicate={result.duplicate} />}
           {result.matches.length > 0 && (
-            <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
+            <ul className={`${cardList} flex flex-col overflow-hidden`}>
               {result.matches.map((product) => (
                 <ProductRow
                   key={product._id}
@@ -149,7 +158,7 @@ function SearchAdd({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => void add()}
+                  onClick={() => add()}
                   disabled={!minimumStockValid}
                   className={`${primaryButton} min-h-11 flex-1 truncate px-4 py-2 text-left`}
                 >
@@ -289,8 +298,9 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
 }
 
 /**
- * A Product with its Stock and inline – / +, and its Expiry Date when it has
- * one; swipe it left for Need More. Out of Stock Products stay listed, dimmed.
+ * A Product with its Expiry Date under its name, coloured by what it means
+ * today, and its Stock as a number that opens – / +; swipe it left for Need
+ * More. Out of Stock Products stay listed, dimmed.
  */
 function ProductRow({
   product,
@@ -302,65 +312,39 @@ function ProductRow({
   onChangeStock: (product: ProductRowData, change: StockChange) => void;
 }) {
   const t = useT();
+  const lang = useLang();
   const outOfStock = product.stock === 0;
-  const buttonClass =
-    "flex h-11 w-11 items-center justify-center rounded-full border border-stone-300 text-xl disabled:opacity-30 dark:border-stone-700";
+  const { expiryKind, expiryDate } = product;
+  const status = expiryKind && expiryDate && expiryStatus({ stock: 1, expiryKind, expiryDate }, localToday());
 
   return (
-    <SwipeToNeedMore productId={product._id}>
+    <SwipeToNeedMore product={product}>
       <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
         <p className={`truncate ${outOfStock ? "text-stone-400 dark:text-stone-500" : ""}`}>{product.name}</p>
-        {detail && <p className="truncate text-xs text-stone-500">{detail}</p>}
+        {(detail || expiryDate || outOfStock) && (
+          <p className="flex gap-2 text-xs tabular-nums">
+            {detail && <span className="truncate text-stone-500">{detail}</span>}
+            {expiryKind && expiryDate ? (
+              <span className={`truncate ${status ? statusText[status] : "text-stone-500"}`}>
+                {t(`expiry.${expiryKind}`, { date: formatDay(expiryDate, lang) })}
+              </span>
+            ) : (
+              outOfStock && <span className="text-stone-400">{t("koti.out")}</span>
+            )}
+          </p>
+        )}
       </AppLink>
-      {product.expiryKind && product.expiryDate && (
-        <DateBadge kind={product.expiryKind} date={product.expiryDate} />
-      )}
-      <button
-        type="button"
-        className={buttonClass}
-        disabled={outOfStock}
-        aria-label={t("koti.use", { name: product.name })}
-        onClick={() => onChangeStock(product, "use")}
-      >
-        <MinusIcon width={20} height={20} />
-      </button>
-      <span className={`w-8 text-center tabular-nums ${outOfStock ? "text-stone-400" : "font-semibold"}`}>
-        {product.stock}
-      </span>
-      <button
-        type="button"
-        className={buttonClass}
-        aria-label={t("koti.restock", { name: product.name })}
-        onClick={() => onChangeStock(product, "restock")}
-      >
-        <PlusIcon width={20} height={20} />
-      </button>
+      <NumberStepper
+        value={product.stock}
+        label={t("koti.changeStock", { name: product.name, stock: product.stock })}
+        dimmed={outOfStock}
+        onDecrease={() => onChangeStock(product, "use")}
+        decreaseLabel={t("koti.use", { name: product.name })}
+        decreaseDisabled={outOfStock}
+        onIncrease={() => onChangeStock(product, "restock")}
+        increaseLabel={t("koti.restock", { name: product.name })}
+      />
     </SwipeToNeedMore>
-  );
-}
-
-const badgeTones = {
-  expired: "bg-red-600 text-white",
-  checkIt: "bg-amber-500 text-white",
-  expiringSoon: "bg-amber-100 text-amber-900 dark:bg-amber-400/15 dark:text-amber-200",
-  none: "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
-};
-
-/** The Expiry Date on a Koti row, coloured by what it means today. */
-function DateBadge({ kind, date }: { kind: ExpiryKind; date: string }) {
-  const t = useT();
-  const lang = useLang();
-  const status = expiryStatus({ stock: 1, expiryKind: kind, expiryDate: date }, localToday());
-  const tone = status === "expired" || status === "checkIt" || status === "expiringSoon" ? status : "none";
-  const label = t(`expiry.${kind}`, { date: formatDay(date, lang) });
-  return (
-    <span
-      title={label}
-      aria-label={label}
-      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${badgeTones[tone]}`}
-    >
-      {formatDay(date, lang)}
-    </span>
   );
 }
 
@@ -374,8 +358,8 @@ function useStockChange() {
   const showUndoToast = useUndoToast();
   const showRunningLow = useRunningLowToast();
   const undoStockChange = useUndoStockChange();
-  const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate(
-    (store, { productId, change }) => setStockLocally(store, productId, change),
+  const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate((store, { productId, change }) =>
+    changeStockLocally(store, productId, change === "restock" ? (state) => applyRestock(state, 1) : applyUse),
   );
 
   return useCallback(
@@ -389,36 +373,6 @@ function useStockChange() {
     },
     [adjustStock, undoStockChange, showUndoToast, showRunningLow, t],
   );
-}
-
-/** The same Stock and Expiry Date rules as the server, applied to a row. */
-function apply<P extends ProductRowData>(product: P, change: StockChange): P {
-  const state = {
-    stock: product.stock,
-    expiryKind: product.expiryKind ?? undefined,
-    expiryDate: product.expiryDate ?? undefined,
-  };
-  const next = change === "restock" ? applyRestock(state, 1) : applyUse(state);
-  return "expiryDate" in product
-    ? { ...product, stock: next.stock, expiryDate: next.expiryDate ?? null }
-    : { ...product, stock: next.stock };
-}
-
-function setStockLocally(store: OptimisticLocalStore, productId: Id<"products">, change: StockChange) {
-  const update = <P extends ProductRowData>(product: P): P =>
-    product._id === productId ? apply(product, change) : product;
-
-  const inventory = store.getQuery(api.inventory.get, {});
-  if (inventory) {
-    store.setQuery(
-      api.inventory.get,
-      {},
-      inventory.map((location) => ({ ...location, products: location.products.map(update) })),
-    );
-  }
-  for (const { args, value } of store.getAllQueries(api.products.search)) {
-    if (value) store.setQuery(api.products.search, args, { ...value, matches: value.matches.map(update) });
-  }
 }
 
 /**

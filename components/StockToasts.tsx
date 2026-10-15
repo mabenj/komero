@@ -26,7 +26,7 @@ export function useRunningLowToast() {
     (product: Product, undo?: () => void) =>
       showUndoToast(t("koti.runningLow", { name: product.name }), undo, {
         label: t("koti.addToList"),
-        run: () => void needMore(product._id),
+        run: () => needMore(product),
       }),
     [showUndoToast, needMore, t],
   );
@@ -50,13 +50,17 @@ export function useUndoStockChange() {
   );
 }
 
-/** A toast after Put Away (one Entry, the whole Bag, or a scan) whose undo puts it all back in the Bag. */
+/**
+ * A toast after Put Away (one Entry, the whole Bag, or a scan) whose undo puts
+ * it all back in the Bag. Shown at the tap, its undo waits for what the server put away.
+ */
 export function usePutAwayToast() {
   const showUndoToast = useUndoToast();
   const undoPutAway = useMutation(api.shoppingList.undoPutAway);
 
   return useCallback(
-    (message: string, putAway: PutAway) => showUndoToast(message, () => void undoPutAway({ putAway })),
+    (message: string, putAway: PutAway | Promise<PutAway>) =>
+      showUndoToast(message, async () => void undoPutAway({ putAway: await putAway })),
     [showUndoToast, undoPutAway],
   );
 }

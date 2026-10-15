@@ -201,7 +201,7 @@ function useScanConfirmation() {
           if (!outcome.crossedIntoRunningLow) return showUndoToast(t("scan.used", { name, stock: to }), undo);
           return showRunningLow(product, undo);
         case "needMore":
-          return showNeedMoreToast(outcome);
+          return showNeedMoreToast(outcome, outcome);
       }
     },
     [showUndoToast, showNeedMoreToast, showRunningLow, showPutAway, undoStockChange, t],
