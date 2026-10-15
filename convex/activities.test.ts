@@ -1,7 +1,8 @@
+import type { FunctionReturnType } from "convex/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { type MemberSession, newKomero, signUp } from "./test.helpers";
+import { allActivities, type MemberSession, newKomero, signUp } from "./test.helpers";
 
 afterEach(() => vi.useRealTimers());
 
@@ -18,10 +19,9 @@ async function locationId(member: MemberSession, name: string) {
   return inventory.find((location) => location.name === name)!._id;
 }
 
-/** The ⚙ Activity feed, newest first, without ids and times. */
+/** The Tapahtumat feed, newest first, without ids and times. */
 async function feed(member: MemberSession) {
-  const activities = await member.query(api.activities.feed, {});
-  return activities.map(({ kind, memberName, productName, from, to, fromName, quantity }) => ({
+  return (await allActivities(member)).map(({ kind, memberName, productName, from, to, fromName, quantity }) => ({
     kind,
     memberName,
     productName,
@@ -91,6 +91,61 @@ describe("Activity feed", () => {
       { kind: "use", memberName: "Anna", productName: "Kevytmaito", from: 1, to: 0 },
       { kind: "create", memberName: "Anna", productName: "Kevytmaito", to: 1 },
     ]);
+  });
+});
+
+describe("Settings preview", () => {
+  test("Ben sees only the household's newest 5 Activities, newest first", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await anna.mutation(api.products.create, {
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+    });
+    for (let i = 0; i < 3; i++) await anna.mutation(api.products.adjustStock, { productId: maito, change: "restock" });
+    await ben.mutation(api.products.adjustStock, { productId: maito, change: "use" });
+    await ben.mutation(api.products.adjustStock, { productId: maito, change: "use" });
+
+    const recent = await ben.query(api.activities.recent, {});
+    expect(recent.map(({ memberName, kind, from, to }) => `${memberName} ${kind} ${from} → ${to}`)).toEqual([
+      "Ben use 3 → 2",
+      "Ben use 4 → 3",
+      "Anna restock 3 → 4",
+      "Anna restock 2 → 3",
+      "Anna restock 1 → 2",
+    ]);
+  });
+
+  test("a signed-out caller is refused", async () => {
+    await expect(newKomero().query(api.activities.recent, {})).rejects.toThrow(/NOT_SIGNED_IN/);
+  });
+});
+
+describe("Tapahtumat screen", () => {
+  test("pages through every Activity newest first, with no gaps or repeats, and says when it's done", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    for (const name of ["Maito", "Juusto", "Kahvi", "Tee", "Leipä"]) {
+      await anna.mutation(api.products.create, { name, locationId: await locationId(anna, "Kaappi") });
+    }
+
+    const pages: string[][] = [];
+    let cursor: string | null = null;
+    for (;;) {
+      const result: FunctionReturnType<typeof api.activities.feed> = await anna.query(api.activities.feed, {
+        paginationOpts: { numItems: 2, cursor },
+      });
+      pages.push(result.page.map(({ productName }) => productName));
+      if (result.isDone) break;
+      cursor = result.continueCursor;
+    }
+
+    expect(pages.flat()).toEqual(["Leipä", "Tee", "Kahvi", "Juusto", "Maito"]);
+    expect(pages.slice(0, 2)).toEqual([["Leipä", "Tee"], ["Kahvi", "Juusto"]]);
+  });
+
+  test("a signed-out caller is refused", async () => {
+    await expect(
+      newKomero().query(api.activities.feed, { paginationOpts: { numItems: 50, cursor: null } }),
+    ).rejects.toThrow(/NOT_SIGNED_IN/);
   });
 });
 
@@ -178,7 +233,7 @@ describe("Daily cleanup", () => {
     // The one internal call in the tests: the daily cron runs it, and nothing public does (see README).
     await t.mutation(internal.activities.purgeOld, {});
 
-    const left = await anna.query(api.activities.feed, {});
+    const left = await allActivities(anna);
     expect(left.map(({ kind, at }) => ({ kind, at: new Date(at).toISOString() }))).toEqual([
       { kind: "use", at: "2026-07-15T12:00:00.000Z" },
     ]);

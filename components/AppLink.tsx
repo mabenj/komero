@@ -1,6 +1,8 @@
 "use client";
 
 import type { ComponentProps, MouseEvent } from "react";
+import { useT } from "@/lib/i18n";
+import { textLink } from "@/lib/styles";
 import { arrive, backFrom, leave } from "@/lib/screenHistory";
 
 /**
@@ -26,10 +28,20 @@ export function navigate(href: string, { replace = false } = {}) {
   if (samePath) window.scrollTo(0, 0);
 }
 
-/** Back to the previous screen of the app, or to Koti when the page was opened directly. */
-export function goBack() {
+/** Back to the previous screen of the app, or to `home` (Koti) when the page was opened directly. */
+export function goBack(home = "/koti") {
   if (backFrom(window.history.state) === "history") window.history.back();
-  else navigate("/koti", { replace: true });
+  else navigate(home, { replace: true });
+}
+
+/** "Back", to where the Member came from (see `goBack`). */
+export function BackLink({ home }: { home?: string }) {
+  const t = useT();
+  return (
+    <button type="button" onClick={() => goBack(home)} className={`${textLink} -my-2 self-start py-2`}>
+      {t("nav.back")}
+    </button>
+  );
 }
 
 /** A link within the signed-in app; see `navigate`. */

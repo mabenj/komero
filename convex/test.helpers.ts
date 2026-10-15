@@ -49,3 +49,9 @@ function ensureAuthEnv() {
   })();
   return authEnvReady;
 }
+
+/** Every Activity on the Tapahtumat screen, newest first: its first page, made large enough to hold them all. */
+export async function allActivities(member: MemberSession) {
+  const { page } = await member.query(api.activities.feed, { paginationOpts: { numItems: 1000, cursor: null } });
+  return page;
+}

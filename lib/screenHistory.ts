@@ -19,7 +19,7 @@ export function arrive(current: unknown, { replace }: { replace: boolean }): Ent
   return { inApp: replace ? (read(current).inApp ?? false) : true };
 }
 
-/** Back goes back in history to the app's previous screen, or to Koti when there is none. */
+/** Back goes back in history to the app's previous screen, or to Koti (or the screen's own home) when there is none. */
 export function backFrom(state: unknown): "history" | "koti" {
   return read(state).inApp ? "history" : "koti";
 }

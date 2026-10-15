@@ -203,6 +203,10 @@ export const fi = {
   "activity.feed": "Tapahtumat",
   "activity.recent": "Viimeisimmät tapahtumat",
   "activity.none": "Ei tapahtumia",
+  "activity.today": "Tänään",
+  "activity.yesterday": "Eilen",
+  "activity.showAll": "Näytä kaikki",
+  "activity.showOlder": "Näytä vanhemmat",
 } as const;
 
 export type MessageKey = keyof typeof fi;

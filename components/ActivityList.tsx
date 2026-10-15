@@ -1,72 +1,54 @@
 "use client";
 
 import type { FunctionReturnType } from "convex/server";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { api } from "@/convex/_generated/api";
+import { byDay } from "@/lib/activityDays";
 import { useLang, useT } from "@/lib/i18n";
 import { cardList } from "@/lib/styles";
 
-type Activity = FunctionReturnType<typeof api.activities.feed>[number];
+type Activity = FunctionReturnType<typeof api.activities.recent>[number];
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
-/** Activities in plain language ("Anna used Maito · 2 → 1 · 10 min ago", "Ben put Maito on the list · ×2 · now"), newest first. */
+/**
+ * Activities in plain language ("Anna used Maito · 2 → 1 · 14.32"), newest
+ * first, under day headers ("Tänään", "Eilen", "ma 12.10.").
+ */
 export function ActivityList({ activities }: { activities: Activity[] | undefined }) {
   const t = useT();
-  const now = useNow();
-  const ago = useTimeAgo();
+  const lang = useLang();
+  // Only the day matters; a list left open past midnight says "Tänään" for yesterday until it remounts.
+  const [now] = useState(Date.now);
 
   if (activities === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
   if (activities.length === 0) return <p className="text-stone-500">{t("activity.none")}</p>;
 
-  return (
-    <ul className={cardList}>
-      {activities.map((activity) => (
-        <li key={activity._id} className="flex flex-col px-3 py-2">
-          <span>
-            {t(`activity.${activity.kind}` as const, {
-              member: activity.memberName,
-              product: activity.productName,
-              fromName: activity.fromName ?? "",
-            })}
-          </span>
-          <span className="text-sm text-stone-500">
-            {[
-              activity.from !== undefined &&
-                activity.to !== undefined &&
-                t("activity.stockChange", { from: activity.from, to: activity.to }),
-              activity.quantity !== undefined && t("activity.quantity", { quantity: activity.quantity }),
-              ago(activity.at, now),
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** The current time, updated every minute so "10 min ago" stays true. */
-function useNow() {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), MINUTE);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
-
-/** "10 min ago" / "10 min sitten" in the Member's language. */
-function useTimeAgo() {
-  const format = new Intl.RelativeTimeFormat(useLang(), { numeric: "auto", style: "short" });
-  return (at: number, now: number) => {
-    const elapsed = Math.max(0, now - at);
-    if (elapsed < MINUTE) return format.format(0, "second");
-    if (elapsed < HOUR) return format.format(-Math.floor(elapsed / MINUTE), "minute");
-    if (elapsed < DAY) return format.format(-Math.floor(elapsed / HOUR), "hour");
-    return format.format(-Math.floor(elapsed / DAY), "day");
-  };
+  return byDay(activities, now, lang).map((day) => (
+    <section key={day.day} className="flex flex-col gap-1">
+      <h3 className="text-sm font-medium text-stone-500">{day.label}</h3>
+      <ul className={cardList}>
+        {day.activities.map((activity) => (
+          <li key={activity._id} className="flex flex-col px-3 py-2">
+            <span>
+              {t(`activity.${activity.kind}` as const, {
+                member: activity.memberName,
+                product: activity.productName,
+                fromName: activity.fromName ?? "",
+              })}
+            </span>
+            <span className="text-sm text-stone-500">
+              {[
+                activity.from !== undefined &&
+                  activity.to !== undefined &&
+                  t("activity.stockChange", { from: activity.from, to: activity.to }),
+                activity.quantity !== undefined && t("activity.quantity", { quantity: activity.quantity }),
+                activity.time,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  ));
 }

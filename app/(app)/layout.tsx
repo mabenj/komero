@@ -30,7 +30,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       <header className="material sticky top-0 z-10 pt-[env(safe-area-inset-top)]">
         <div className="flex items-center justify-between px-4 py-3">
           <h1 className="font-display text-2xl">
-            {currentTab ? t(`nav.${currentTab}`) : pathname === "/settings" && t("nav.settings")}
+            {currentTab ? t(`nav.${currentTab}`) : (pathname === "/settings" || pathname.startsWith("/settings/")) && t("nav.settings")}
           </h1>
           <AppLink
             href="/settings"

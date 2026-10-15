@@ -10,6 +10,7 @@ import { lastTab } from "@/lib/remembered";
 import { scrollFor } from "@/lib/screenHistory";
 import KotiScreen from "../_screens/Koti";
 import ListaScreen from "../_screens/Lista";
+import ActivitiesScreen from "../_screens/Activities";
 import ProductScreen from "../_screens/Product";
 import ScanScreen from "../_screens/Scan";
 import SettingsScreen from "../_screens/Settings";
@@ -20,14 +21,17 @@ import SettingsScreen from "../_screens/Settings";
  * server for a route, so it keeps working while offline. A Product page
  * (/koti/<id>) is opened from Koti and slides in over it; Koti stays mounted
  * underneath, so Back returns to it as it was left, search results and all.
+ * The Tapahtumat screen (/settings/tapahtumat) slides in over Settings the same way.
  */
 export default function AppScreens() {
   const pathname = usePathname();
   useScrollRestore(pathname);
   const [, first, second, ...rest] = pathname.split("/");
   const productId = first === "koti" && second && rest.length === 0 ? (second as Id<"products">) : null;
+  const isActivities = pathname === "/settings/tapahtumat";
   const screen =
     productId !== null ? <KotiScreen />
+    : isActivities ? <SettingsScreen />
     : rest.length > 0 || second ? null
     : first === "koti" ? <KotiScreen />
     : first === "scan" ? <ScanScreen />
@@ -41,16 +45,15 @@ export default function AppScreens() {
     if (!known) navigate(pathname === "/" ? `/${lastTab()}` : "/koti", { replace: true });
   }, [known, pathname]);
 
+  const slideOver =
+    productId !== null ? <ProductScreen productId={productId} />
+    : isActivities ? <ActivitiesScreen />
+    : null;
+
   return (
     <>
-      <CoveredScreen covered={productId !== null}>{screen}</CoveredScreen>
-      <AnimatePresence initial={false}>
-        {productId && (
-          <SlideOver key={productId}>
-            <ProductScreen productId={productId} />
-          </SlideOver>
-        )}
-      </AnimatePresence>
+      <CoveredScreen covered={slideOver !== null}>{screen}</CoveredScreen>
+      <AnimatePresence initial={false}>{slideOver && <SlideOver key={pathname}>{slideOver}</SlideOver>}</AnimatePresence>
     </>
   );
 }

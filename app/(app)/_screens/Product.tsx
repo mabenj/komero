@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { goBack, navigate } from "@/components/AppLink";
+import { BackLink, navigate } from "@/components/AppLink";
 import { ActivityList } from "@/components/ActivityList";
 import { CategorySelect } from "@/components/CategorySelect";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
@@ -14,7 +14,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { isDate } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
 import { setCategoryLocally } from "@/lib/listUpdates";
-import { card, cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
+import { card, cardList, field, primaryButton, secondaryButton } from "@/lib/styles";
 
 const fieldClass = `${field} w-full px-4 py-2`;
 
@@ -229,15 +229,5 @@ function Barcodes({ barcodes }: { barcodes: { _id: Id<"barcodes">; code: string 
         </ul>
       )}
     </section>
-  );
-}
-
-/** Back to where the Member came from (Koti, Needs Attention or search results), or to Koti. */
-function BackLink() {
-  const t = useT();
-  return (
-    <button type="button" onClick={goBack} className={`${textLink} -my-2 self-start py-2`}>
-      {t("nav.back")}
-    </button>
   );
 }

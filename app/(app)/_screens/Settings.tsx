@@ -5,11 +5,12 @@ import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ActivityList } from "@/components/ActivityList";
+import { AppLink } from "@/components/AppLink";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { CategoriesSettings, LocationsSettings } from "@/components/LocationsSettings";
 import { api } from "@/convex/_generated/api";
 import { useT } from "@/lib/i18n";
-import { cardList, field, primaryButton, secondaryButton } from "@/lib/styles";
+import { cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
 
 export default function SettingsScreen() {
   const t = useT();
@@ -39,8 +40,7 @@ export default function SettingsScreen() {
           {t("settings.logOut")}
         </button>
       </div>
-      {/* Last, since it can be long. */}
-      <ActivityFeed />
+      <ActivityPreview />
     </div>
   );
 }
@@ -65,14 +65,18 @@ function Members() {
   );
 }
 
-function ActivityFeed() {
+/** The household's newest Activities, and a link to all of them on the Tapahtumat screen. */
+function ActivityPreview() {
   const t = useT();
-  const activities = useQuery(api.activities.feed);
+  const activities = useQuery(api.activities.recent);
 
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-lg font-semibold">{t("activity.feed")}</h2>
       <ActivityList activities={activities} />
+      <AppLink href="/settings/tapahtumat" className={`${textLink} -my-2 self-start py-2`}>
+        {t("activity.showAll")}
+      </AppLink>
     </section>
   );
 }

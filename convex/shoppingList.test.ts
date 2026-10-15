@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { type MemberSession, newKomero, signUp } from "./test.helpers";
+import { allActivities, type MemberSession, newKomero, signUp } from "./test.helpers";
 
 /** A household of two Members: Anna signs up first and invites Ben. */
 async function annaAndBen() {
@@ -158,7 +158,7 @@ describe("Entry delete undo", () => {
       { group: "Maitotuotteet", entries: ["Maito ×3 (Stock 1)"] },
       { group: "Other", entries: ["Synttärikynttilät ×1"] },
     ]);
-    const feed = await anna.query(api.activities.feed, {});
+    const feed = await allActivities(anna);
     expect(feed.slice(0, 2).map(({ kind, productName, quantity }) => ({ kind, productName, quantity }))).toEqual([
       { kind: "restoreEntry", productName: "Synttärikynttilät", quantity: 1 },
       { kind: "restoreEntry", productName: "Maito", quantity: 3 },
@@ -362,7 +362,7 @@ describe("Bag and Put Away", () => {
       { group: "In the bag: Maitotuotteet", entries: ["Maito ×1 (Stock 1)"] },
       { group: "In the bag: Other", entries: ["Synttärikynttilät ×1"] },
     ]);
-    const feed = await anna.query(api.activities.feed, {});
+    const feed = await allActivities(anna);
     expect(feed.slice(0, 2).map(({ kind, productName, from, to, quantity }) => ({ kind, productName, from, to, quantity }))).toEqual(
       expect.arrayContaining([
         { kind: "undoPutAway", productName: "Maito", from: 2, to: 1, quantity: 1 },
@@ -384,7 +384,7 @@ describe("Bag and Put Away", () => {
     await anna.mutation(api.shoppingList.putAway, { entryId: await entryId(anna, "Maito") });
     await anna.mutation(api.shoppingList.putAwayAll, {});
 
-    const feed = await anna.query(api.activities.feed, {});
+    const feed = await allActivities(anna);
     expect(
       feed.slice(0, 5).map(({ kind, memberName, productName, from, to, quantity }) => ({
         kind,

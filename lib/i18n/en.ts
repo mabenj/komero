@@ -201,4 +201,8 @@ export const en = {
   "activity.feed": "Activity",
   "activity.recent": "Recent Activity",
   "activity.none": "No Activity yet",
+  "activity.today": "Today",
+  "activity.yesterday": "Yesterday",
+  "activity.showAll": "Show all",
+  "activity.showOlder": "Show older",
 } satisfies Record<MessageKey, string>;

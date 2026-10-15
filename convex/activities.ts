@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { type Infer, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { type MutationCtx, type QueryCtx, internalMutation, query } from "./_generated/server";
@@ -24,15 +25,26 @@ export async function recordActivity(
   await ctx.db.insert("activities", { memberId, kind, productId: product._id, productName: product.name, ...details });
 }
 
-const FEED_LENGTH = 100;
+// Kept subscribed on every device (KeepOfflineData), so it stays small.
+const RECENT_LENGTH = 5;
 
-/** The household Activity feed in ⚙, newest first. */
-export const feed = query({
+/** The household's newest Activities, for the preview in ⚙. */
+export const recent = query({
   args: {},
   handler: async (ctx) => {
     await requireMemberId(ctx);
-    const activities = await ctx.db.query("activities").order("desc").take(FEED_LENGTH);
+    const activities = await ctx.db.query("activities").order("desc").take(RECENT_LENGTH);
     return withMemberNames(ctx, activities);
+  },
+});
+
+/** The household Activity feed on the Tapahtumat screen, newest first, a page at a time. */
+export const feed = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { paginationOpts }) => {
+    await requireMemberId(ctx);
+    const result = await ctx.db.query("activities").order("desc").paginate(paginationOpts);
+    return { ...result, page: await withMemberNames(ctx, result.page) };
   },
 });
 

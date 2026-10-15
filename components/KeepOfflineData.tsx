@@ -24,7 +24,7 @@ export function KeepOfflineData() {
   // Lista's optimistic updates read it to place Entries in their Category's group.
   useQuery(api.categories.list);
   useQuery(api.members.list);
-  useQuery(api.activities.feed);
+  useQuery(api.activities.recent);
 
   const pathname = usePathname();
   const opened = pathname.match(/^\/koti\/([^/]+)$/)?.[1] as Id<"products"> | undefined;
