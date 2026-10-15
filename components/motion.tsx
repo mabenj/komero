@@ -72,6 +72,23 @@ export function Reveal({ children, className }: { children: ReactNode; className
   );
 }
 
+/**
+ * Something that folds open under its heading and shut again, growing from no
+ * height so whatever is below moves along with it. It clips only while it moves,
+ * so card shadows show once it's open. Render it inside `AnimatePresence`;
+ * under reduced motion it cross-fades.
+ */
+export function Fold({ children, id }: { children: ReactNode; id?: string }) {
+  const reduced = useReducedMotion();
+  const shut = reduced ? { opacity: 0 } : { height: 0, opacity: 0, overflow: "hidden" };
+  const open = reduced ? { opacity: 1 } : { height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } };
+  return (
+    <motion.div id={id} initial={shut} animate={open} exit={shut} transition={reduced ? crossFade : settle}>
+      {children}
+    </motion.div>
+  );
+}
+
 const roll = {
   enter: (direction: number) => ({ y: `${direction * 100}%`, opacity: 0 }),
   shown: { y: "0%", opacity: 1 },

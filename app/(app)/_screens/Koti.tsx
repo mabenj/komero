@@ -11,7 +11,7 @@ import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ChevronDownIcon, ScanIcon } from "@/components/icons";
-import { Reveal, settle, useLayoutMotion } from "@/components/motion";
+import { Fold, Reveal, settle, useLayoutMotion } from "@/components/motion";
 import { NeedsAttention, statusText } from "@/components/NeedsAttention";
 import { SwipeToNeedMore } from "@/components/NeedMore";
 import { NumberStepper } from "@/components/NumberStepper";
@@ -72,16 +72,17 @@ export default function KotiScreen() {
             key={location._id}
             layout={layout}
             data-location-id={location._id}
-            className="flex flex-col gap-1.5"
+            className="flex flex-col"
           >
-            <div className="flex items-center justify-between gap-2 px-1">
-              <h2>
+            <div className="flex items-center gap-2 px-1">
+              {/* The heading fills the row up to Quick add, so a tap anywhere beside it folds. */}
+              <h2 className="flex-1">
                 <button
                   type="button"
                   aria-expanded={!folded.has(location._id)}
                   aria-controls={`products-${location._id}`}
                   onClick={() => toggleFolded(location._id)}
-                  className="flex min-h-11 items-center gap-2"
+                  className="flex min-h-11 w-full items-center gap-2 text-left"
                 >
                   <span className="font-display text-lg">{location.name}</span>
                   <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
@@ -114,7 +115,7 @@ export default function KotiScreen() {
             </div>
             <AnimatePresence initial={false}>
               {quickAddLocation === location._id && (
-                <Reveal key="quickAdd">
+                <Reveal key="quickAdd" className="pt-1.5">
                   <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
                 </Reveal>
               )}
@@ -122,15 +123,15 @@ export default function KotiScreen() {
             <AnimatePresence initial={false}>
               {folded.has(location._id) ? (
                 location.products.length > 0 && (
-                  <Reveal key="names">
-                    <p className="truncate px-1 text-sm text-stone-500">
+                  <Fold key="names">
+                    <p className="truncate px-1 pt-0.5 text-sm text-stone-500">
                       {location.products.map((product) => product.name).join(", ")}
                     </p>
-                  </Reveal>
+                  </Fold>
                 )
               ) : (
-                <Reveal key="products">
-                  <div id={`products-${location._id}`}>
+                <Fold key="products" id={`products-${location._id}`}>
+                  <div className="pt-1.5">
                     {location.products.length > 0 ? (
                       <ul className={`${cardList} flex flex-col overflow-hidden`}>
                         <AnimatePresence initial={false}>
@@ -145,7 +146,7 @@ export default function KotiScreen() {
                       )
                     )}
                   </div>
-                </Reveal>
+                </Fold>
               )}
             </AnimatePresence>
           </motion.section>
