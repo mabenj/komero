@@ -97,6 +97,7 @@ export const en = {
   "scan.newProduct": "New Product",
   "scan.existingProduct": "This is an existing Product",
   "scan.productName": "Product name",
+  "scan.suggestedName": "Name suggested by Open Food Facts. Edit it freely.",
   "scan.searchProduct": "Search Products",
   "scan.noMatches": "No matching Products",
   "scan.linkFailed": "The barcode couldn't be linked. It may already belong to another Product.",

@@ -11,7 +11,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 /** Open Food Facts answering every lookup with this product. */
 function openFoodFactsFinds(product: object) {
-  const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+  const fetchMock = vi.fn<typeof fetch>(async () =>
     Response.json({ code: MAITO_VALIO, result: { id: "product_found" }, product, status: "success" }),
   );
   vi.stubGlobal("fetch", fetchMock);
