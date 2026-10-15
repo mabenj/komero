@@ -275,7 +275,7 @@ function EmptyKoti() {
 }
 
 /**
- * Quick-add for filling a Location on day one: the field keeps focus, and each
+ * Quick-add for filling a Category on day one: the field keeps focus, and each
  * Enter adds the typed name as a Product here with Stock 1.
  */
 function QuickAdd({ location, onDone }: { location: Location; onDone: () => void }) {
@@ -431,8 +431,8 @@ function useStockChange() {
 }
 
 /**
- * The Location section the Member has scrolled to, which new Products default to.
- * At the top of Koti nothing is "in view", so the last used Location wins.
+ * The Category section the Member has scrolled to, which new Products default to.
+ * At the top of Koti nothing is "in view", so the last used Category wins.
  */
 function useLocationInView(ready: boolean) {
   const [inView, setInView] = useState<Id<"locations"> | null>(null);

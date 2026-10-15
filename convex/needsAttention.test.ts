@@ -21,7 +21,7 @@ const restock = (member: MemberSession, productId: Id<"products">) =>
 /** The Member's date on their phone, which Koti passes to Needs Attention. */
 const TODAY = "2026-10-15";
 
-/** Needs Attention on Koti as text: "Name (Location, Stock n): status", as seen on `today`. */
+/** Needs Attention on Koti as text: "Name (Category, Stock n): status", as seen on `today`. */
 async function needsAttention(member: MemberSession, today = TODAY) {
   const products = await member.query(api.inventory.needsAttention, { today });
   return products.map((p) => `${p.name} (${p.locationName}, Stock ${p.stock}): ${p.attention}`);

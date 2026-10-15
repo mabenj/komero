@@ -10,7 +10,7 @@ import { cardList, field, primaryButton, secondaryButton } from "@/lib/styles";
 
 type Location = { _id: Id<"locations">; name: string; products: unknown[] };
 
-/** ⚙ Locations: add, rename, reorder (which sets the order of Koti's groups) and delete. */
+/** ⚙ Categories: add, rename, reorder (which sets the order of Koti's groups) and delete. */
 export function LocationsSettings() {
   const t = useT();
   const locations = useQuery(api.inventory.get);
@@ -135,7 +135,7 @@ function LocationRow({
   );
 }
 
-/** "Move N Products to…?": deleting a Location that still has Products moves them first. */
+/** "Move N Products to…?": deleting a Category that still has Products moves them first. */
 function MoveProductsPrompt({
   location,
   targets,

@@ -25,12 +25,9 @@ _Avoid_: Item, article, grocery
 A code printed on a package that identifies a Product. A Product can have many Barcodes (e.g. different brands of milk), and each Barcode belongs to one Product.
 _Avoid_: EAN, code
 
-**Location**:
-A place in the home where Products are kept, such as the fridge, freezer, cupboard, bathroom or cleaning closet. The household defines its own Locations.
-_Avoid_: Storage, place, room, category
-
-**Home Location**:
-The single Location where all of a Product's Stock is kept.
+**Category**:
+A group the household sorts its Products into, such as the fridge, freezer, cupboard, bathroom or cleaning closet. The household defines its own Categories. Each Product belongs to exactly one Category, and all of its Stock is counted there.
+_Avoid_: Location, Home Location, storage, place, room
 
 **Stock**:
 How many packages of a Product are at home. An opened package counts as one.
@@ -75,7 +72,7 @@ _Avoid_: Alerts, warnings
 ## Shopping
 
 **Shopping List**:
-The one list of things the household needs to buy. Everyone shares it, and it is grouped by Location.
+The one list of things the household needs to buy. Everyone shares it, and it is grouped by Category.
 _Avoid_: Grocery list, cart
 
 **Entry**:

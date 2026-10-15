@@ -108,7 +108,7 @@ export const remove = mutation({
 
 /**
  * "New Product" for an unknown barcode: creates the Product Out of Stock in
- * the chosen Home Location, links the barcode and applies the scan mode, so
+ * the chosen Category, links the barcode and applies the scan mode, so
  * Add mode leaves it at Stock 1. Its Expiry Kind is the one Open Food Facts
  * suggested, if any. A name that is already a Product's (in any case) links
  * to that Product instead, leaving it as it is.

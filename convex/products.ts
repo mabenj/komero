@@ -9,7 +9,7 @@ import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingLis
 import { applyRestock, applyUndo, applyUse, crossedIntoRunningLow, expiryKind, isDate, stockChange } from "./stock";
 
 /**
- * Adds a Product by name to its Home Location. A new Product starts with Stock 1.
+ * Adds a Product by name to its Category. A new Product starts with Stock 1.
  * Both the search/add field and quick-add use this; the add form's "More" can
  * also set a Minimum Stock and an Expiry Kind. A name that already exists is
  * only warned about (`search`), so this adds a second Product with it.
@@ -151,7 +151,7 @@ export const remove = mutation({
  * The delete undo toast: puts the Product back as it was, with its Barcodes
  * (those not linked to another Product meanwhile) and Shopping List Entries.
  * Returns its new id, which takes over the deleted Product's Activities.
- * If its Home Location was deleted meanwhile, it goes to the first Location.
+ * If its Category was deleted meanwhile, it goes to the first Category.
  */
 export const restore = mutation({
   args: deletedProduct,

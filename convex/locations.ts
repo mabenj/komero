@@ -5,7 +5,7 @@ import { mutation } from "./_generated/server";
 import { requireMemberId } from "./members";
 import { tidyName } from "./productNames";
 
-// Location names are household text, not UI copy, so they are never translated.
+// Category names are household text, not UI copy, so they are never translated.
 const DEFAULT_LOCATIONS = ["Jääkaappi", "Pakastin", "Kaappi", "Kylpyhuone", "Siivouskomero"];
 
 export async function seedDefaultLocations(ctx: MutationCtx) {
@@ -15,7 +15,7 @@ export async function seedDefaultLocations(ctx: MutationCtx) {
   }
 }
 
-/** Adds a Location after the existing ones. */
+/** Adds a Category after the existing ones. */
 export const create = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
@@ -35,7 +35,7 @@ export const rename = mutation({
 });
 
 /**
- * Puts the Locations in the given order. Locations missing from the list (say,
+ * Puts the Categories in the given order. Categories missing from the list (say,
  * one just added on another phone) keep their order after the listed ones, and
  * listed ones that no longer exist are skipped.
  */
@@ -56,9 +56,9 @@ export const reorder = mutation({
 });
 
 /**
- * Deletes a Location. An empty one goes straight away; one that still has
+ * Deletes a Category. An empty one goes straight away; one that still has
  * Products needs `moveProductsTo`, and every Product moves there first, so
- * Products are never lost as a side effect. The last Location can't go.
+ * Products are never lost as a side effect. The last Category can't go.
  */
 export const remove = mutation({
   args: { locationId: v.id("locations"), moveProductsTo: v.optional(v.id("locations")) },

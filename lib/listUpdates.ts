@@ -16,14 +16,14 @@ type Entry = ShoppingList["bag"][number];
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "fi");
 
-/** The Product with this id, in whichever Location it is. */
+/** The Product with this id, in whichever Category it is. */
 function findProduct(inventory: Inventory | undefined, productId: Id<"products">) {
   return inventory?.flatMap((location) => location.products).find((p) => p._id === productId);
 }
 
 type EntryChange = <E extends Entry>(entry: E) => E;
 
-/** The list's Location groups, with `change` made to each of their Entries. */
+/** The list's Category groups, with `change` made to each of their Entries. */
 function changeInLocations(list: ShoppingList, change: EntryChange) {
   return list.locations.map((location) => ({ ...location, entries: location.entries.map(change) }));
 }
@@ -86,7 +86,7 @@ export function removeLocally(store: OptimisticLocalStore, { entryId }: { entryI
   updateList(store, (list) => withoutEntry(list, entryId));
 }
 
-/** The list without an Entry; a Location left with no Entries is left out, as the server does. */
+/** The list without an Entry; a Category left with no Entries is left out, as the server does. */
 function withoutEntry(list: ShoppingList, entryId: Id<"entries">): ShoppingList {
   const others = (e: Entry) => e._id !== entryId;
   return {
@@ -111,7 +111,7 @@ export function untickLocally(store: OptimisticLocalStore, { entryId }: { entryI
 /**
  * The list with an Entry added, as the server's `addToList` adds it: its quantity
  * joins the Entry for the same Product or One-off name if there is one;
- * otherwise it goes in its Product's Home Location group, or among the One-offs.
+ * otherwise it goes in its Product's Category group, or among the One-offs.
  */
 function withEntryAdded(list: ShoppingList, entry: Entry, inventory: Inventory | undefined): ShoppingList {
   const join: EntryChange = (e) => (same(e, entry) ? { ...e, quantity: e.quantity + entry.quantity } : e);

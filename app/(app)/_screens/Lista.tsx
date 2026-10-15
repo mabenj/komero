@@ -63,7 +63,7 @@ function listedOnceIn(entries: Entry[]) {
   return new Set([...counts].filter(([, count]) => count === 1).map(([listed]) => listed));
 }
 
-/** The shared Shopping List: to-buy Entries grouped by Location, then One-offs under "Other", then the Bag. */
+/** The shared Shopping List: to-buy Entries grouped by Category, then One-offs under "Other", then the Bag. */
 export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
@@ -425,7 +425,7 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   );
 }
 
-/** Turns a One-off into a Product: its name pre-filled, and a Home Location to choose. */
+/** Turns a One-off into a Product: its name pre-filled, and a Category to choose. */
 function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
   const t = useT();
   const inventory = useQuery(api.inventory.get);

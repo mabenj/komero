@@ -1,5 +1,5 @@
 // Finnish UI strings: the source of truth for translation keys.
-// Every visible UI string lives here. User text (Product, Location and One-off
+// Every visible UI string lives here. User text (Product, Category and One-off
 // names) is never translated; interpolate it with {placeholders} instead.
 // Every key also needs an English string in en.ts, or typecheck fails.
 export const fi = {
@@ -45,7 +45,7 @@ export const fi = {
   "koti.emptyHint": "Kirjoita ensimmäisen tuotteesi nimi yllä olevaan kenttään tai skannaa pakkauksen viivakoodi.",
   "koti.search": "Hae tai lisää tuote",
   "koti.add": "+ Lisää ”{name}”",
-  "koti.addTo": "Paikka",
+  "koti.addTo": "Kategoria",
   "koti.more": "Lisätiedot",
   "koti.duplicate": "{name} on jo olemassa: {location}",
   "koti.use": "Käytä yksi: {name}",
@@ -68,7 +68,7 @@ export const fi = {
   "expiry.bestBefore": "Parasta ennen {date}",
   "expiry.useBy": "Viimeinen käyttöpäivä {date}",
   "product.name": "Nimi",
-  "product.homeLocation": "Paikka",
+  "product.homeLocation": "Kategoria",
   "product.stock": "Komerossa",
   "product.minimumStock": "Minimivarasto",
   "product.minimumStockNone": "Ei asetettu",
@@ -91,7 +91,7 @@ export const fi = {
   "scan.mode.add": "Lisää",
   "scan.mode.use": "Käytä",
   "scan.mode.needMore": "Lisää kauppalistalle",
-  "scan.mode.addHint": "Lisää komeroon",
+  "scan.mode.addHint": "Lisää paketti komeroon",
   "scan.mode.useHint": "Poista paketti komerosta",
   "scan.mode.needMoreHint": "Lisää kauppalistalle",
   "scan.hint": "Osoita kameralla viivakoodia",
@@ -135,7 +135,7 @@ export const fi = {
   "lista.putAwayAllDone": "{count} kassista komeroon",
   "lista.allPutAwayTitle": "Kaikki komerossa!",
   "lista.allPutAwayHint": "Kassi on tyhjä, ja ostokset ovat komerossa.",
-  "lista.makeProduct": "Tee tuotteeksi",
+  "lista.makeProduct": "Luo tuote",
   "lista.datePrompt": "{name}: mikä päiväys pakkauksessa?",
   "lista.datePromptStep": "{step}/{count}",
   "lista.dateSkip": "Ohita",
@@ -147,16 +147,16 @@ export const fi = {
   // Language names are written in their own language in both dictionaries.
   "settings.language.fi": "Suomi",
   "settings.language.en": "English",
-  "settings.locations": "Paikat",
-  "locations.newName": "Uusi paikka, esim. Kellari",
+  "settings.locations": "Kategoriat",
+  "locations.newName": "Uusi kategoria, esim. Kellari",
   "locations.add": "Lisää",
-  "locations.rename": "Paikan nimi: {name}",
+  "locations.rename": "Kategorian nimi: {name}",
   "locations.moveUp": "Siirrä ylös: {name}",
   "locations.moveDown": "Siirrä alas: {name}",
   "locations.delete": "Poista {name}",
-  "locations.moveOne": "{name}: siirrä 1 tuote paikkaan…",
-  "locations.moveMany": "{name}: siirrä {count} tuotetta paikkaan…",
-  "locations.moveTarget": "Uusi paikka tuotteille",
+  "locations.moveOne": "{name}: siirrä 1 tuote kategoriaan…",
+  "locations.moveMany": "{name}: siirrä {count} tuotetta kategoriaan…",
+  "locations.moveTarget": "Uusi kategoria tuotteille",
   "locations.moveAndDelete": "Siirrä ja poista",
   "locations.cancel": "Peruuta",
   "settings.members": "Käyttäjät",

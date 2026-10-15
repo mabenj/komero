@@ -9,7 +9,7 @@ import { modules } from "./test.setup";
 
 export const PASSWORD = "salasana123";
 
-/** A fresh, empty Komero backend: no Members, no Locations. */
+/** A fresh, empty Komero backend: no Members, no Categories. */
 export function newKomero() {
   return convexTest(schema, modules);
 }

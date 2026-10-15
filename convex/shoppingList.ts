@@ -14,8 +14,8 @@ type ProductEntry = ListedEntry & { productId: Id<"products">; stock: number; as
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "fi");
 
 /**
- * Lista: to-buy Product Entries grouped by their Product's Home Location in
- * Location order (empty Locations left out), each with the Product's current
+ * Lista: to-buy Product Entries grouped by their Product's Category in
+ * Category order (empty Categories left out), each with the Product's current
  * Stock; then One-offs, which Lista shows under "Other"; then the Bag
  * ("In the bag"), Product Entries and One-offs together.
  */
@@ -348,7 +348,7 @@ export const undoPutAway = mutation({
 });
 
 /**
- * Turns a One-off into a Product in the chosen Home Location, Out of Stock (it
+ * Turns a One-off into a Product in the chosen Category, Out of Stock (it
  * is still to be bought), and links the Entry to it. A name that is already a
  * Product's (in any case) links to that Product instead.
  */

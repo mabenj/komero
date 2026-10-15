@@ -17,7 +17,7 @@ import { card, cardList, field, primaryButton, secondaryButton, textLink } from 
 const fieldClass = `${field} w-full px-4 py-2`;
 
 /**
- * Everything about one Product: rename it, move it to another Home Location,
+ * Everything about one Product: rename it, move it to another Category,
  * set or clear its Minimum Stock, Expiry Kind and Expiry Date, put it on the Shopping List, delete it, and
  * see its recent Activity.
  */
