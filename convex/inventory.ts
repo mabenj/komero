@@ -3,7 +3,10 @@ import { query } from "./_generated/server";
 import { requireMemberId } from "./members";
 import { attentionStatus, byUrgency } from "./stock";
 
-/** Koti: every Location in the household's order, each with its Products by name. */
+/**
+ * Koti: every Location in the household's order, each with its Products by
+ * name, with their Stock and Expiry Kind and Date for the date badges.
+ */
 export const get = query({
   args: {},
   handler: async (ctx) => {

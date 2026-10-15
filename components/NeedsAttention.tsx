@@ -6,15 +6,17 @@ import { useState } from "react";
 import { ChevronDownIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
 import { api } from "@/convex/_generated/api";
+import { localToday } from "@/lib/dates";
 import { useT } from "@/lib/i18n";
 
 /**
- * The top of Koti: Products that need attention, most urgent first, with a
- * count that stays visible when collapsed. Hidden when nothing needs attention.
+ * The top of Koti: Products that need attention on the phone's date, most
+ * urgent first, with a count that stays visible when collapsed. Hidden when
+ * nothing needs attention.
  */
 export function NeedsAttention() {
   const t = useT();
-  const products = useQuery(api.inventory.needsAttention);
+  const products = useQuery(api.inventory.needsAttention, { today: localToday() });
   const needMore = useNeedMore();
   const [open, setOpen] = useState(true);
 
@@ -47,7 +49,9 @@ export function NeedsAttention() {
             <li key={product._id} className="flex items-center gap-3 py-1.5">
               <Link href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
                 <p className="truncate">{product.name}</p>
-                <p className="truncate text-xs text-zinc-600 dark:text-zinc-400">
+                <p
+                  className={`truncate text-xs ${product.attention === "expired" ? "font-semibold text-red-700 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"}`}
+                >
                   {t("attention.detail", {
                     status: t(`attention.${product.attention}`),
                     location: product.locationName,
