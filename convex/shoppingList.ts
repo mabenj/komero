@@ -4,10 +4,11 @@ import { type MutationCtx, mutation, query } from "./_generated/server";
 import { recordActivity } from "./activities";
 import { requireMemberId } from "./members";
 import { nameKey, tidyName } from "./productNames";
-import { applyRestock } from "./stock";
+import { applyRestock, isDate } from "./stock";
 
 type ListedEntry = { _id: Id<"entries">; name: string; quantity: number };
-type ProductEntry = ListedEntry & { productId: Id<"products">; stock: number };
+// `asksForDate`: the Product has an Expiry Kind, so Put Away prompts for a date.
+type ProductEntry = ListedEntry & { productId: Id<"products">; stock: number; asksForDate: boolean };
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "fi");
 
@@ -40,6 +41,7 @@ export const get = query({
         name: product.name,
         quantity: entry.quantity,
         stock: product.stock,
+        asksForDate: product.expiryKind !== undefined,
       };
       if (entry.state === "inBag") {
         bag.push(listed);
@@ -212,38 +214,50 @@ export const untick = mutation({
   },
 });
 
-/** Put Away of one Entry from the Bag: Restocks its Product by the Entry's quantity; a One-off just disappears. */
+/**
+ * Put Away of one Entry from the Bag: Restocks its Product by the Entry's
+ * quantity, with the date from the prompt if one was given (Skip gives none);
+ * a One-off just disappears.
+ */
 export const putAway = mutation({
-  args: { entryId: v.id("entries") },
-  handler: async (ctx, { entryId }) => {
+  args: { entryId: v.id("entries"), expiryDate: v.optional(v.string()) },
+  handler: async (ctx, { entryId, expiryDate }) => {
     const memberId = await requireMemberId(ctx);
     const entry = await requireEntry(ctx, entryId);
     if (entry.state !== "inBag") throw new ConvexError("ENTRY_NOT_IN_BAG");
-    await putAwayEntry(ctx, memberId, entry);
+    await putAwayEntry(ctx, memberId, entry, requireDate(expiryDate));
   },
 });
 
-/** "Put away all": Put Away of every Entry in the Bag. */
+/** "Put away all": Put Away of every Entry in the Bag, with the dates from the prompts by Product. */
 export const putAwayAll = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { expiryDates: v.optional(v.record(v.id("products"), v.string())) },
+  handler: async (ctx, { expiryDates = {} }) => {
     const memberId = await requireMemberId(ctx);
     const bag = await ctx.db
       .query("entries")
       .withIndex("by_state", (q) => q.eq("state", "inBag"))
       .collect();
-    for (const entry of bag) await putAwayEntry(ctx, memberId, entry);
+    for (const entry of bag) {
+      const expiryDate = entry.productId && requireDate(expiryDates[entry.productId]);
+      await putAwayEntry(ctx, memberId, entry, expiryDate);
+    }
   },
 });
 
-async function putAwayEntry(ctx: MutationCtx, memberId: Id<"users">, entry: Doc<"entries">) {
+function requireDate(date: string | undefined) {
+  if (date !== undefined && !isDate(date)) throw new ConvexError("EXPIRY_DATE_INVALID");
+  return date;
+}
+
+async function putAwayEntry(ctx: MutationCtx, memberId: Id<"users">, entry: Doc<"entries">, expiryDate?: string) {
   const what = await named(ctx, entry);
   await ctx.db.delete(entry._id);
   if (!("_id" in what)) {
     await recordActivity(ctx, memberId, "putAway", what, { quantity: entry.quantity });
     return;
   }
-  const next = applyRestock(what, entry.quantity);
+  const next = applyRestock(what, entry.quantity, expiryDate);
   await ctx.db.patch(what._id, next);
   await recordActivity(ctx, memberId, "putAway", what, { from: what.stock, to: next.stock, quantity: entry.quantity });
 }

@@ -142,6 +142,20 @@ describe("Add mode", () => {
       { kind: "putAway", from: 1, to: 2, quantity: 1 },
     ]);
   });
+
+  test("a scan tells the Product's Expiry Kind, so the date prompt shows only for Products with one", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    expect(await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" })).toMatchObject({
+      expiryKind: null,
+    });
+
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "bestBefore" });
+
+    expect(await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" })).toMatchObject({
+      expiryKind: "bestBefore",
+    });
+  });
 });
 
 describe("Use mode", () => {

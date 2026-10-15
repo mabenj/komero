@@ -95,11 +95,16 @@ export const linkNew = mutation({
  * Applies the scan mode to a Product. Add Puts Away one package from the Bag
  * if the Bag has the Product, and otherwise Restocks 1; Use Uses 1; Need more
  * does Need More. Returns what the scan confirmation shows: the Product, how
- * its Stock changed and whether it crossed into Running Low, and for Need more
- * the Entry and its quantity (for undo).
+ * its Stock changed and whether it crossed into Running Low, its Expiry Kind
+ * (for the date prompt), and for Need more the Entry and its quantity (for undo).
  */
 async function applyMode(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">, mode: ScanMode) {
-  const base = { unknown: false as const, productId: product._id, name: product.name };
+  const base = {
+    unknown: false as const,
+    productId: product._id,
+    name: product.name,
+    expiryKind: product.expiryKind ?? null,
+  };
   const unchanged = { from: product.stock, to: product.stock, crossedIntoRunningLow: false };
   switch (mode) {
     case "add": {

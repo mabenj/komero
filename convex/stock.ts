@@ -1,16 +1,37 @@
 // The Stock rules, in one place. Pure: mutations read a Product, apply a rule
 // here and write the result back within the same transaction.
 
-export type StockState = { stock: number };
+/**
+ * Stock and its Expiry Date ("YYYY-MM-DD"). The date only applies with an
+ * Expiry Kind; `expiryDate: undefined` in a result means the date is cleared.
+ */
+export type StockState = { stock: number; expiryKind?: "bestBefore" | "useBy"; expiryDate?: string };
 
-/** Restock: n packages put away or scanned in. */
-export function applyRestock(product: StockState, n: number): StockState {
-  return { stock: product.stock + n };
+/**
+ * Restock: n packages put away or scanned in, with the date printed on them if
+ * one was given. From 0 the new date becomes the Expiry Date; otherwise the
+ * earlier date is kept, and an undated Restock keeps the existing one.
+ */
+export function applyRestock(product: StockState, n: number, date?: string): StockState {
+  const dated = product.expiryKind ? date : undefined;
+  const expiryDate =
+    product.stock === 0 ? dated : [product.expiryDate, dated].filter((d) => d !== undefined).sort()[0];
+  return { stock: product.stock + n, expiryDate };
 }
 
-/** Use: one package consumed or thrown away. Stock never goes below 0. */
+/**
+ * Use: one package consumed or thrown away. Stock never goes below 0. The
+ * Expiry Date stays while Stock remains and is cleared at 0.
+ */
 export function applyUse(product: StockState): StockState {
-  return { stock: Math.max(0, product.stock - 1) };
+  const stock = Math.max(0, product.stock - 1);
+  return { stock, expiryDate: stock === 0 ? undefined : product.expiryDate };
+}
+
+/** Whether `text` is a real calendar day written "YYYY-MM-DD", the form Expiry Dates are kept in. */
+export function isDate(text: string): boolean {
+  const time = Date.parse(`${text}T00:00:00Z`);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) && !isNaN(time) && new Date(time).toISOString().startsWith(text);
 }
 
 /** What the Needs Attention rules look at. */
@@ -30,16 +51,35 @@ export function crossedIntoRunningLow(before: AttentionState, after: AttentionSt
 }
 
 /**
- * Needs Attention statuses, most urgent first. Expiry statuses go before
- * `runningLow` as they are added.
+ * Needs Attention statuses, most urgent first: past Use By, past Best Before,
+ * expiring soon, Running Low.
  */
-export const attentionStatuses = ["runningLow"] as const;
+export const attentionStatuses = ["expired", "checkIt", "expiringSoon", "runningLow"] as const;
 export type AttentionStatus = (typeof attentionStatuses)[number];
 
-/** A Product's most urgent Needs Attention status, or null when it needs none. */
-export function attentionStatus(product: AttentionState): AttentionStatus | null {
-  if (isRunningLow(product)) return "runningLow";
+/** How many days ahead an Expiry Date counts as expiring soon. */
+const EXPIRING_SOON_DAYS = 3;
+
+/**
+ * What a Product's Expiry Date means on `today` (the Member's "YYYY-MM-DD"),
+ * or null when it means nothing yet. Koti's date badges use it too.
+ */
+export function expiryStatus(product: AttentionState, today: string): AttentionStatus | null {
+  const { expiryKind, expiryDate } = product;
+  if (!expiryKind || !expiryDate) return null;
+  if (expiryDate < today) return expiryKind === "useBy" ? "expired" : "checkIt";
+  if (expiryDate <= addDays(today, EXPIRING_SOON_DAYS)) return "expiringSoon";
   return null;
+}
+
+function addDays(date: string, days: number): string {
+  const time = Date.parse(`${date}T00:00:00Z`) + days * 24 * 60 * 60 * 1000;
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+/** A Product's most urgent Needs Attention status on `today`, or null when it needs none. */
+export function attentionStatus(product: AttentionState, today: string): AttentionStatus | null {
+  return expiryStatus(product, today) ?? (isRunningLow(product) ? "runningLow" : null);
 }
 
 /** Sorts Needs Attention: the most urgent status first. */
