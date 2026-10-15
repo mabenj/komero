@@ -56,11 +56,16 @@ export default defineSchema({
     name: v.string(),
     sortOrder: v.number(),
   }).index("by_sortOrder", ["sortOrder"]),
+  categories: defineTable({
+    name: v.string(),
+    sortOrder: v.number(),
+  }).index("by_sortOrder", ["sortOrder"]),
   products: defineTable({
     name: v.string(),
     // The name normalised for case-insensitive matching (see productNames.ts).
     nameKey: v.string(),
     locationId: v.id("locations"),
+    categoryId: v.optional(v.id("categories")),
     stock: v.number(),
     // Optional: Stock at or below it means Running Low (see stock.ts).
     minimumStock: v.optional(v.number()),
@@ -69,6 +74,7 @@ export default defineSchema({
     expiryDate: v.optional(v.string()),
   })
     .index("by_location", ["locationId", "nameKey"])
+    .index("by_category", ["categoryId"])
     .index("by_nameKey", ["nameKey"]),
   // Barcodes: each code (normalised, see barcodes.ts) belongs to one Product; a Product can have many.
   barcodes: defineTable({

@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { goBack, navigate } from "@/components/AppLink";
 import { ActivityList } from "@/components/ActivityList";
+import { CategorySelect } from "@/components/CategorySelect";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
@@ -12,14 +13,16 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { isDate } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
+import { setCategoryLocally } from "@/lib/listUpdates";
 import { card, cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
 
 const fieldClass = `${field} w-full px-4 py-2`;
 
 /**
- * Everything about one Product: rename it, move it to another Category,
- * set or clear its Minimum Stock, Expiry Kind and Expiry Date, put it on the Shopping List, delete it, and
- * see its recent Activity.
+ * Everything about one Product: rename it, move it to another Location, set,
+ * change or clear its Category, set or clear its Minimum Stock, Expiry Kind
+ * and Expiry Date, put it on the Shopping List, delete it, and see its recent
+ * Activity.
  */
 export default function ProductScreen({ productId }: { productId: Id<"products"> }) {
   const t = useT();
@@ -28,7 +31,7 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
   const inventory = useQuery(api.inventory.get);
   const activities = useQuery(api.activities.forProduct, { productId });
   const rename = useMutation(api.products.rename);
-  const update = useMutation(api.products.update);
+  const update = useMutation(api.products.update).withOptimisticUpdate(setCategoryLocally);
   const remove = useMutation(api.products.remove);
   const restore = useMutation(api.products.restore);
   const needMore = useNeedMore();
@@ -96,6 +99,14 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
               </option>
             )) ?? <option value={product.locationId}>{product.locationName}</option>}
           </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-stone-500">{t("product.category")}</span>
+          <CategorySelect
+            value={product.categoryId}
+            onChange={(categoryId) => void update({ productId, categoryId })}
+            className={fieldClass}
+          />
         </label>
         <div className="flex flex-col gap-1">
           <span className="text-sm text-stone-500">{t("product.stock")}</span>

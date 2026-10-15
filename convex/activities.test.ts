@@ -106,8 +106,9 @@ describe("Shopping List Activity", () => {
     await anna.mutation(api.shoppingList.needMore, { productId: maito });
     await ben.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
     const list = await ben.query(api.shoppingList.get, {});
-    await ben.mutation(api.shoppingList.remove, { entryId: list.locations[0].entries[0]._id });
-    await ben.mutation(api.shoppingList.remove, { entryId: list.oneOffs[0]._id });
+    // Under Other, by name: Maito has no Category.
+    await ben.mutation(api.shoppingList.remove, { entryId: list.other[0]._id });
+    await ben.mutation(api.shoppingList.remove, { entryId: list.other[1]._id });
 
     expect((await feed(anna)).slice(0, 5)).toEqual([
       { kind: "removeEntry", memberName: "Ben", productName: "Synttärikynttilät", quantity: 1 },

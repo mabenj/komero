@@ -21,6 +21,8 @@ export function KeepOfflineData() {
   useQuery(api.inventory.get);
   useQuery(api.inventory.needsAttention, { today: localToday() });
   useQuery(api.shoppingList.get);
+  // Lista's optimistic updates read it to place Entries in their Category's group.
+  useQuery(api.categories.list);
   useQuery(api.members.list);
   useQuery(api.activities.feed);
 

@@ -104,7 +104,7 @@ export default function KotiScreen() {
                 <button
                   type="button"
                   // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
-                  // A folded Category opens too, so the Products being added show up.
+                  // A folded Location opens too, so the Products being added show up.
                   onClick={() =>
                     flushSync(() => {
                       setQuickAddLocation(location._id);
@@ -160,7 +160,7 @@ export default function KotiScreen() {
   );
 }
 
-/** How many of a Category's Products are Running Low, in the heading; nothing when none are. */
+/** How many of a Location's Products are Running Low, in the heading; nothing when none are. */
 function LowCount({ products }: { products: ProductRowData[] }) {
   const t = useT();
   const count = products.filter(lowNotOut).length;
@@ -345,7 +345,7 @@ function EmptyKoti() {
 }
 
 /**
- * Quick-add for filling a Category on day one: the field keeps focus, and each
+ * Quick-add for filling a Location on day one: the field keeps focus, and each
  * Enter adds the typed name as a Product here with Stock 1.
  */
 function QuickAdd({ location, onDone }: { location: Location; onDone: () => void }) {
@@ -502,7 +502,7 @@ function useStockChange() {
   );
 }
 
-/** The Categories folded shut on Koti, remembered on this device, and a toggle for one. */
+/** The Locations folded shut on Koti, remembered on this device, and a toggle for one. */
 function useFoldedLocations() {
   const [folded, setFolded] = useState(() => new Set(foldedLocations()));
   const toggle = useCallback((id: Id<"locations">) => {
@@ -517,8 +517,8 @@ function useFoldedLocations() {
 }
 
 /**
- * The Category section the Member has scrolled to, which new Products default to.
- * At the top of Koti nothing is "in view", so the last used Category wins.
+ * The Location section the Member has scrolled to, which new Products default to.
+ * At the top of Koti nothing is "in view", so the last used Location wins.
  */
 function useLocationInView(ready: boolean) {
   const [inView, setInView] = useState<Id<"locations"> | null>(null);

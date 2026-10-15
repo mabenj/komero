@@ -25,9 +25,9 @@ _Avoid_: Item, article, grocery
 A code printed on a package that identifies a Product. A Product can have many Barcodes (e.g. different brands of milk), and each Barcode belongs to one Product.
 _Avoid_: EAN, code
 
-**Category**:
-A group the household sorts its Products into, such as the fridge, freezer, cupboard, bathroom or cleaning closet. The household defines its own Categories. Each Product belongs to exactly one Category, and all of its Stock is counted there.
-_Avoid_: Location, Home Location, storage, place, room
+**Location**:
+A place at home where the household keeps its Products, such as the fridge, freezer, cupboard, bathroom or cleaning closet. The household defines its own Locations. Each Product belongs to exactly one Location, and all of its Stock is counted there.
+_Avoid_: Category, Home Location, storage, place, room
 
 **Stock**:
 How many packages of a Product are at home. An opened package counts as one.
@@ -70,6 +70,10 @@ The Products that are expired, past Best Before, expiring soon, or Running Low, 
 _Avoid_: Alerts, warnings
 
 ## Shopping
+
+**Category**:
+A part of the shop where the household finds a Product, such as HeVi, Leivät, Maitotuotteet or Kosmetiikka. The household defines its own Categories and orders them the way it walks through its shop. A Product has at most one Category.
+_Avoid_: Section, aisle, department, Location
 
 **Shopping List**:
 The one list of things the household needs to buy. Everyone shares it, and it is grouped by Category.

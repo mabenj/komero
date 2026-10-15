@@ -1,5 +1,5 @@
 // Per-device conveniences: the app reopens on the last used tab, scanning starts
-// in the last used mode, and new Products default to the last used Category.
+// in the last used mode, and new Products default to the last used Location.
 // Browser storage is fine for these, and any failure just falls back to the default.
 import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
 
@@ -38,12 +38,12 @@ const scanMode = remembered("komero.lastScanMode", oneOf(SCAN_MODES));
 export const rememberScanMode = scanMode.set;
 export const lastScanMode = (): ScanMode => scanMode.get() ?? "add";
 
-// A Category id; callers check it still exists.
+// A Location id; callers check it still exists.
 const location = remembered("komero.lastLocation", (stored): stored is string => stored !== "");
 export const rememberLocation = location.set;
 export const lastLocation = location.get;
 
-// Category ids folded shut on Koti, comma-separated; ids of deleted Categories do no harm.
+// Location ids folded shut on Koti, comma-separated; ids of deleted Locations do no harm.
 const folded = remembered("komero.foldedLocations", (stored): stored is string => stored !== "");
 export const rememberFoldedLocations = (ids: string[]) => folded.set(ids.join(","));
 export const foldedLocations = (): string[] => folded.get()?.split(",") ?? [];

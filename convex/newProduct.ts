@@ -2,12 +2,14 @@ import { ConvexError } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { recordActivity } from "./activities";
+import { requireCategory } from "./categories";
 import { nameKey, tidyName } from "./productNames";
 import type { ExpiryKind } from "./stock";
 
 type NewProduct = {
   name: string;
   locationId: Id<"locations">;
+  categoryId?: Id<"categories">;
   stock: number;
   minimumStock?: number;
   expiryKind?: ExpiryKind;
@@ -20,16 +22,18 @@ type NewProduct = {
 export async function createProduct(
   ctx: MutationCtx,
   memberId: Id<"users">,
-  { name, locationId, stock, minimumStock, expiryKind }: NewProduct,
+  { name, locationId, categoryId, stock, minimumStock, expiryKind }: NewProduct,
 ) {
   const tidy = tidyName(name);
   if (tidy === "") throw new ConvexError("NAME_REQUIRED");
   if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
+  if (categoryId !== undefined) await requireCategory(ctx, categoryId);
   if (minimumStock !== undefined) requireMinimumStock(minimumStock);
   const productId = await ctx.db.insert("products", {
     name: tidy,
     nameKey: nameKey(tidy),
     locationId,
+    categoryId,
     stock,
     minimumStock,
     expiryKind,

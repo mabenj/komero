@@ -11,6 +11,7 @@
 import type * as activities from "../activities.js";
 import type * as auth from "../auth.js";
 import type * as barcodes from "../barcodes.js";
+import type * as categories from "../categories.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as inventory from "../inventory.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   activities: typeof activities;
   auth: typeof auth;
   barcodes: typeof barcodes;
+  categories: typeof categories;
   crons: typeof crons;
   http: typeof http;
   inventory: typeof inventory;

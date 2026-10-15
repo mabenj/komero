@@ -3,10 +3,11 @@
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { createContext, useContext, useEffect, useState } from "react";
+import { CategorySelect } from "@/components/CategorySelect";
 import { CupboardNote } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
-import { CheckIcon, TrashIcon } from "@/components/icons";
+import { CheckIcon, TagIcon, TrashIcon } from "@/components/icons";
 import { landInBag, Reveal, RollingNumber, settle, useRowMotion, useSectionMotion } from "@/components/motion";
 import { useNeedMore } from "@/components/NeedMore";
 import { NumberStepper, stepButton } from "@/components/NumberStepper";
@@ -16,9 +17,12 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey } from "@/convex/productNames";
 import { useT } from "@/lib/i18n";
 import {
+  entriesIn,
+  type Groups,
   putAwayAllLocally,
   putAwayLocally,
   removeLocally,
+  setCategoryLocally,
   setQuantityLocally,
   tickLocally,
   untickLocally,
@@ -31,9 +35,18 @@ type Entry = {
   name: string;
   quantity: number;
   productId?: Id<"products">;
+  categoryId?: Id<"categories"> | null;
   stock?: number;
   asksForDate?: boolean;
 };
+
+/** The groups to show, with their headings: the Categories with Entries, then "Other" if it has any. */
+function titled(groups: Groups, other: string) {
+  return [
+    ...groups.categories.map(({ _id, name, entries }) => ({ key: _id as string, title: name, entries })),
+    ...(groups.other.length > 0 ? [{ key: "other", title: other, entries: groups.other }] : []),
+  ];
+}
 
 // How long "All put away!" shows after Put Away empties the Bag.
 const ALL_PUT_AWAY_MS = 4000;
@@ -63,7 +76,11 @@ function listedOnceIn(entries: Entry[]) {
   return new Set([...counts].filter(([, count]) => count === 1).map(([listed]) => listed));
 }
 
-/** The shared Shopping List: to-buy Entries grouped by Category, then One-offs under "Other", then the Bag. */
+/**
+ * The shared Shopping List: to-buy Entries grouped by Category in walking
+ * order, then "Other" (Products without a Category, and One-offs), then the
+ * Bag, grouped the same way.
+ */
 export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
@@ -78,10 +95,11 @@ export default function ListaScreen() {
 
   if (list === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
-  const nothingToBuy = list.locations.length === 0 && list.oneOffs.length === 0;
+  const nothingToBuy = entriesIn(list).length === 0;
+  const bagIsEmpty = entriesIn(list.bag).length === 0;
   // An undo that refills the Bag ends the moment.
-  const showAllPutAway = allPutAway && list.bag.length === 0;
-  const listedOnce = listedOnceIn([...list.locations.flatMap((location) => location.entries), ...list.oneOffs, ...list.bag]);
+  const showAllPutAway = allPutAway && bagIsEmpty;
+  const listedOnce = listedOnceIn([...entriesIn(list), ...entriesIn(list.bag)]);
   // One layout group, so a row that moves or leaves moves everything below it smoothly.
   return (
     <LayoutGroup>
@@ -89,13 +107,12 @@ export default function ListaScreen() {
         <div className="flex flex-col gap-6">
           <AddToList />
           {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
-          {nothingToBuy && list.bag.length === 0 && <ListNote allPutAway={showAllPutAway} />}
+          {nothingToBuy && bagIsEmpty && <ListNote allPutAway={showAllPutAway} />}
           <AnimatePresence initial={false}>
-            {list.locations.map((location) => (
-              <EntryGroup key={location._id} title={location.name} entries={location.entries} />
+            {titled(list, t("lista.other")).map((group) => (
+              <EntryGroup key={group.key} title={group.title} entries={group.entries} />
             ))}
-            {list.oneOffs.length > 0 && <EntryGroup key="oneOffs" title={t("lista.other")} entries={list.oneOffs} />}
-            {list.bag.length > 0 && <Bag key="bag" entries={list.bag} onEmptied={() => setAllPutAway(true)} />}
+            {!bagIsEmpty && <Bag key="bag" groups={list.bag} onEmptied={() => setAllPutAway(true)} />}
           </AnimatePresence>
           {showAllPutAway && !nothingToBuy && <ListNote allPutAway />}
         </div>
@@ -189,17 +206,31 @@ function AddToList() {
   );
 }
 
-
-function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
+/** A Category's Entries (or Other's), on the list or inside the Bag. */
+function EntryGroup({
+  title,
+  entries,
+  inBag = false,
+  onEmptied,
+}: {
+  title: string;
+  entries: Entry[];
+  inBag?: boolean;
+  onEmptied?: () => void;
+}) {
   const sectionMotion = useSectionMotion();
   return (
     <motion.section {...sectionMotion} className="flex flex-col gap-1.5">
-      <h2 className="px-1 font-display text-lg">{title}</h2>
+      {inBag ? (
+        <h3 className="px-1 text-sm text-stone-500">{title}</h3>
+      ) : (
+        <h2 className="px-1 font-display text-lg">{title}</h2>
+      )}
       <ul className={`${cardList} flex flex-col`}>
         <AnimatePresence initial={false}>
           {entries.map((entry) => (
             // On the list a Product or One-off has one Entry, so the row stays when the server gives it a new id.
-            <EntryRow key={productOrOneOff(entry)} entry={entry} />
+            <EntryRow key={inBag ? entry._id : productOrOneOff(entry)} entry={entry} inBag={inBag} onEmptied={onEmptied} />
           ))}
         </AnimatePresence>
       </ul>
@@ -208,11 +239,13 @@ function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
 }
 
 /**
- * "In the bag": Entries ticked off in the shop, put away one at a time or all
- * at once. "Put away all" first asks for a date for each Product with an Expiry Kind.
+ * "In the bag": Entries ticked off in the shop, grouped by Category like the
+ * list, put away one at a time or all at once. "Put away all" first asks for a
+ * date for each Product with an Expiry Kind.
  */
-function Bag({ entries, onEmptied }: { entries: Entry[]; onEmptied: () => void }) {
+function Bag({ groups, onEmptied }: { groups: Groups; onEmptied: () => void }) {
   const t = useT();
+  const entries: Entry[] = entriesIn(groups);
   const sectionMotion = useSectionMotion();
   const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll).withOptimisticUpdate(putAwayAllLocally);
   const showPutAway = usePutAwayToast();
@@ -271,13 +304,17 @@ function Bag({ entries, onEmptied }: { entries: Entry[]; onEmptied: () => void }
           </Reveal>
         )}
       </AnimatePresence>
-      <ul className={`${cardList} flex flex-col`}>
-        <AnimatePresence initial={false}>
-          {entries.map((entry) => (
-            <EntryRow key={entry._id} entry={entry} inBag onEmptied={entries.length === 1 ? onEmptied : undefined} />
-          ))}
-        </AnimatePresence>
-      </ul>
+      <AnimatePresence initial={false}>
+        {titled(groups, t("lista.other")).map((group) => (
+          <EntryGroup
+            key={group.key}
+            title={group.title}
+            entries={group.entries}
+            inBag
+            onEmptied={entries.length === 1 ? onEmptied : undefined}
+          />
+        ))}
+      </AnimatePresence>
     </motion.section>
   );
 }
@@ -287,8 +324,9 @@ const tickButton =
 
 /**
  * One Entry: a tick toggle, its name (and the Product's Stock at home), then
- * its quantity as a number that opens –, + and delete on the list, or the
- * quantity and Put away in the Bag. A One-off can be made into a Product.
+ * its quantity as a number that opens –, +, the Product's Category and delete
+ * on the list, or the quantity and Put away in the Bag. A One-off can be made
+ * into a Product.
  * Every change and its toast show at once, even on a weak signal in the shop.
  * Ticked, the row moves into the Bag (landing with a little bounce), and
  * taken back out, it moves back up; it slides in and out when added,
@@ -306,6 +344,7 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   const showPutAway = usePutAwayToast();
   const remove = useMutation(api.shoppingList.remove).withOptimisticUpdate(removeLocally);
   const restore = useMutation(api.shoppingList.restore);
+  const update = useMutation(api.products.update).withOptimisticUpdate(setCategoryLocally);
   const rowMotion = useRowMotion();
   const reduced = useReducedMotion();
   const { moved, onMove, listedOnce } = useContext(BagMoves);
@@ -327,6 +366,10 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   const untickEntry = () => {
     onMove(listed);
     void untick({ entryId: entry._id });
+  };
+  const setCategory = (productId: Id<"products">, categoryId: Id<"categories"> | null) => {
+    onMove(listed);
+    void update({ productId, categoryId });
   };
   const deleteEntry = () => {
     const deleted = { productId: entry.productId, name: entry.name, quantity: entry.quantity };
@@ -390,14 +433,28 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
             onIncrease={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity + 1 })}
             increaseLabel={t("lista.increase", { name: entry.name })}
             extra={
-              <button
-                type="button"
-                className={stepButton}
-                aria-label={t("lista.delete", { name: entry.name })}
-                onClick={deleteEntry}
-              >
-                <TrashIcon width={18} height={18} />
-              </button>
+              <>
+                {entry.productId && (
+                  // The tag is the button; the native picker opens from the invisible select over it.
+                  <span className={`${stepButton} relative`}>
+                    <TagIcon width={18} height={18} />
+                    <CategorySelect
+                      value={entry.categoryId ?? null}
+                      onChange={(categoryId) => setCategory(entry.productId!, categoryId)}
+                      aria-label={t("lista.category", { name: entry.name })}
+                      className="absolute inset-0 opacity-0"
+                    />
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className={stepButton}
+                  aria-label={t("lista.delete", { name: entry.name })}
+                  onClick={deleteEntry}
+                >
+                  <TrashIcon width={18} height={18} />
+                </button>
+              </>
             }
           />
         )}
@@ -425,13 +482,17 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   );
 }
 
-/** Turns a One-off into a Product: its name pre-filled, and a Category to choose. */
+/**
+ * Turns a One-off into a Product: its name pre-filled, a Location to choose,
+ * and optionally a Category, which is never remembered.
+ */
 function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
   const t = useT();
   const inventory = useQuery(api.inventory.get);
   const makeProduct = useMutation(api.shoppingList.makeProduct);
   const [name, setName] = useState(entry.name);
   const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
+  const [categoryId, setCategoryId] = useState<Id<"categories"> | null>(null);
 
   if (inventory === undefined) return null;
   const remembered = inventory.find((location) => location._id === lastLocation())?._id;
@@ -439,7 +500,7 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
 
   const save = async () => {
     if (!locationId || name.trim() === "") return;
-    await makeProduct({ entryId: entry._id, name, locationId });
+    await makeProduct({ entryId: entry._id, name, locationId, categoryId });
     rememberLocation(locationId);
     onDone();
   };
@@ -458,6 +519,12 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
         aria-label={t("product.name")}
         autoComplete="off"
         autoFocus
+        className={`${field} w-full px-3`}
+      />
+      <CategorySelect
+        value={categoryId}
+        onChange={setCategoryId}
+        aria-label={t("product.category")}
         className={`${field} w-full px-3`}
       />
       <div className="flex items-center gap-2">

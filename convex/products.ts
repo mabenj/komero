@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { type MutationCtx, mutation, query } from "./_generated/server";
 import { recordActivity, relinkActivities } from "./activities";
+import { requireCategory } from "./categories";
 import { requireMemberId } from "./members";
 import type { Doc, Id } from "./_generated/dataModel";
 import { createProduct, requireMinimumStock } from "./newProduct";
@@ -9,7 +10,7 @@ import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingLis
 import { applyRestock, applyUndo, applyUse, crossedIntoRunningLow, expiryKind, isDate, stockChange } from "./stock";
 
 /**
- * Adds a Product by name to its Category. A new Product starts with Stock 1.
+ * Adds a Product by name to its Location. A new Product starts with Stock 1.
  * Both the search/add field and quick-add use this; the add form's "More" can
  * also set a Minimum Stock and an Expiry Kind. A name that already exists is
  * only warned about (`search`), so this adds a second Product with it.
@@ -35,6 +36,7 @@ export const get = query({
     const product = await ctx.db.get(productId);
     if (product === null) return null;
     const location = await ctx.db.get(product.locationId);
+    const category = product.categoryId && (await ctx.db.get(product.categoryId));
     const barcodes = await ctx.db
       .query("barcodes")
       .withIndex("by_product", (q) => q.eq("productId", productId))
@@ -48,6 +50,8 @@ export const get = query({
       expiryDate: product.expiryDate ?? null,
       locationId: product.locationId,
       locationName: location?.name ?? "",
+      categoryId: category?._id ?? null,
+      categoryName: category?.name ?? null,
       barcodes: barcodes.map(({ _id, code }) => ({ _id, code })),
     };
   },
@@ -76,16 +80,21 @@ export const update = mutation({
   args: {
     productId: v.id("products"),
     locationId: v.optional(v.id("locations")),
+    categoryId: v.optional(v.union(v.id("categories"), v.null())),
     minimumStock: v.optional(v.union(v.number(), v.null())),
     expiryKind: v.optional(v.union(expiryKind, v.null())),
     expiryDate: v.optional(v.union(v.string(), v.null())),
   },
-  handler: async (ctx, { productId, locationId, minimumStock, expiryKind, expiryDate }) => {
+  handler: async (ctx, { productId, locationId, categoryId, minimumStock, expiryKind, expiryDate }) => {
     await requireMemberId(ctx);
     const product = await requireProduct(ctx, productId);
     if (locationId !== undefined) {
       if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
       await ctx.db.patch(productId, { locationId });
+    }
+    if (categoryId !== undefined) {
+      if (categoryId !== null) await requireCategory(ctx, categoryId);
+      await ctx.db.patch(productId, { categoryId: categoryId ?? undefined });
     }
     if (minimumStock !== undefined) {
       if (minimumStock !== null) requireMinimumStock(minimumStock);
@@ -107,6 +116,7 @@ const deletedProduct = {
   productId: v.id("products"),
   name: v.string(),
   locationId: v.id("locations"),
+  categoryId: v.optional(v.id("categories")),
   stock: v.number(),
   minimumStock: v.optional(v.number()),
   expiryKind: v.optional(expiryKind),
@@ -124,7 +134,7 @@ export const remove = mutation({
   handler: async (ctx, { productId }) => {
     const memberId = await requireMemberId(ctx);
     const product = await requireProduct(ctx, productId);
-    const { name, locationId, stock, minimumStock, expiryKind, expiryDate } = product;
+    const { name, locationId, categoryId, stock, minimumStock, expiryKind, expiryDate } = product;
     const entries = await removeEntriesOf(ctx, productId);
     const barcodes = await ctx.db
       .query("barcodes")
@@ -137,6 +147,7 @@ export const remove = mutation({
       productId,
       name,
       locationId,
+      categoryId,
       stock,
       minimumStock,
       expiryKind,
@@ -151,13 +162,25 @@ export const remove = mutation({
  * The delete undo toast: puts the Product back as it was, with its Barcodes
  * (those not linked to another Product meanwhile) and Shopping List Entries.
  * Returns its new id, which takes over the deleted Product's Activities.
- * If its Category was deleted meanwhile, it goes to the first Category.
+ * If its Location was deleted meanwhile, it goes to the first Location; if
+ * its Category was, it comes back without one.
  */
 export const restore = mutation({
   args: deletedProduct,
   handler: async (
     ctx,
-    { productId: deletedId, name, locationId, stock, minimumStock, expiryKind, expiryDate, entries, barcodes },
+    {
+      productId: deletedId,
+      name,
+      locationId,
+      categoryId,
+      stock,
+      minimumStock,
+      expiryKind,
+      expiryDate,
+      entries,
+      barcodes,
+    },
   ) => {
     const memberId = await requireMemberId(ctx);
     const home =
@@ -168,6 +191,7 @@ export const restore = mutation({
       name,
       nameKey: nameKey(name),
       locationId: home._id,
+      categoryId: categoryId && (await ctx.db.get(categoryId))?._id,
       stock,
       minimumStock,
       expiryKind,

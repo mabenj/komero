@@ -108,24 +108,26 @@ export const remove = mutation({
 
 /**
  * "New Product" for an unknown barcode: creates the Product Out of Stock in
- * the chosen Category, links the barcode and applies the scan mode, so
- * Add mode leaves it at Stock 1. Its Expiry Kind is the one Open Food Facts
- * suggested, if any. A name that is already a Product's (in any case) links
- * to that Product instead, leaving it as it is.
+ * the chosen Location (and Category, if one is chosen), links the barcode and
+ * applies the scan mode, so Add mode leaves it at Stock 1. Its Expiry Kind is
+ * the one Open Food Facts suggested, if any. A name that is already a
+ * Product's (in any case) links to that Product instead, leaving it as it is.
  */
 export const linkNew = mutation({
   args: {
     code: v.string(),
     name: v.string(),
     locationId: v.id("locations"),
+    categoryId: v.optional(v.union(v.id("categories"), v.null())),
     mode: scanMode,
     expiryKind: v.optional(v.union(expiryKind, v.null())),
   },
-  handler: async (ctx, { code, name, locationId, mode, expiryKind }) => {
+  handler: async (ctx, { code, name, locationId, categoryId, mode, expiryKind }) => {
     const memberId = await requireMemberId(ctx);
     const product = await findOrCreateProduct(ctx, memberId, {
       name,
       locationId,
+      categoryId: categoryId ?? undefined,
       stock: 0,
       expiryKind: expiryKind ?? undefined,
     });

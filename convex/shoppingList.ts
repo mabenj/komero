@@ -1,6 +1,6 @@
 import { ConvexError, type Infer, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { type MutationCtx, mutation, query } from "./_generated/server";
+import { type MutationCtx, mutation, query, type QueryCtx } from "./_generated/server";
 import { recordActivity } from "./activities";
 import { requireMemberId } from "./members";
 import { findOrCreateProduct } from "./newProduct";
@@ -9,64 +9,66 @@ import { applyRestock, applyUndo, isDate, stockChange } from "./stock";
 
 type ListedEntry = { _id: Id<"entries">; name: string; quantity: number };
 // `asksForDate`: the Product has an Expiry Kind, so Put Away prompts for a date.
-type ProductEntry = ListedEntry & { productId: Id<"products">; stock: number; asksForDate: boolean };
+type ProductEntry = ListedEntry & {
+  productId: Id<"products">;
+  categoryId: Id<"categories"> | null;
+  stock: number;
+  asksForDate: boolean;
+};
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "fi");
 
 /**
- * Lista: to-buy Product Entries grouped by their Product's Category in
- * Category order (empty Categories left out), each with the Product's current
- * Stock; then One-offs, which Lista shows under "Other"; then the Bag
- * ("In the bag"), Product Entries and One-offs together.
+ * Lista: to-buy Entries grouped by their Product's Category in walking order
+ * (empty Categories left out), each with the Product's current Stock; then
+ * `other`, Products without a Category and One-offs together; then the Bag
+ * ("In the bag"), grouped the same way. Entries are by name within each group.
  */
 export const get = query({
   args: {},
   handler: async (ctx) => {
     await requireMemberId(ctx);
     const entries = await ctx.db.query("entries").collect();
-
-    const byLocation = new Map<Id<"locations">, ProductEntry[]>();
-    const oneOffs: ListedEntry[] = [];
+    const toBuy: (ListedEntry | ProductEntry)[] = [];
     const bag: (ListedEntry | ProductEntry)[] = [];
     for (const entry of entries) {
-      if (entry.productId === undefined) {
-        const oneOff = { _id: entry._id, name: entry.name ?? "", quantity: entry.quantity };
-        (entry.state === "inBag" ? bag : oneOffs).push(oneOff);
-        continue;
-      }
-      const product = await ctx.db.get(entry.productId);
-      if (product === null) continue;
-      const listed = {
-        _id: entry._id,
-        productId: product._id,
-        name: product.name,
-        quantity: entry.quantity,
-        stock: product.stock,
-        asksForDate: product.expiryKind !== undefined,
-      };
-      if (entry.state === "inBag") {
-        bag.push(listed);
-        continue;
-      }
-      const group = byLocation.get(product.locationId) ?? [];
-      group.push(listed);
-      byLocation.set(product.locationId, group);
+      const listed = await listedEntry(ctx, entry);
+      if (listed) (entry.state === "inBag" ? bag : toBuy).push(listed);
     }
-
-    const locations = await ctx.db.query("locations").withIndex("by_sortOrder").collect();
-    return {
-      locations: locations
-        .filter((location) => byLocation.has(location._id))
-        .map((location) => ({
-          _id: location._id,
-          name: location.name,
-          entries: byLocation.get(location._id)!.sort(byName),
-        })),
-      oneOffs: oneOffs.sort(byName),
-      bag: bag.sort(byName),
-    };
+    const categories = await ctx.db.query("categories").withIndex("by_sortOrder").collect();
+    return { ...groupedByCategory(toBuy, categories), bag: groupedByCategory(bag, categories) };
   },
 });
+
+/** An Entry as Lista shows it, or null if its Product is gone. */
+async function listedEntry(ctx: QueryCtx, entry: Doc<"entries">): Promise<ListedEntry | ProductEntry | null> {
+  if (entry.productId === undefined) return { _id: entry._id, name: entry.name ?? "", quantity: entry.quantity };
+  const product = await ctx.db.get(entry.productId);
+  if (product === null) return null;
+  return {
+    _id: entry._id,
+    productId: product._id,
+    categoryId: product.categoryId ?? null,
+    name: product.name,
+    quantity: entry.quantity,
+    stock: product.stock,
+    asksForDate: product.expiryKind !== undefined,
+  };
+}
+
+function groupedByCategory(entries: (ListedEntry | ProductEntry)[], categories: Doc<"categories">[]) {
+  const categoryOf = (entry: ListedEntry | ProductEntry) => ("categoryId" in entry ? entry.categoryId : null);
+  return {
+    categories: categories
+      .map(({ _id, name }) => ({
+        _id,
+        name,
+        entries: entries.filter((entry): entry is ProductEntry => categoryOf(entry) === _id).sort(byName),
+      }))
+      .filter((category) => category.entries.length > 0),
+    other: entries.filter((entry) => categoryOf(entry) === null).sort(byName),
+  };
+}
 
 /**
  * Need More: puts a Product on the Shopping List, or raises its Entry's
@@ -348,17 +350,28 @@ export const undoPutAway = mutation({
 });
 
 /**
- * Turns a One-off into a Product in the chosen Category, Out of Stock (it
- * is still to be bought), and links the Entry to it. A name that is already a
- * Product's (in any case) links to that Product instead.
+ * Turns a One-off into a Product in the chosen Location (and Category, if
+ * one is chosen), Out of Stock (it is still to be bought), and links the Entry
+ * to it. A name that is already a Product's (in any case) links to that
+ * Product instead.
  */
 export const makeProduct = mutation({
-  args: { entryId: v.id("entries"), name: v.string(), locationId: v.id("locations") },
-  handler: async (ctx, { entryId, name, locationId }) => {
+  args: {
+    entryId: v.id("entries"),
+    name: v.string(),
+    locationId: v.id("locations"),
+    categoryId: v.optional(v.union(v.id("categories"), v.null())),
+  },
+  handler: async (ctx, { entryId, name, locationId, categoryId }) => {
     const memberId = await requireMemberId(ctx);
     const entry = await requireEntry(ctx, entryId);
     if (entry.productId !== undefined) throw new ConvexError("NOT_A_ONE_OFF");
-    const product = await findOrCreateProduct(ctx, memberId, { name, locationId, stock: 0 });
+    const product = await findOrCreateProduct(ctx, memberId, {
+      name,
+      locationId,
+      categoryId: categoryId ?? undefined,
+      stock: 0,
+    });
     if (entry.state === "toBuy") {
       await ctx.db.delete(entryId);
       await addToList(ctx, memberId, { product }, entry.quantity);

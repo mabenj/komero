@@ -1,6 +1,6 @@
 // Finnish UI strings: the source of truth for translation keys.
-// Every visible UI string lives here. User text (Product, Category and One-off
-// names) is never translated; interpolate it with {placeholders} instead.
+// Every visible UI string lives here. User text (Product, Location, Category
+// and One-off names) is never translated; interpolate it with {placeholders} instead.
 // Every key also needs an English string in en.ts, or typecheck fails.
 export const fi = {
   "app.name": "Komero",
@@ -46,7 +46,7 @@ export const fi = {
   "koti.emptyHint": "Kirjoita ensimmäisen tuotteesi nimi yllä olevaan kenttään tai skannaa pakkauksen viivakoodi.",
   "koti.search": "Hae tai lisää tuote",
   "koti.add": "+ Lisää ”{name}”",
-  "koti.addTo": "Kategoria",
+  "koti.addTo": "Säilytyspaikka",
   "koti.more": "Lisätiedot",
   "koti.duplicate": "{name} on jo olemassa: {location}",
   "koti.use": "Käytä yksi: {name}",
@@ -69,7 +69,9 @@ export const fi = {
   "expiry.bestBefore": "Parasta ennen {date}",
   "expiry.useBy": "Viimeinen käyttöpäivä {date}",
   "product.name": "Nimi",
-  "product.homeLocation": "Kategoria",
+  "product.homeLocation": "Säilytyspaikka",
+  "product.category": "Kategoria",
+  "product.noCategory": "Ei kategoriaa",
   "product.stock": "Komerossa",
   "product.minimumStock": "Minimivarasto",
   "product.minimumStockNone": "Ei asetettu",
@@ -137,6 +139,7 @@ export const fi = {
   "lista.allPutAwayTitle": "Kaikki komerossa!",
   "lista.allPutAwayHint": "Kassi on tyhjä, ja ostokset ovat komerossa.",
   "lista.makeProduct": "Luo tuote",
+  "lista.category": "Kategoria: {name}",
   "lista.datePrompt": "{name}: mikä päiväys pakkauksessa?",
   "lista.datePromptStep": "{step}/{count}",
   "lista.dateSkip": "Ohita",
@@ -148,18 +151,21 @@ export const fi = {
   // Language names are written in their own language in both dictionaries.
   "settings.language.fi": "Suomi",
   "settings.language.en": "English",
-  "settings.locations": "Kategoriat",
-  "locations.newName": "Uusi kategoria, esim. Kellari",
+  "settings.locations": "Säilytyspaikat",
+  "locations.newName": "Uusi säilytyspaikka, esim. Kellari",
   "locations.add": "Lisää",
-  "locations.rename": "Kategorian nimi: {name}",
+  "locations.rename": "Säilytyspaikan nimi: {name}",
   "locations.moveUp": "Siirrä ylös: {name}",
   "locations.moveDown": "Siirrä alas: {name}",
   "locations.delete": "Poista {name}",
-  "locations.moveOne": "{name}: siirrä 1 tuote kategoriaan…",
-  "locations.moveMany": "{name}: siirrä {count} tuotetta kategoriaan…",
-  "locations.moveTarget": "Uusi kategoria tuotteille",
+  "locations.moveOne": "{name}: siirrä 1 tuote säilytyspaikkaan…",
+  "locations.moveMany": "{name}: siirrä {count} tuotetta säilytyspaikkaan…",
+  "locations.moveTarget": "Uusi säilytyspaikka tuotteille",
   "locations.moveAndDelete": "Siirrä ja poista",
   "locations.cancel": "Peruuta",
+  "settings.categories": "Kategoriat",
+  "categories.newName": "Uusi kategoria, esim. Lemmikit",
+  "categories.rename": "Kategorian nimi: {name}",
   "settings.members": "Käyttäjät",
   "settings.you": "(sinä)",
   "settings.createInvite": "Luo kutsulinkki",

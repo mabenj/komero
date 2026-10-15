@@ -4,7 +4,7 @@ import { requireMemberId } from "./members";
 import { attentionStatus, byUrgency } from "./stock";
 
 /**
- * Koti: every Category in the household's order, each with its Products by
+ * Koti: every Location in the household's order, each with its Products by
  * name, with their Stock and Expiry Kind and Date for the date badges, and
  * Minimum Stock for marking the ones Running Low.
  */
@@ -22,9 +22,10 @@ export const get = query({
         return {
           _id: location._id,
           name: location.name,
-          products: products.map(({ _id, name, stock, expiryKind, expiryDate, minimumStock }) => ({
+          products: products.map(({ _id, name, categoryId, stock, expiryKind, expiryDate, minimumStock }) => ({
             _id,
             name,
+            categoryId: categoryId ?? null,
             stock,
             expiryKind: expiryKind ?? null,
             expiryDate: expiryDate ?? null,

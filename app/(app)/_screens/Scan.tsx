@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
+import { CategorySelect } from "@/components/CategorySelect";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { crossFade, Reveal } from "@/components/motion";
@@ -250,9 +251,9 @@ function useScanConfirmation() {
 }
 
 /**
- * An unknown barcode: either a New Product (name typed, Category chosen) or
- * an existing Product (searched), in a sheet over the paused camera. The
- * barcode is linked, then the mode applies. Open Food Facts is asked in the
+ * An unknown barcode: either a New Product (name typed, Location chosen, and
+ * a Category if the Member wants) or an existing Product (searched), in a
+ * sheet over the paused camera. The barcode is linked, then the mode applies. Open Food Facts is asked in the
  * background; its suggestion fills the name only if the Member hasn't started
  * typing, and never links by itself.
  */
@@ -311,9 +312,9 @@ function UnknownBarcode({
       {choice === "new" ? (
         <NewProductForm
           suggestion={suggestion}
-          onSubmit={(name, locationId, expiryKind) => {
+          onSubmit={(name, locationId, categoryId, expiryKind) => {
             rememberLocation(locationId);
-            finish(linkNew({ code, name, locationId, mode, expiryKind }));
+            finish(linkNew({ code, name, locationId, categoryId, mode, expiryKind }));
           }}
         />
       ) : (
@@ -336,13 +337,20 @@ function NewProductForm({
   onSubmit,
 }: {
   suggestion: Suggestion | null;
-  onSubmit: (name: string, locationId: Id<"locations">, expiryKind: ExpiryKind | null) => void;
+  onSubmit: (
+    name: string,
+    locationId: Id<"locations">,
+    categoryId: Id<"categories"> | null,
+    expiryKind: ExpiryKind | null,
+  ) => void;
 }) {
   const t = useT();
   const inventory = useQuery(api.inventory.get);
   const nameField = useRef<HTMLInputElement>(null);
   const [typedName, setTypedName] = useState<string | null>(null);
   const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
+  // Unlike the Location, never remembered: the last Category is usually wrong for the next Product.
+  const [categoryId, setCategoryId] = useState<Id<"categories"> | null>(null);
   const [pickedExpiryKind, setPickedExpiryKind] = useState<ExpiryKind | null | undefined>(undefined);
   const name = typedName ?? suggestion?.name ?? "";
   const suggested = typedName === null && name !== "";
@@ -356,7 +364,7 @@ function NewProductForm({
   }, [suggested]);
 
   const submit = () => {
-    if (name.trim() !== "" && locationId) onSubmit(name, locationId, expiryKind);
+    if (name.trim() !== "" && locationId) onSubmit(name, locationId, categoryId, expiryKind);
   };
 
   return (
@@ -394,6 +402,10 @@ function NewProductForm({
             </option>
           ))}
         </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-sm text-stone-500">{t("product.category")}</span>
+        <CategorySelect value={categoryId} onChange={setCategoryId} className={fieldClass} />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-sm text-stone-500">{t("product.expiryKind")}</span>

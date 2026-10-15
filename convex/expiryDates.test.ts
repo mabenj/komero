@@ -186,12 +186,12 @@ describe("Expiry Date rules", () => {
     }
     await anna.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
     await anna.mutation(api.shoppingList.tick, {
-      entryId: (await anna.query(api.shoppingList.get, {})).oneOffs[0]._id,
+      entryId: (await anna.query(api.shoppingList.get, {})).other[0]._id,
     });
 
     const { bag } = await anna.query(api.shoppingList.get, {});
 
-    expect(bag.map((entry) => `${entry.name}: ${"asksForDate" in entry && entry.asksForDate}`)).toEqual([
+    expect(bag.other.map((entry) => `${entry.name}: ${"asksForDate" in entry && entry.asksForDate}`)).toEqual([
       "Maito: true",
       "Synttärikynttilät: false",
       "Vessapaperi: false",

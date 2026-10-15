@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ActivityList } from "@/components/ActivityList";
 import { LanguagePicker } from "@/components/LanguagePicker";
-import { LocationsSettings } from "@/components/LocationsSettings";
+import { CategoriesSettings, LocationsSettings } from "@/components/LocationsSettings";
 import { api } from "@/convex/_generated/api";
 import { useT } from "@/lib/i18n";
 import { cardList, field, primaryButton, secondaryButton } from "@/lib/styles";
@@ -25,6 +25,7 @@ export default function SettingsScreen() {
   return (
     <div className="flex flex-col gap-8">
       <LocationsSettings />
+      <CategoriesSettings />
       <Members />
       <InviteLink />
       <LanguagePicker />

@@ -2,6 +2,7 @@ import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 import { redeemInvite } from "./invites";
 import type { MutationCtx } from "./_generated/server";
+import { seedDefaultCategories } from "./categories";
 import { seedDefaultLocations } from "./locations";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -30,8 +31,10 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
 
       const isFirstMember = (await ctx.db.query("users").first()) === null;
       const memberId = await ctx.db.insert("users", { email, language: "fi" });
-      if (isFirstMember) await seedDefaultLocations(ctx);
-      else await redeemInvite(ctx, inviteToken, memberId);
+      if (isFirstMember) {
+        await seedDefaultLocations(ctx);
+        await seedDefaultCategories(ctx);
+      } else await redeemInvite(ctx, inviteToken, memberId);
       return memberId;
     },
   },

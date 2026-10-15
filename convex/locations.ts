@@ -1,11 +1,11 @@
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation } from "./_generated/server";
 import { requireMemberId } from "./members";
 import { tidyName } from "./productNames";
 
-// Category names are household text, not UI copy, so they are never translated.
+// Location names are household text, not UI copy, so they are never translated.
 const DEFAULT_LOCATIONS = ["Jääkaappi", "Pakastin", "Kaappi", "Kylpyhuone", "Siivouskomero"];
 
 export async function seedDefaultLocations(ctx: MutationCtx) {
@@ -15,13 +15,13 @@ export async function seedDefaultLocations(ctx: MutationCtx) {
   }
 }
 
-/** Adds a Category after the existing ones. */
+/** Adds a Location after the existing ones. */
 export const create = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
     await requireMemberId(ctx);
     const last = await ctx.db.query("locations").withIndex("by_sortOrder").order("desc").first();
-    return await ctx.db.insert("locations", { name: locationName(name), sortOrder: (last?.sortOrder ?? -1) + 1 });
+    return await ctx.db.insert("locations", { name: requiredName(name), sortOrder: (last?.sortOrder ?? -1) + 1 });
   },
 });
 
@@ -30,12 +30,12 @@ export const rename = mutation({
   handler: async (ctx, { locationId, name }) => {
     await requireMemberId(ctx);
     await requireLocation(ctx, locationId);
-    await ctx.db.patch(locationId, { name: locationName(name) });
+    await ctx.db.patch(locationId, { name: requiredName(name) });
   },
 });
 
 /**
- * Puts the Categories in the given order. Categories missing from the list (say,
+ * Puts the Locations in the given order. Locations missing from the list (say,
  * one just added on another phone) keep their order after the listed ones, and
  * listed ones that no longer exist are skipped.
  */
@@ -43,22 +43,33 @@ export const reorder = mutation({
   args: { locationIds: v.array(v.id("locations")) },
   handler: async (ctx, { locationIds }) => {
     await requireMemberId(ctx);
-    const current = await ctx.db.query("locations").withIndex("by_sortOrder").collect();
-    const rank = (id: Id<"locations">) => {
-      const index = locationIds.indexOf(id);
-      return index === -1 ? locationIds.length : index;
-    };
-    current.sort((a, b) => rank(a._id) - rank(b._id));
-    for (const [sortOrder, location] of current.entries()) {
-      if (location.sortOrder !== sortOrder) await ctx.db.patch(location._id, { sortOrder });
-    }
+    await putInOrder(ctx, await ctx.db.query("locations").withIndex("by_sortOrder").collect(), locationIds);
   },
 });
 
 /**
- * Deletes a Category. An empty one goes straight away; one that still has
+ * Renumbers Locations or Categories (`current`, in their current order) to
+ * follow `ids`: ones missing from `ids` keep their order after the listed ones.
+ */
+export async function putInOrder<T extends Doc<"locations"> | Doc<"categories">>(
+  ctx: MutationCtx,
+  current: T[],
+  ids: T["_id"][],
+) {
+  const rank = (id: T["_id"]) => {
+    const index = ids.indexOf(id);
+    return index === -1 ? ids.length : index;
+  };
+  const sorted = [...current].sort((a, b) => rank(a._id) - rank(b._id));
+  for (const [sortOrder, row] of sorted.entries()) {
+    if (row.sortOrder !== sortOrder) await ctx.db.patch(row._id, { sortOrder });
+  }
+}
+
+/**
+ * Deletes a Location. An empty one goes straight away; one that still has
  * Products needs `moveProductsTo`, and every Product moves there first, so
- * Products are never lost as a side effect. The last Category can't go.
+ * Products are never lost as a side effect. The last Location can't go.
  */
 export const remove = mutation({
   args: { locationId: v.id("locations"), moveProductsTo: v.optional(v.id("locations")) },
@@ -83,7 +94,8 @@ export const remove = mutation({
   },
 });
 
-function locationName(name: string) {
+/** A Location's or Category's name, tidied; it can't be empty. */
+export function requiredName(name: string) {
   const tidy = tidyName(name);
   if (tidy === "") throw new ConvexError("NAME_REQUIRED");
   return tidy;

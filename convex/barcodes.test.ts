@@ -45,7 +45,7 @@ describe("Scanning an unknown barcode", () => {
     });
     expect(linked).toMatchObject({ unknown: false, name: "Maito", action: "restock", from: 0, to: 1 });
     const page = await anna.query(api.products.get, { productId: linked!.productId });
-    expect(page).toMatchObject({ name: "Maito", locationName: "Jääkaappi", stock: 1 });
+    expect(page).toMatchObject({ name: "Maito", locationName: "Jääkaappi", categoryName: null, stock: 1 });
     expect(page!.barcodes.map((barcode) => barcode.code)).toEqual([MAITO_VALIO]);
 
     const scanned = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
@@ -54,20 +54,22 @@ describe("Scanning an unknown barcode", () => {
     expect(await stockOf(anna, "Maito")).toBe(2);
   });
 
-  test("New Product in Need more mode: the empty package's Product is Out of Stock and on the list", async () => {
+  test("New Product in Need more mode, in the chosen Category: Out of Stock and on the list under that Category", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
+    const siivous = (await anna.query(api.categories.list, {})).find((c) => c.name === "Siivous ja koti")!._id;
 
     const linked = await anna.mutation(api.barcodes.linkNew, {
       code: MAITO_VALIO,
       name: "Tiskiaine",
       locationId: await locationId(anna, "Siivouskomero"),
+      categoryId: siivous,
       mode: "needMore",
     });
 
     expect(linked).toMatchObject({ action: "needMore", name: "Tiskiaine", to: 0, quantity: 1 });
     const list = await anna.query(api.shoppingList.get, {});
-    expect(list.locations.map((location) => [location.name, location.entries.map((e) => e.name)])).toEqual([
-      ["Siivouskomero", ["Tiskiaine"]],
+    expect(list.categories.map((category) => [category.name, category.entries.map((e) => e.name)])).toEqual([
+      ["Siivous ja koti", ["Tiskiaine"]],
     ]);
     expect(await stockOf(anna, "Tiskiaine")).toBe(0);
   });
@@ -111,7 +113,7 @@ async function maitoWithBarcode(member: MemberSession) {
 
 async function bag(member: MemberSession) {
   const list = await member.query(api.shoppingList.get, {});
-  return list.bag.map((entry) => `${entry.name} ×${entry.quantity}`);
+  return list.bag.other.map((entry) => `${entry.name} ×${entry.quantity}`);
 }
 
 describe("Add mode", () => {
@@ -120,7 +122,7 @@ describe("Add mode", () => {
     const maito = await maitoWithBarcode(anna);
     await anna.mutation(api.shoppingList.needMore, { productId: maito });
     await anna.mutation(api.shoppingList.needMore, { productId: maito });
-    const [entry] = (await anna.query(api.shoppingList.get, {})).locations[0].entries;
+    const [entry] = (await anna.query(api.shoppingList.get, {})).other;
     await anna.mutation(api.shoppingList.tick, { entryId: entry._id });
     expect(await bag(anna)).toEqual(["Maito ×2"]);
 
@@ -149,7 +151,7 @@ describe("Add mode", () => {
     const maito = await maitoWithBarcode(anna);
     await anna.mutation(api.shoppingList.needMore, { productId: maito });
     await anna.mutation(api.shoppingList.needMore, { productId: maito });
-    const [entry] = (await anna.query(api.shoppingList.get, {})).locations[0].entries;
+    const [entry] = (await anna.query(api.shoppingList.get, {})).other;
     await anna.mutation(api.shoppingList.tick, { entryId: entry._id });
 
     const scanned = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
@@ -207,7 +209,7 @@ describe("The date prompt on Add scans", () => {
     await anna.mutation(api.products.update, { productId: maito, expiryKind: "bestBefore", expiryDate: "2026-10-18" });
     await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "use" });
     await anna.mutation(api.shoppingList.needMore, { productId: maito });
-    const [entry] = (await anna.query(api.shoppingList.get, {})).locations[0].entries;
+    const [entry] = (await anna.query(api.shoppingList.get, {})).other;
     await anna.mutation(api.shoppingList.tick, { entryId: entry._id });
 
     const scanned = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
@@ -277,8 +279,8 @@ describe("Need more mode", () => {
     expect(first).toMatchObject({ action: "needMore", from: 1, to: 1, quantity: 1 });
     expect(second).toMatchObject({ action: "needMore", from: 1, to: 1, quantity: 2 });
     const list = await anna.query(api.shoppingList.get, {});
-    const [entry] = list.locations[0].entries;
-    expect([list.locations[0].name, entry.name, entry.quantity]).toEqual(["Jääkaappi", "Maito", 2]);
+    const [entry] = list.other;
+    expect([entry.name, entry.quantity]).toEqual(["Maito", 2]);
     expect(first).toMatchObject({ entryId: entry._id });
     expect(await stockOf(anna, "Maito")).toBe(1);
   });

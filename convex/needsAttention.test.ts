@@ -21,7 +21,7 @@ const restock = (member: MemberSession, productId: Id<"products">) =>
 /** The Member's date on their phone, which Koti passes to Needs Attention. */
 const TODAY = "2026-10-15";
 
-/** Needs Attention on Koti as text: "Name (Category, Stock n): status", as seen on `today`. */
+/** Needs Attention on Koti as text: "Name (Location, Stock n): status", as seen on `today`. */
 async function needsAttention(member: MemberSession, today = TODAY) {
   const products = await member.query(api.inventory.needsAttention, { today });
   return products.map((p) => `${p.name} (${p.locationName}, Stock ${p.stock}): ${p.attention}`);
@@ -132,7 +132,7 @@ describe("Running Low", () => {
 
     await use(anna, maito);
 
-    expect(await anna.query(api.shoppingList.get, {})).toEqual({ locations: [], oneOffs: [], bag: [] });
+    expect(await anna.query(api.shoppingList.get, {})).toEqual({ categories: [], other: [], bag: { categories: [], other: [] } });
   });
 
   test("undoing a delete brings Vessapaperi back with its Minimum Stock", async () => {
@@ -268,7 +268,7 @@ describe("Needs Attention", () => {
     await ben.mutation(api.shoppingList.needMore, { productId: maitoInAttention._id });
 
     const list = await anna.query(api.shoppingList.get, {});
-    expect(list.locations.flatMap((l) => l.entries.map((e) => `${e.name} ×${e.quantity}`))).toEqual(["Maito ×1"]);
+    expect(list.other.map((e) => `${e.name} ×${e.quantity}`)).toEqual(["Maito ×1"]);
   });
 
   test("a visitor who isn't signed in can't see Needs Attention", async () => {

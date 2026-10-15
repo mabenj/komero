@@ -272,6 +272,8 @@ describe("Product page", () => {
       expiryDate: null,
       locationId: jaakaappi,
       locationName: "Jääkaappi",
+      categoryId: null,
+      categoryName: null,
       barcodes: [],
     });
   });
@@ -371,5 +373,70 @@ describe("Product page", () => {
     await anna.mutation(api.products.restore, deleted);
 
     expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Shampoo", stock: 1 }]);
+  });
+});
+
+async function categoryId(member: MemberSession, name: string) {
+  return (await member.query(api.categories.list, {})).find((category) => category.name === name)!._id;
+}
+
+describe("Product Category", () => {
+  test("Anna sets, changes and clears Maito's Category, and Ben's Product page shows it", async () => {
+    const [anna, ben] = await annaAndBen();
+    const maito = await anna.mutation(api.products.create, {
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+    });
+    const category = async () => {
+      const product = await ben.query(api.products.get, { productId: maito });
+      return { categoryId: product?.categoryId, categoryName: product?.categoryName };
+    };
+
+    await anna.mutation(api.products.update, { productId: maito, categoryId: await categoryId(anna, "HeVi") });
+    expect(await category()).toEqual({ categoryId: await categoryId(anna, "HeVi"), categoryName: "HeVi" });
+
+    await anna.mutation(api.products.update, { productId: maito, categoryId: await categoryId(anna, "Maitotuotteet") });
+    expect(await category()).toEqual({
+      categoryId: await categoryId(anna, "Maitotuotteet"),
+      categoryName: "Maitotuotteet",
+    });
+
+    await anna.mutation(api.products.update, { productId: maito, minimumStock: 1 });
+    expect((await category()).categoryName).toBe("Maitotuotteet");
+
+    await anna.mutation(api.products.update, { productId: maito, categoryId: null });
+    expect(await category()).toEqual({ categoryId: null, categoryName: null });
+  });
+
+  test("a Category that no longer exists is rejected", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await anna.mutation(api.products.create, {
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+    });
+    const gone = await anna.mutation(api.categories.create, { name: "Lemmikit" });
+    await anna.mutation(api.categories.remove, { categoryId: gone });
+
+    await expect(anna.mutation(api.products.update, { productId: maito, categoryId: gone })).rejects.toThrow(
+      /CATEGORY_NOT_FOUND/,
+    );
+  });
+
+  test("undoing a delete brings the Category back, or none if it was deleted meanwhile", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const jaakaappi = await locationId(anna, "Jääkaappi");
+    const maito = await anna.mutation(api.products.create, { name: "Maito", locationId: jaakaappi });
+    const omena = await anna.mutation(api.products.create, { name: "Omena", locationId: jaakaappi });
+    await anna.mutation(api.products.update, { productId: maito, categoryId: await categoryId(anna, "Maitotuotteet") });
+    await anna.mutation(api.products.update, { productId: omena, categoryId: await categoryId(anna, "HeVi") });
+
+    const deletedMaito = await anna.mutation(api.products.remove, { productId: maito });
+    const deletedOmena = await anna.mutation(api.products.remove, { productId: omena });
+    await anna.mutation(api.categories.remove, { categoryId: await categoryId(anna, "HeVi") });
+    const restoredMaito = await anna.mutation(api.products.restore, deletedMaito);
+    const restoredOmena = await anna.mutation(api.products.restore, deletedOmena);
+
+    expect((await anna.query(api.products.get, { productId: restoredMaito }))?.categoryName).toBe("Maitotuotteet");
+    expect((await anna.query(api.products.get, { productId: restoredOmena }))?.categoryId).toBeNull();
   });
 });
