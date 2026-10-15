@@ -67,7 +67,8 @@ function BottomBar({ current }: { current: Tab | undefined }) {
   return (
     <nav className="material fixed inset-x-0 bottom-0 z-10 pb-[env(safe-area-inset-bottom)]">
       <ChromeFade edge="bottom" />
-      <div className="mx-auto flex max-w-xl items-end">
+      {/* Positioned, so the Scan button above the bar paints over the fade instead of under it. */}
+      <div className="relative mx-auto flex max-w-xl items-end">
         <AppLink href="/koti" className={tabClass("koti")} aria-current={current === "koti" ? "page" : undefined}>
           <HomeIcon />
           {t("nav.koti")}
