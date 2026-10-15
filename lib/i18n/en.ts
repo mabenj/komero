@@ -121,6 +121,8 @@ export const en = {
   "lista.putAway": "Put away",
   "lista.putAwayName": "Put away {name}",
   "lista.putAwayAll": "Put away all",
+  "lista.putAwayDone": "{name} put away",
+  "lista.putAwayAllDone": "{count} put away from the bag",
   "lista.makeProduct": "Make it a Product",
   "lista.datePrompt": "{name}: what date is on the package?",
   "lista.datePromptStep": "{step}/{count}",

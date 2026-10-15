@@ -11,7 +11,8 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MinusIcon, PlusIcon } from "@/components/icons";
 import { NeedsAttention } from "@/components/NeedsAttention";
-import { SwipeToNeedMore, useNeedMore } from "@/components/NeedMore";
+import { SwipeToNeedMore } from "@/components/NeedMore";
+import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { tidyName } from "@/convex/productNames";
 import { applyRestock, applyUse, type ExpiryKind, expiryStatus } from "@/convex/stock";
 import { formatDay, localToday } from "@/lib/dates";
@@ -347,27 +348,22 @@ function DateBadge({ kind, date }: { kind: ExpiryKind; date: string }) {
 function useStockChange() {
   const t = useT();
   const showUndoToast = useUndoToast();
-  const needMore = useNeedMore();
+  const showRunningLow = useRunningLowToast();
+  const undoStockChange = useUndoStockChange();
   const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate(
     (store, { productId, change }) => setStockLocally(store, productId, change),
   );
-  const undoStockChange = useMutation(api.products.undoStockChange);
 
   return useCallback(
     async (product: ProductRowData, change: StockChange) => {
-      const { from, to, crossedIntoRunningLow } = await adjustStock({ productId: product._id, change });
+      const changed = await adjustStock({ productId: product._id, change });
+      const { from, to } = changed;
       if (from === to) return;
-      const undo = () => void undoStockChange({ productId: product._id, from, to });
-      if (crossedIntoRunningLow) {
-        showUndoToast(t("koti.runningLow", { name: product.name }), undo, {
-          label: t("koti.addToList"),
-          run: () => void needMore(product._id),
-        });
-      } else {
-        showUndoToast(t("koti.stockChanged", { name: product.name, from, to }), undo);
-      }
+      const undo = undoStockChange(product, changed);
+      if (changed.crossedIntoRunningLow) showRunningLow(product, undo);
+      else showUndoToast(t("koti.stockChanged", { name: product.name, from, to }), undo);
     },
-    [adjustStock, undoStockChange, showUndoToast, needMore, t],
+    [adjustStock, undoStockChange, showUndoToast, showRunningLow, t],
   );
 }
 

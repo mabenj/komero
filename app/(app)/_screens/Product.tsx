@@ -6,6 +6,7 @@ import { ActivityList } from "@/components/ActivityList";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
+import { useRunningLowToast } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -30,6 +31,7 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
   const remove = useMutation(api.products.remove);
   const restore = useMutation(api.products.restore);
   const needMore = useNeedMore();
+  const showRunningLow = useRunningLowToast();
 
   if (product === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
   if (product === null) {
@@ -40,6 +42,12 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
       </div>
     );
   }
+
+  // Raising the Minimum Stock up to the Stock makes the Product Running Low, which the toast says.
+  const saveMinimumStock = async (minimumStock: number | null) => {
+    const { crossedIntoRunningLow } = await update({ productId, minimumStock });
+    if (crossedIntoRunningLow) showRunningLow(product);
+  };
 
   const saveName = (name: string) => {
     if (name.trim() === "" || name.trim() === product.name) return;
@@ -111,7 +119,7 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
               event.target.value = String(product.minimumStock ?? "");
               return;
             }
-            if (minimumStock !== product.minimumStock) void update({ productId, minimumStock });
+            if (minimumStock !== product.minimumStock) void saveMinimumStock(minimumStock);
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter") event.currentTarget.blur();

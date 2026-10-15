@@ -6,15 +6,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { useNeedMore, useNeedMoreToast } from "@/components/NeedMore";
+import { useNeedMoreToast } from "@/components/NeedMore";
+import { usePutAwayToast, useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
 import type { ExpiryKind } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
-import { lastLocation, rememberLocation } from "@/lib/remembered";
-import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
-import { lastScanMode, rememberScanMode } from "@/lib/remembered";
+import { lastLocation, lastScanMode, rememberLocation, rememberScanMode } from "@/lib/remembered";
 
 type ScanOutcome = Exclude<FunctionReturnType<typeof api.barcodes.scan>, { unknown: true }>;
 type Suggestion = FunctionReturnType<typeof api.barcodes.lookup>;
@@ -89,14 +89,14 @@ function Scanning({
   const t = useT();
   const scan = useMutation(api.barcodes.scan);
   const dateScan = useMutation(api.barcodes.dateScan);
-  const confirm = useScanConfirmation();
+  const showConfirmation = useScanConfirmation();
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
-  const [dating, setDating] = useState<ScanOutcome | null>(null);
+  const [awaitingDate, setAwaitingDate] = useState<ScanOutcome | null>(null);
   const [cameraError, setCameraError] = useState(false);
 
   const scanned = (outcome: ScanOutcome) => {
-    confirm(outcome);
-    if (outcome.asksForDate) setDating((current) => current ?? outcome);
+    showConfirmation(outcome);
+    if (outcome.asksForDate) setAwaitingDate((current) => current ?? outcome);
   };
 
   const onCode = async (code: string) => {
@@ -122,14 +122,14 @@ function Scanning({
           </button>
         ))}
       </div>
-      {dating && (
+      {awaitingDate && (
         <DatePrompt
-          key={`${dating.productId}-${dating.to}`}
-          name={dating.name}
+          key={`${awaitingDate.productId}-${awaitingDate.to}`}
+          name={awaitingDate.name}
           answerLabel={t("common.save")}
           onAnswer={(expiryDate) => {
-            setDating(null);
-            if (expiryDate) void dateScan({ productId: dating.productId, expiryDate });
+            setAwaitingDate(null);
+            if (expiryDate) void dateScan({ productId: awaitingDate.productId, expiryDate });
           }}
         />
       )}
@@ -142,7 +142,7 @@ function Scanning({
           <BarcodeScanner
             onCode={(code) => void onCode(code)}
             onError={() => setCameraError(true)}
-            paused={unknownCode !== null || dating !== null}
+            paused={unknownCode !== null || awaitingDate !== null}
           />
           <p className="absolute inset-x-0 bottom-0 bg-black/50 px-4 py-2 text-center text-sm text-white">
             {t("scan.hint")}
@@ -174,36 +174,35 @@ function Scanning({
 /**
  * The confirmation after each scan: the Product and its new Stock, with undo.
  * A Use that makes the Product Running Low gets Koti's "running low" toast
- * with "Add to list" instead. A Put Away from the Bag has no undo, as on Lista.
+ * with "Add to list" instead. Undoing a Put Away from the Bag puts it back in the Bag.
  */
 function useScanConfirmation() {
   const t = useT();
   const showUndoToast = useUndoToast();
   const showNeedMoreToast = useNeedMoreToast();
-  const needMore = useNeedMore();
-  const undoStockChange = useMutation(api.products.undoStockChange);
+  const showRunningLow = useRunningLowToast();
+  const showPutAway = usePutAwayToast();
+  const undoStockChange = useUndoStockChange();
 
   return useCallback(
     (outcome: ScanOutcome) => {
-      const { productId, name, from, to } = outcome;
-      const undo = () => void undoStockChange({ productId, from, to });
+      const { name, from, to } = outcome;
+      const product = { _id: outcome.productId, name };
+      const undo = undoStockChange(product, outcome);
       switch (outcome.action) {
         case "restock":
           return showUndoToast(t("scan.restocked", { name, stock: to }), undo);
         case "putAway":
-          return showUndoToast(t("scan.putAway", { name, stock: to }));
+          return showPutAway(t("scan.putAway", { name, stock: to }), outcome.putAway);
         case "use":
           if (from === to) return showUndoToast(t("scan.alreadyOut", { name }));
           if (!outcome.crossedIntoRunningLow) return showUndoToast(t("scan.used", { name, stock: to }), undo);
-          return showUndoToast(t("koti.runningLow", { name }), undo, {
-            label: t("koti.addToList"),
-            run: () => void needMore(productId),
-          });
+          return showRunningLow(product, undo);
         case "needMore":
           return showNeedMoreToast(outcome);
       }
     },
-    [showUndoToast, showNeedMoreToast, needMore, undoStockChange, t],
+    [showUndoToast, showNeedMoreToast, showRunningLow, showPutAway, undoStockChange, t],
   );
 }
 

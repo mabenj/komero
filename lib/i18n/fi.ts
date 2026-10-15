@@ -121,6 +121,8 @@ export const fi = {
   "lista.putAway": "Paikalleen",
   "lista.putAwayName": "Laita paikalleen: {name}",
   "lista.putAwayAll": "Kaikki paikalleen",
+  "lista.putAwayDone": "{name} laitettu paikalleen",
+  "lista.putAwayAllDone": "{count} kassista paikalleen",
   "lista.makeProduct": "Tee tuotteeksi",
   "lista.datePrompt": "{name}: mikä päiväys pakkauksessa?",
   "lista.datePromptStep": "{step}/{count}",
