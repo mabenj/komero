@@ -1,7 +1,7 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
@@ -16,6 +16,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
 import type { ExpiryKind } from "@/convex/stock";
+import { tick } from "@/lib/haptics";
 import { useT } from "@/lib/i18n";
 import { card, field, primaryButton, secondaryButton } from "@/lib/styles";
 import { lastLocation, lastScanMode, rememberLocation, rememberScanMode } from "@/lib/remembered";
@@ -98,6 +99,8 @@ function Scanning({
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [awaitingDate, setAwaitingDate] = useState<ScanOutcome | null>(null);
   const [cameraError, setCameraError] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [reads, setReads] = useState(0);
 
   const scanned = (outcome: ScanOutcome) => {
     showConfirmation(outcome);
@@ -105,6 +108,9 @@ function Scanning({
   };
 
   const onCode = async (code: string) => {
+    // Confirm the read at once, before the server has answered.
+    setReads((count) => count + 1);
+    tick();
     const result = await scan({ code, mode });
     if (result.unknown) setUnknownCode((current) => current ?? result.code);
     else scanned(result);
@@ -151,11 +157,18 @@ function Scanning({
           <BarcodeScanner
             onCode={(code) => void onCode(code)}
             onError={() => setCameraError(true)}
+            onReady={() => setCameraReady(true)}
             paused={unknownCode !== null || awaitingDate !== null}
           />
+          {!cameraReady && (
+            <p className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+              {t("scan.starting")}
+            </p>
+          )}
           <p className="absolute inset-x-0 bottom-0 bg-black/50 px-4 py-2 text-center text-sm text-white">
             {t("scan.hint")}
           </p>
+          {reads > 0 && <ReadFlash key={reads} />}
         </div>
       )}
       <button
@@ -180,6 +193,24 @@ function Scanning({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * A lake-blue glow around the viewfinder that closes in and fades, the moment
+ * a barcode is read; key it by the read so each one flashes. Under reduced
+ * motion it only fades, briefly.
+ */
+function ReadFlash() {
+  const reduced = useReducedMotion();
+  return (
+    <motion.div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 rounded-2xl bg-accent/20 ring-4 ring-accent ring-inset"
+      initial={reduced ? { opacity: 1 } : { opacity: 1, scale: 1.04 }}
+      animate={reduced ? { opacity: 0 } : { opacity: 0, scale: 1 }}
+      transition={reduced ? { duration: 0.2, ease: "easeOut" } : { duration: 0.5, ease: "easeOut" }}
+    />
   );
 }
 

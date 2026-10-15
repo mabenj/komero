@@ -92,6 +92,7 @@ export const en = {
   "scan.mode.useHint": "A package used up: −1",
   "scan.mode.needMoreHint": "An empty package: onto the Shopping List",
   "scan.hint": "Point the camera at a barcode",
+  "scan.starting": "Starting the camera…",
   "scan.stop": "Stop",
   "scan.cameraError": "The camera didn't start. Let Komero use the camera in your browser settings, and we'll carry on.",
   "scan.restocked": "{name} +1 · {stock} at home",
