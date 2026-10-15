@@ -1,28 +1,33 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import type { OptimisticLocalStore } from "convex/browser";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { AppLink } from "@/components/AppLink";
+import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useUndoToast } from "@/components/UndoToast";
+import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { MinusIcon, PlusIcon } from "@/components/icons";
-import { NeedsAttention } from "@/components/NeedsAttention";
+import { ChevronDownIcon, ScanIcon } from "@/components/icons";
+import { Reveal, settle, useLayoutMotion } from "@/components/motion";
+import { NeedsAttention, statusText } from "@/components/NeedsAttention";
 import { SwipeToNeedMore } from "@/components/NeedMore";
+import { NumberStepper } from "@/components/NumberStepper";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { tidyName } from "@/convex/productNames";
-import { applyRestock, applyUse, type ExpiryKind, expiryStatus } from "@/convex/stock";
+import { applyRestock, applyUse, type ExpiryKind, expiryStatus, type StockState } from "@/convex/stock";
 import { formatDay, localToday } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
+import { changeStockLocally } from "@/lib/listUpdates";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
+import { cardList, field, primaryButton } from "@/lib/styles";
 
 type StockChange = "restock" | "use";
 
 const noMore = { expiryKind: null, minimumStock: "" };
-const moreFieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-3 text-base dark:border-zinc-700";
+const moreFieldClass = `${field} w-full px-3`;
 type Location = { _id: Id<"locations">; name: string };
 type ProductRowData = {
   _id: Id<"products">;
@@ -38,40 +43,62 @@ export default function KotiScreen() {
   const locationInView = useLocationInView(inventory !== undefined);
   const changeStock = useStockChange();
   const [quickAddLocation, setQuickAddLocation] = useState<Id<"locations"> | null>(null);
+  const layout = useLayoutMotion();
 
-  if (inventory === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
+  if (inventory === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
+  const empty = inventory.every((location) => location.products.length === 0);
+  // One layout group, so a part that opens or a row that leaves moves everything below it smoothly.
   return (
-    <div className="flex flex-col gap-6">
-      <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
-      <NeedsAttention />
-      {inventory.map((location) => (
-        <section key={location._id} data-location-id={location._id} className="flex flex-col gap-1">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">{location.name}</h2>
-            {quickAddLocation !== location._id && (
-              <button
-                type="button"
-                // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
-                onClick={() => flushSync(() => setQuickAddLocation(location._id))}
-                className="min-h-11 rounded-full px-3 text-sm font-medium text-zinc-600 dark:text-zinc-400"
-              >
-                {t("koti.quickAdd")}
-              </button>
+    <LayoutGroup>
+      <div className="flex flex-col gap-6">
+        <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
+        {empty ? <EmptyKoti /> : <NeedsAttention />}
+        {inventory.map((location) => (
+          <motion.section
+            key={location._id}
+            layout={layout}
+            data-location-id={location._id}
+            className="flex flex-col gap-1.5"
+          >
+            <div className="flex items-center justify-between gap-2 px-1">
+              <h2 className="flex items-baseline gap-2">
+                <span className="font-display text-lg">{location.name}</span>
+                <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
+              </h2>
+              {quickAddLocation !== location._id && (
+                <button
+                  type="button"
+                  // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
+                  onClick={() => flushSync(() => setQuickAddLocation(location._id))}
+                  className="min-h-11 rounded-full px-3 text-sm font-medium text-stone-600 dark:text-stone-400"
+                >
+                  {t("koti.quickAdd")}
+                </button>
+              )}
+            </div>
+            <AnimatePresence initial={false}>
+              {quickAddLocation === location._id && (
+                <Reveal key="quickAdd">
+                  <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
+                </Reveal>
+              )}
+            </AnimatePresence>
+            {location.products.length > 0 ? (
+              <ul className={`${cardList} flex flex-col overflow-hidden`}>
+                <AnimatePresence initial={false}>
+                  {location.products.map((product) => (
+                    <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            ) : (
+              !empty && <p className={`${cardList} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
             )}
-          </div>
-          {quickAddLocation === location._id && (
-            <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
-          )}
-          {location.products.length === 0 && <p className="text-sm text-zinc-500">{t("koti.noProducts")}</p>}
-          <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
-            {location.products.map((product) => (
-              <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
-            ))}
-          </ul>
-        </section>
-      ))}
-    </div>
+          </motion.section>
+        ))}
+      </div>
+    </LayoutGroup>
   );
 }
 
@@ -100,13 +127,17 @@ function SearchAdd({
 
   // A name that already exists can still be added with the button, next to its
   // warning; Enter, typed while searching for it, doesn't add a second one.
-  const add = async ({ fromEnter = false } = {}) => {
+  // The field clears at once, ready for the next name; the typed one comes back if adding fails.
+  const add = ({ fromEnter = false } = {}) => {
     if (!result?.name || !locationId || !minimumStockValid || (fromEnter && !result.canAdd)) return;
-    await createProduct({ name: result.name, locationId, minimumStock, expiryKind: more.expiryKind ?? undefined });
-    rememberLocation(locationId);
+    const typed = text;
     setText("");
     setPickedLocation(null);
     setMore(noMore);
+    rememberLocation(locationId);
+    createProduct({ name: result.name, locationId, minimumStock, expiryKind: more.expiryKind ?? undefined }).catch(
+      () => setText((current) => current || typed),
+    );
   };
 
   return (
@@ -116,27 +147,29 @@ function SearchAdd({
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") void add({ fromEnter: true });
+          if (event.key === "Enter") add({ fromEnter: true });
         }}
         placeholder={t("koti.search")}
         aria-label={t("koti.search")}
         enterKeyHint="done"
         autoComplete="off"
-        className="w-full rounded-xl border border-zinc-300 bg-background px-4 py-3 text-base dark:border-zinc-700"
+        className={`${field} w-full px-4 py-3`}
       />
       {result && (
         <div className="flex flex-col gap-2">
           {result.duplicate && <DuplicateWarning duplicate={result.duplicate} />}
           {result.matches.length > 0 && (
-            <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
-              {result.matches.map((product) => (
-                <ProductRow
-                  key={product._id}
-                  product={product}
-                  detail={product.locationName}
-                  onChangeStock={onChangeStock}
-                />
-              ))}
+            <ul className={`${cardList} flex flex-col overflow-hidden`}>
+              <AnimatePresence initial={false}>
+                {result.matches.map((product) => (
+                  <ProductRow
+                    key={product._id}
+                    product={product}
+                    detail={product.locationName}
+                    onChangeStock={onChangeStock}
+                  />
+                ))}
+              </AnimatePresence>
             </ul>
           )}
           {result.name && locationId && (
@@ -144,9 +177,9 @@ function SearchAdd({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => void add()}
+                  onClick={() => add()}
                   disabled={!minimumStockValid}
-                  className="min-h-11 flex-1 truncate rounded-xl bg-foreground px-4 py-2 text-left font-semibold text-background disabled:opacity-40"
+                  className={`${primaryButton} min-h-11 flex-1 truncate px-4 py-2 text-left`}
                 >
                   {t("koti.add", { name: result.name })}
                 </button>
@@ -154,7 +187,7 @@ function SearchAdd({
                   value={locationId}
                   onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
                   aria-label={t("koti.addTo")}
-                  className="min-h-11 rounded-xl border border-zinc-300 bg-background px-2 dark:border-zinc-700"
+                  className={`${field} px-2`}
                 >
                   {locations.map((location) => (
                     <option key={location._id} value={location._id}>
@@ -163,11 +196,10 @@ function SearchAdd({
                   ))}
                 </select>
               </div>
-              <details className="text-sm">
-                <summary className="min-h-11 content-center text-zinc-600 dark:text-zinc-400">{t("koti.more")}</summary>
+              <Disclosure summary={t("koti.more")}>
                 <div className="flex gap-2">
                   <label className="flex flex-1 flex-col gap-1">
-                    <span className="text-zinc-500">{t("product.expiryKind")}</span>
+                    <span className="text-stone-500">{t("product.expiryKind")}</span>
                     <ExpiryKindSelect
                       value={more.expiryKind}
                       onChange={(expiryKind) => setMore({ ...more, expiryKind })}
@@ -175,7 +207,7 @@ function SearchAdd({
                     />
                   </label>
                   <label className="flex flex-1 flex-col gap-1">
-                    <span className="text-zinc-500">{t("product.minimumStock")}</span>
+                    <span className="text-stone-500">{t("product.minimumStock")}</span>
                     <input
                       type="number"
                       inputMode="numeric"
@@ -188,12 +220,57 @@ function SearchAdd({
                     />
                   </label>
                 </div>
-              </details>
+              </Disclosure>
             </div>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+/** A part that opens under its summary; its content moves with the same spring as its chevron. */
+function Disclosure({ summary, children }: { summary: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+  return (
+    <div className="flex flex-col text-sm">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen(!open)}
+        className="flex min-h-11 items-center gap-1 self-start text-stone-600 dark:text-stone-400"
+      >
+        {summary}
+        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={settle} className="flex">
+          <ChevronDownIcon width={18} height={18} />
+        </motion.span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <Reveal key="content">
+            <div id={contentId}>{children}</div>
+          </Reveal>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** The first visit: the cupboard opens its doors and invites the first Product. */
+function EmptyKoti() {
+  const t = useT();
+  return (
+    <CupboardNote title={t("koti.emptyTitle")} hint={t("koti.emptyHint")}>
+      <AppLink
+        href="/scan"
+        className="mt-1 flex min-h-12 items-center gap-2 rounded-full bg-accent px-6 font-semibold text-accent-foreground"
+      >
+        <ScanIcon width={20} height={20} />
+        {t("nav.scan")}
+      </AppLink>
+    </CupboardNote>
   );
 }
 
@@ -240,12 +317,12 @@ function QuickAdd({ location, onDone }: { location: Location; onDone: () => void
           aria-label={t("koti.quickAddTo", { location: location.name })}
           enterKeyHint="enter"
           autoComplete="off"
-          className="min-w-0 flex-1 rounded-xl border border-zinc-300 bg-background px-4 py-3 text-base dark:border-zinc-700"
+          className={`${field} min-w-0 flex-1 px-4 py-3`}
         />
         <button
           type="button"
           onClick={onDone}
-          className="min-h-11 rounded-xl bg-foreground px-4 font-semibold text-background"
+          className={`${primaryButton} min-h-11 px-4`}
         >
           {t("koti.quickAddDone")}
         </button>
@@ -258,15 +335,16 @@ function QuickAdd({ location, onDone }: { location: Location; onDone: () => void
 function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationName: string } }) {
   const t = useT();
   return (
-    <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+    <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">
       {t("koti.duplicate", { name: duplicate.name, location: duplicate.locationName })}
     </p>
   );
 }
 
 /**
- * A Product with its Stock and inline – / +, and its Expiry Date when it has
- * one; swipe it left for Need More. Out of Stock Products stay listed, dimmed.
+ * A Product with its Expiry Date under its name, coloured by what it means
+ * today, and its Stock as a number that opens – / +; swipe it left for Need
+ * More. Out of Stock Products stay listed, dimmed.
  */
 function ProductRow({
   product,
@@ -278,123 +356,78 @@ function ProductRow({
   onChangeStock: (product: ProductRowData, change: StockChange) => void;
 }) {
   const t = useT();
+  const lang = useLang();
   const outOfStock = product.stock === 0;
-  const buttonClass =
-    "flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 text-xl disabled:opacity-30 dark:border-zinc-700";
+  const { expiryKind, expiryDate } = product;
+  const status = expiryKind && expiryDate && expiryStatus({ stock: 1, expiryKind, expiryDate }, localToday());
 
   return (
-    <SwipeToNeedMore productId={product._id}>
+    <SwipeToNeedMore product={product}>
       <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
-        <p className={`truncate ${outOfStock ? "text-zinc-400 dark:text-zinc-500" : ""}`}>{product.name}</p>
-        {detail && <p className="truncate text-xs text-zinc-500">{detail}</p>}
+        <p className={`truncate ${outOfStock ? "text-stone-400 dark:text-stone-500" : ""}`}>{product.name}</p>
+        {(detail || expiryDate || outOfStock) && (
+          <p className="flex gap-2 text-xs tabular-nums">
+            {detail && <span className="truncate text-stone-500">{detail}</span>}
+            {expiryKind && expiryDate ? (
+              <span className={`truncate ${status ? statusText[status] : "text-stone-500"}`}>
+                {t(`expiry.${expiryKind}`, { date: formatDay(expiryDate, lang) })}
+              </span>
+            ) : (
+              outOfStock && <span className="text-stone-400">{t("koti.out")}</span>
+            )}
+          </p>
+        )}
       </AppLink>
-      {product.expiryKind && product.expiryDate && (
-        <DateBadge kind={product.expiryKind} date={product.expiryDate} />
-      )}
-      <button
-        type="button"
-        className={buttonClass}
-        disabled={outOfStock}
-        aria-label={t("koti.use", { name: product.name })}
-        onClick={() => onChangeStock(product, "use")}
-      >
-        <MinusIcon width={20} height={20} />
-      </button>
-      <span className={`w-8 text-center tabular-nums ${outOfStock ? "text-zinc-400" : "font-semibold"}`}>
-        {product.stock}
-      </span>
-      <button
-        type="button"
-        className={buttonClass}
-        aria-label={t("koti.restock", { name: product.name })}
-        onClick={() => onChangeStock(product, "restock")}
-      >
-        <PlusIcon width={20} height={20} />
-      </button>
+      <NumberStepper
+        value={product.stock}
+        label={t("koti.changeStock", { name: product.name, stock: product.stock })}
+        dimmed={outOfStock}
+        onDecrease={() => onChangeStock(product, "use")}
+        decreaseLabel={t("koti.use", { name: product.name })}
+        decreaseDisabled={outOfStock}
+        onIncrease={() => onChangeStock(product, "restock")}
+        increaseLabel={t("koti.restock", { name: product.name })}
+      />
     </SwipeToNeedMore>
   );
 }
 
-const badgeTones = {
-  expired: "bg-red-600 text-white",
-  checkIt: "bg-amber-500 text-white",
-  expiringSoon: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
-  none: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
-};
-
-/** The Expiry Date on a Koti row, coloured by what it means today. */
-function DateBadge({ kind, date }: { kind: ExpiryKind; date: string }) {
-  const t = useT();
-  const lang = useLang();
-  const status = expiryStatus({ stock: 1, expiryKind: kind, expiryDate: date }, localToday());
-  const tone = status === "expired" || status === "checkIt" || status === "expiringSoon" ? status : "none";
-  const label = t(`expiry.${kind}`, { date: formatDay(date, lang) });
-  return (
-    <span
-      title={label}
-      aria-label={label}
-      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${badgeTones[tone]}`}
-    >
-      {formatDay(date, lang)}
-    </span>
-  );
-}
+const stockRule = (change: StockChange) => (change === "restock" ? (state: StockState) => applyRestock(state, 1) : applyUse);
 
 /**
- * Applies + / – (optimistically, so taps feel instant) and offers to undo it.
- * When the change makes the Product Running Low, the toast says so and offers
- * Need More; nothing goes on the list unless it is tapped.
+ * Applies + / – (optimistically, so taps feel instant) and, at the tap, shows
+ * the Stock it changes to with Undo. Only the server knows the Minimum Stock,
+ * so when it answers that the change made the Product Running Low, the
+ * "running low" toast takes over and offers Need More; nothing goes on the
+ * list unless it is tapped.
  */
 function useStockChange() {
   const t = useT();
-  const showUndoToast = useUndoToast();
+  const showChangeToast = useChangeToast();
   const showRunningLow = useRunningLowToast();
   const undoStockChange = useUndoStockChange();
-  const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate(
-    (store, { productId, change }) => setStockLocally(store, productId, change),
+  const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate((store, { productId, change }) =>
+    changeStockLocally(store, productId, stockRule(change)),
   );
 
   return useCallback(
-    async (product: ProductRowData, change: StockChange) => {
-      const changed = await adjustStock({ productId: product._id, change });
-      const { from, to } = changed;
+    (product: ProductRowData, change: StockChange) => {
+      const from = product.stock;
+      const to = stockRule(change)({ stock: from }).stock;
       if (from === to) return;
-      const undo = undoStockChange(product, changed);
-      if (changed.crossedIntoRunningLow) showRunningLow(product, undo);
-      else showUndoToast(t("koti.stockChanged", { name: product.name, from, to }), undo);
+      const changed = adjustStock({ productId: product._id, change });
+      const shown = showChangeToast(t("koti.stockChanged", { name: product.name, from, to }), changed, (done) =>
+        undoStockChange(product, done)(),
+      );
+      changed.then(
+        (done) => {
+          if (done.crossedIntoRunningLow) showRunningLow(product, undoStockChange(product, done), shown);
+        },
+        () => {},
+      );
     },
-    [adjustStock, undoStockChange, showUndoToast, showRunningLow, t],
+    [adjustStock, undoStockChange, showChangeToast, showRunningLow, t],
   );
-}
-
-/** The same Stock and Expiry Date rules as the server, applied to a row. */
-function apply<P extends ProductRowData>(product: P, change: StockChange): P {
-  const state = {
-    stock: product.stock,
-    expiryKind: product.expiryKind ?? undefined,
-    expiryDate: product.expiryDate ?? undefined,
-  };
-  const next = change === "restock" ? applyRestock(state, 1) : applyUse(state);
-  return "expiryDate" in product
-    ? { ...product, stock: next.stock, expiryDate: next.expiryDate ?? null }
-    : { ...product, stock: next.stock };
-}
-
-function setStockLocally(store: OptimisticLocalStore, productId: Id<"products">, change: StockChange) {
-  const update = <P extends ProductRowData>(product: P): P =>
-    product._id === productId ? apply(product, change) : product;
-
-  const inventory = store.getQuery(api.inventory.get, {});
-  if (inventory) {
-    store.setQuery(
-      api.inventory.get,
-      {},
-      inventory.map((location) => ({ ...location, products: location.products.map(update) })),
-    );
-  }
-  for (const { args, value } of store.getAllQueries(api.products.search)) {
-    if (value) store.setQuery(api.products.search, args, { ...value, matches: value.matches.map(update) });
-  }
 }
 
 /**

@@ -29,7 +29,10 @@ export function OfflineBanner() {
 
   if (!show) return null;
   return (
-    <div role="status" className="bg-amber-400 px-4 py-1 text-center text-sm font-medium text-black">
+    <div
+      role="status"
+      className="mx-4 mb-2 rounded-xl bg-amber-100 px-3 py-1.5 text-center text-sm font-medium text-amber-900 dark:bg-amber-400/15 dark:text-amber-200"
+    >
       {t("offline.banner")}
       {inflightMutations > 0 && ` · ${t("offline.pending")}`}
     </div>

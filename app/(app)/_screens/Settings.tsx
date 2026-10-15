@@ -9,6 +9,7 @@ import { LanguagePicker } from "@/components/LanguagePicker";
 import { LocationsSettings } from "@/components/LocationsSettings";
 import { api } from "@/convex/_generated/api";
 import { useT } from "@/lib/i18n";
+import { cardList, field, primaryButton, secondaryButton } from "@/lib/styles";
 
 export default function SettingsScreen() {
   const t = useT();
@@ -28,11 +29,11 @@ export default function SettingsScreen() {
       <InviteLink />
       <LanguagePicker />
       <div className="flex flex-col gap-3">
-        {me && <p className="text-zinc-600 dark:text-zinc-400">{t("settings.signedInAs", { email: me.email })}</p>}
+        {me && <p className="text-stone-600 dark:text-stone-400">{t("settings.signedInAs", { email: me.email })}</p>}
         <button
           type="button"
           onClick={logOut}
-          className="rounded-lg border border-zinc-300 py-3 text-lg font-semibold text-red-600 dark:border-zinc-700"
+          className={`${secondaryButton} py-3 text-lg`}
         >
           {t("settings.logOut")}
         </button>
@@ -51,11 +52,11 @@ function Members() {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-lg font-semibold">{t("settings.members")}</h2>
-      <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+      <ul className={cardList}>
         {members?.map((member) => (
           <li key={member._id} className="px-3 py-3">
             {member.email}
-            {member._id === me?._id && <span className="ml-1 text-zinc-500">{t("settings.you")}</span>}
+            {member._id === me?._id && <span className="ml-1 text-stone-500">{t("settings.you")}</span>}
           </li>
         ))}
       </ul>
@@ -101,25 +102,25 @@ function InviteLink() {
     setCopied(true);
   }
 
-  const buttonClass = "flex-1 rounded-lg border border-zinc-300 py-3 font-semibold dark:border-zinc-700";
+  const buttonClass = `${secondaryButton} flex-1 py-3`;
 
   return (
     <section className="flex flex-col gap-2">
       <button
         type="button"
         onClick={create}
-        className="rounded-lg bg-foreground py-3 text-lg font-semibold text-background"
+        className={`${primaryButton} py-3 text-lg`}
       >
         {t("settings.createInvite")}
       </button>
-      <p className="text-sm text-zinc-500">{t("settings.inviteHint")}</p>
+      <p className="text-sm text-stone-500">{t("settings.inviteHint")}</p>
       {link && (
         <div className="flex flex-col gap-2">
           <input
             readOnly
             value={link}
             onFocus={(event) => event.currentTarget.select()}
-            className="rounded-lg border border-zinc-300 px-3 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className={`${field} px-3 py-3 text-sm`}
           />
           <div className="flex gap-2">
             {canShare && (

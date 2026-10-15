@@ -1,11 +1,14 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
+import { crossFade, Reveal } from "@/components/motion";
+import { Sheet } from "@/components/Sheet";
 import { useNeedMoreToast } from "@/components/NeedMore";
 import { usePutAwayToast, useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
@@ -13,13 +16,16 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
 import type { ExpiryKind } from "@/convex/stock";
+import { haptic } from "@/lib/haptics";
 import { useT } from "@/lib/i18n";
+import { card, field, primaryButton, secondaryButton } from "@/lib/styles";
 import { lastLocation, lastScanMode, rememberLocation, rememberScanMode } from "@/lib/remembered";
 
 type ScanOutcome = Exclude<FunctionReturnType<typeof api.barcodes.scan>, { unknown: true }>;
 type Suggestion = FunctionReturnType<typeof api.barcodes.lookup>;
 
-const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-4 py-2 text-base dark:border-zinc-700";
+const fieldClass = `${field} w-full px-4 py-2`;
+const segments = "flex rounded-xl bg-stone-200/60 p-1 dark:bg-stone-800";
 
 /**
  * Scan: pick a mode (the last one is preselected), then scan continuously.
@@ -64,11 +70,11 @@ function ModePicker({ mode, onPick }: { mode: ScanMode; onPick: (mode: ScanMode)
           type="button"
           onClick={() => onPick(option)}
           className={`flex flex-col items-start gap-0.5 rounded-2xl px-5 py-4 text-left ${
-            option === mode ? "bg-foreground text-background" : "border border-zinc-300 dark:border-zinc-700"
+            option === mode ? "bg-accent text-accent-foreground" : card
           }`}
         >
           <span className="text-xl font-semibold">{t(`scan.mode.${option}`)}</span>
-          <span className={`text-sm ${option === mode ? "opacity-80" : "text-zinc-500"}`}>
+          <span className={`text-sm ${option === mode ? "opacity-80" : "text-stone-500"}`}>
             {t(`scan.mode.${option}Hint`)}
           </span>
         </button>
@@ -93,6 +99,8 @@ function Scanning({
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [awaitingDate, setAwaitingDate] = useState<ScanOutcome | null>(null);
   const [cameraError, setCameraError] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [reads, setReads] = useState(0);
 
   const scanned = (outcome: ScanOutcome) => {
     showConfirmation(outcome);
@@ -100,6 +108,9 @@ function Scanning({
   };
 
   const onCode = async (code: string) => {
+    // Confirm the read at once, before the server has answered.
+    setReads((count) => count + 1);
+    haptic();
     const result = await scan({ code, mode });
     if (result.unknown) setUnknownCode((current) => current ?? result.code);
     else scanned(result);
@@ -107,7 +118,7 @@ function Scanning({
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="group" aria-label={t("scan.mode")} className="flex rounded-xl bg-zinc-100 p-1 dark:bg-zinc-900">
+      <div role="group" aria-label={t("scan.mode")} className={segments}>
         {SCAN_MODES.map((option) => (
           <button
             key={option}
@@ -115,26 +126,30 @@ function Scanning({
             aria-pressed={option === mode}
             onClick={() => onModeChange(option)}
             className={`min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold ${
-              option === mode ? "bg-background shadow" : "text-zinc-500"
+              option === mode ? "bg-accent text-accent-foreground shadow-sm" : "text-stone-600 dark:text-stone-400"
             }`}
           >
             {t(`scan.mode.${option}`)}
           </button>
         ))}
       </div>
-      {awaitingDate && (
-        <DatePrompt
-          key={`${awaitingDate.productId}-${awaitingDate.to}`}
-          name={awaitingDate.name}
-          answerLabel={t("common.save")}
-          onAnswer={(expiryDate) => {
-            setAwaitingDate(null);
-            if (expiryDate) void dateScan({ productId: awaitingDate.productId, expiryDate });
-          }}
-        />
-      )}
+      <AnimatePresence initial={false}>
+        {awaitingDate && (
+          <Reveal key="awaitingDate">
+            <DatePrompt
+              key={`${awaitingDate.productId}-${awaitingDate.to}`}
+              name={awaitingDate.name}
+              answerLabel={t("common.save")}
+              onAnswer={(expiryDate) => {
+                setAwaitingDate(null);
+                if (expiryDate) void dateScan({ productId: awaitingDate.productId, expiryDate });
+              }}
+            />
+          </Reveal>
+        )}
+      </AnimatePresence>
       {cameraError ? (
-        <p className="rounded-xl bg-amber-100 px-4 py-3 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <p className="rounded-xl bg-amber-100 px-4 py-3 text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">
           {t("scan.cameraError")}
         </p>
       ) : (
@@ -142,32 +157,60 @@ function Scanning({
           <BarcodeScanner
             onCode={(code) => void onCode(code)}
             onError={() => setCameraError(true)}
+            onReady={() => setCameraReady(true)}
             paused={unknownCode !== null || awaitingDate !== null}
           />
+          {!cameraReady && (
+            <p className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+              {t("scan.starting")}
+            </p>
+          )}
           <p className="absolute inset-x-0 bottom-0 bg-black/50 px-4 py-2 text-center text-sm text-white">
             {t("scan.hint")}
           </p>
+          {reads > 0 && <ReadFlash key={reads} />}
         </div>
       )}
       <button
         type="button"
         onClick={onStop}
-        className="min-h-11 rounded-xl border border-zinc-300 py-3 font-semibold dark:border-zinc-700"
+        className={`${secondaryButton} min-h-11 py-3`}
       >
         {t("scan.stop")}
       </button>
-      {unknownCode !== null && (
-        <UnknownBarcode
-          code={unknownCode}
-          mode={mode}
-          onDone={(outcome) => {
-            setUnknownCode(null);
-            scanned(outcome);
-          }}
-          onCancel={() => setUnknownCode(null)}
-        />
-      )}
+      <AnimatePresence>
+        {unknownCode !== null && (
+          <UnknownBarcode
+            key={unknownCode}
+            code={unknownCode}
+            mode={mode}
+            onDone={(outcome) => {
+              setUnknownCode(null);
+              scanned(outcome);
+            }}
+            onCancel={() => setUnknownCode(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * A lake-blue glow around the viewfinder that closes in and fades, the moment
+ * a barcode is read; key it by the read so each one flashes. Under reduced
+ * motion it only fades, briefly.
+ */
+function ReadFlash() {
+  const reduced = useReducedMotion();
+  return (
+    <motion.div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 rounded-2xl bg-accent/20 ring-4 ring-accent ring-inset"
+      initial={reduced ? { opacity: 1 } : { opacity: 1, scale: 1.04 }}
+      animate={reduced ? { opacity: 0 } : { opacity: 0, scale: 1 }}
+      transition={reduced ? crossFade : { duration: 0.5, ease: "easeOut" }}
+    />
   );
 }
 
@@ -199,7 +242,7 @@ function useScanConfirmation() {
           if (!outcome.crossedIntoRunningLow) return showUndoToast(t("scan.used", { name, stock: to }), undo);
           return showRunningLow(product, undo);
         case "needMore":
-          return showNeedMoreToast(outcome);
+          return showNeedMoreToast(outcome, outcome);
       }
     },
     [showUndoToast, showNeedMoreToast, showRunningLow, showPutAway, undoStockChange, t],
@@ -208,9 +251,10 @@ function useScanConfirmation() {
 
 /**
  * An unknown barcode: either a New Product (name typed, Location chosen) or
- * an existing Product (searched). The barcode is linked, then the mode applies.
- * Open Food Facts is asked in the background; its suggestion fills the name
- * only if the Member hasn't started typing, and never links by itself.
+ * an existing Product (searched), in a sheet over the paused camera. The
+ * barcode is linked, then the mode applies. Open Food Facts is asked in the
+ * background; its suggestion fills the name only if the Member hasn't started
+ * typing, and never links by itself.
  */
 function UnknownBarcode({
   code,
@@ -247,12 +291,11 @@ function UnknownBarcode({
   };
 
   const tabClass = (tab: "new" | "existing") =>
-    `min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold ${choice === tab ? "bg-background shadow" : "text-zinc-500"}`;
+    `min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold ${choice === tab ? "bg-surface shadow-sm" : "text-stone-600 dark:text-stone-400"}`;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 mx-auto flex max-h-[85dvh] max-w-xl flex-col gap-4 overflow-y-auto rounded-t-2xl border-t border-zinc-200 bg-background px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl dark:border-zinc-800">
-      <h2 className="text-lg font-semibold">{t("scan.unknownTitle", { code })}</h2>
-      <div className="flex rounded-xl bg-zinc-100 p-1 dark:bg-zinc-900">
+    <Sheet title={t("scan.unknownTitle", { code })} onClose={onCancel}>
+      <div className={segments}>
         <button type="button" aria-pressed={choice === "new"} onClick={() => setChoice("new")} className={tabClass("new")}>
           {t("scan.newProduct")}
         </button>
@@ -276,15 +319,15 @@ function UnknownBarcode({
       ) : (
         <ExistingProductSearch onPick={(productId) => finish(link({ code, productId, mode }))} />
       )}
-      {failed && <p className="text-sm text-red-600">{t("scan.linkFailed")}</p>}
+      {failed && <p className="text-sm text-amber-700 dark:text-amber-400">{t("scan.linkFailed")}</p>}
       <button
         type="button"
         onClick={onCancel}
-        className="min-h-11 rounded-xl border border-zinc-300 py-3 font-semibold dark:border-zinc-700"
+        className={`${secondaryButton} min-h-11 py-3`}
       >
         {t("common.cancel")}
       </button>
-    </div>
+    </Sheet>
   );
 }
 
@@ -336,10 +379,10 @@ function NewProductForm({
           enterKeyHint="done"
           className={fieldClass}
         />
-        {suggested && <span className="text-xs text-zinc-500">{t("scan.suggestedName")}</span>}
+        {suggested && <span className="text-xs text-stone-500">{t("scan.suggestedName")}</span>}
       </div>
       <label className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-500">{t("product.homeLocation")}</span>
+        <span className="text-sm text-stone-500">{t("product.homeLocation")}</span>
         <select
           value={locationId ?? ""}
           onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
@@ -353,13 +396,13 @@ function NewProductForm({
         </select>
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-500">{t("product.expiryKind")}</span>
+        <span className="text-sm text-stone-500">{t("product.expiryKind")}</span>
         <ExpiryKindSelect value={expiryKind} onChange={setPickedExpiryKind} className={fieldClass} />
       </label>
       <button
         type="submit"
         disabled={name.trim() === "" || !locationId}
-        className="min-h-11 rounded-xl bg-foreground py-3 text-lg font-semibold text-background disabled:opacity-40"
+        className={`${primaryButton} min-h-11 py-3 text-lg`}
       >
         {t("common.save")}
       </button>
@@ -385,8 +428,8 @@ function ExistingProductSearch({ onPick }: { onPick: (productId: Id<"products">)
         enterKeyHint="search"
         className={fieldClass}
       />
-      {result && result.matches.length === 0 && <p className="text-sm text-zinc-500">{t("scan.noMatches")}</p>}
-      <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+      {result && result.matches.length === 0 && <p className="text-sm text-stone-500">{t("scan.noMatches")}</p>}
+      <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
         {result?.matches.map((product) => (
           <li key={product._id}>
             <button
@@ -395,7 +438,7 @@ function ExistingProductSearch({ onPick }: { onPick: (productId: Id<"products">)
               className="flex min-h-11 w-full flex-col items-start py-2 text-left"
             >
               <span>{product.name}</span>
-              <span className="text-xs text-zinc-500">{product.locationName}</span>
+              <span className="text-xs text-stone-500">{product.locationName}</span>
             </button>
           </li>
         ))}

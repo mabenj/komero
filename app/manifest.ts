@@ -12,8 +12,9 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#ffffff",
-    theme_color: "#ffffff",
+    // Birch; the manifest has no dark variant, the viewport theme colour covers dark mode.
+    background_color: "#f7f4ee",
+    theme_color: "#f7f4ee",
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },

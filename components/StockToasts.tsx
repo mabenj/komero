@@ -4,7 +4,7 @@ import { useMutation } from "convex/react";
 import type { FunctionArgs } from "convex/server";
 import { useCallback } from "react";
 import { useNeedMore } from "@/components/NeedMore";
-import { useUndoToast } from "@/components/UndoToast";
+import { type ShownToast, useChangeToast, useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useT } from "@/lib/i18n";
@@ -15,7 +15,9 @@ type PutAway = FunctionArgs<typeof api.shoppingList.undoPutAway>["putAway"];
 
 /**
  * The "running low" toast for a change that made a Product Running Low:
- * "Add to list" does Need More, and ignoring it adds nothing. `undo` undoes the change.
+ * "Add to list" does Need More, and ignoring it adds nothing. `undo` undoes
+ * the change. Given the change's own toast, it takes that toast's place, if
+ * no newer one has.
  */
 export function useRunningLowToast() {
   const t = useT();
@@ -23,10 +25,10 @@ export function useRunningLowToast() {
   const needMore = useNeedMore();
 
   return useCallback(
-    (product: Product, undo?: () => void) =>
-      showUndoToast(t("koti.runningLow", { name: product.name }), undo, {
+    (product: Product, undo?: () => void, replacing?: ShownToast) =>
+      (replacing?.replace ?? showUndoToast)(t("koti.runningLow", { name: product.name }), undo, {
         label: t("koti.addToList"),
-        run: () => void needMore(product._id),
+        run: () => needMore(product),
       }),
     [showUndoToast, needMore, t],
   );
@@ -50,13 +52,18 @@ export function useUndoStockChange() {
   );
 }
 
-/** A toast after Put Away (one Entry, the whole Bag, or a scan) whose undo puts it all back in the Bag. */
+/**
+ * A toast after Put Away (one Entry, the whole Bag, or a scan) whose undo puts
+ * it all back in the Bag. Shown at the tap, its undo waits for what the server
+ * put away; if Put Away fails, the toast goes away.
+ */
 export function usePutAwayToast() {
-  const showUndoToast = useUndoToast();
+  const showChangeToast = useChangeToast();
   const undoPutAway = useMutation(api.shoppingList.undoPutAway);
 
   return useCallback(
-    (message: string, putAway: PutAway) => showUndoToast(message, () => void undoPutAway({ putAway })),
-    [showUndoToast, undoPutAway],
+    (message: string, putAway: PutAway | Promise<PutAway>) =>
+      showChangeToast(message, putAway, (done) => undoPutAway({ putAway: done })),
+    [showChangeToast, undoPutAway],
   );
 }

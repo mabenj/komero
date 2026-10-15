@@ -1,16 +1,30 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { CupboardNote } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
-import { CheckIcon, MinusIcon, PlusIcon, TrashIcon } from "@/components/icons";
+import { CheckIcon, TrashIcon } from "@/components/icons";
+import { landInBag, Reveal, RollingNumber, settle, useRowMotion, useSectionMotion } from "@/components/motion";
 import { useNeedMore } from "@/components/NeedMore";
-import { useUndoToast } from "@/components/UndoToast";
+import { NumberStepper, stepButton } from "@/components/NumberStepper";
+import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { nameKey } from "@/convex/productNames";
 import { useT } from "@/lib/i18n";
+import {
+  putAwayAllLocally,
+  putAwayLocally,
+  removeLocally,
+  setQuantityLocally,
+  tickLocally,
+  untickLocally,
+} from "@/lib/listUpdates";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
+import { cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
 
 type Entry = {
   _id: Id<"entries">;
@@ -21,24 +35,87 @@ type Entry = {
   asksForDate?: boolean;
 };
 
+// How long "All put away!" shows after Put Away empties the Bag.
+const ALL_PUT_AWAY_MS = 4000;
+
+/**
+ * The Product an Entry is for, or the One-off's name: the same on the list
+ * and in the Bag, and before and after the server gives a new Entry its id.
+ */
+type ProductOrOneOff = string;
+const productOrOneOff = (entry: Entry): ProductOrOneOff => entry.productId ?? `oneOff:${nameKey(entry.name)}`;
+
+/**
+ * Rows moving between the list and the Bag (a Tick, or taking it back out):
+ * the Product or One-off that just moved, and those with a single Entry
+ * across the list and the Bag, which are the ones whose row can move.
+ */
+const BagMoves = createContext<{
+  moved: ProductOrOneOff | null;
+  onMove: (moved: ProductOrOneOff | null) => void;
+  listedOnce: Set<ProductOrOneOff>;
+}>({ moved: null, onMove: () => {}, listedOnce: new Set() });
+
+/** The Products and One-offs with exactly one of these Entries. */
+function listedOnceIn(entries: Entry[]) {
+  const counts = new Map<ProductOrOneOff, number>();
+  for (const entry of entries) counts.set(productOrOneOff(entry), (counts.get(productOrOneOff(entry)) ?? 0) + 1);
+  return new Set([...counts].filter(([, count]) => count === 1).map(([listed]) => listed));
+}
+
 /** The shared Shopping List: to-buy Entries grouped by Location, then One-offs under "Other", then the Bag. */
 export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
+  const [allPutAway, setAllPutAway] = useState(false);
+  const [moved, setMoved] = useState<ProductOrOneOff | null>(null);
 
-  if (list === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
+  useEffect(() => {
+    if (!allPutAway) return;
+    const timer = setTimeout(() => setAllPutAway(false), ALL_PUT_AWAY_MS);
+    return () => clearTimeout(timer);
+  }, [allPutAway]);
 
-  const empty = list.locations.length === 0 && list.oneOffs.length === 0 && list.bag.length === 0;
+  if (list === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
+
+  const nothingToBuy = list.locations.length === 0 && list.oneOffs.length === 0;
+  // An undo that refills the Bag ends the moment.
+  const showAllPutAway = allPutAway && list.bag.length === 0;
+  const listedOnce = listedOnceIn([...list.locations.flatMap((location) => location.entries), ...list.oneOffs, ...list.bag]);
+  // One layout group, so a row that moves or leaves moves everything below it smoothly.
   return (
-    <div className="flex flex-col gap-6">
-      <AddToList />
-      {empty && <p className="text-zinc-500">{t("lista.empty")}</p>}
-      {list.locations.map((location) => (
-        <EntryGroup key={location._id} title={location.name} entries={location.entries} />
-      ))}
-      {list.oneOffs.length > 0 && <EntryGroup title={t("lista.other")} entries={list.oneOffs} />}
-      {list.bag.length > 0 && <Bag entries={list.bag} />}
-    </div>
+    <LayoutGroup>
+      <BagMoves value={{ moved, onMove: setMoved, listedOnce }}>
+        <div className="flex flex-col gap-6">
+          <AddToList />
+          {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
+          {nothingToBuy && list.bag.length === 0 && <ListNote allPutAway={showAllPutAway} />}
+          <AnimatePresence initial={false}>
+            {list.locations.map((location) => (
+              <EntryGroup key={location._id} title={location.name} entries={location.entries} />
+            ))}
+            {list.oneOffs.length > 0 && <EntryGroup key="oneOffs" title={t("lista.other")} entries={list.oneOffs} />}
+            {list.bag.length > 0 && <Bag key="bag" entries={list.bag} onEmptied={() => setAllPutAway(true)} />}
+          </AnimatePresence>
+          {showAllPutAway && !nothingToBuy && <ListNote allPutAway />}
+        </div>
+      </BagMoves>
+    </LayoutGroup>
+  );
+}
+
+/**
+ * The cupboard with a short, friendly line: nothing to buy, or for a moment
+ * after Put Away empties the Bag, "All put away!".
+ */
+function ListNote({ allPutAway }: { allPutAway: boolean }) {
+  const t = useT();
+  return (
+    <CupboardNote
+      role="status"
+      title={t(allPutAway ? "lista.allPutAwayTitle" : "lista.emptyTitle")}
+      hint={t(allPutAway ? "lista.allPutAwayHint" : "lista.emptyHint")}
+    />
   );
 }
 
@@ -59,9 +136,9 @@ function AddToList() {
     setText("");
     addOneOff({ name }).catch(() => setText((current) => current || name));
   };
-  const pick = (productId: Id<"products">) => {
+  const pick = (product: { _id: Id<"products">; name: string }) => {
     setText("");
-    void needMore(productId);
+    needMore(product);
   };
 
   return (
@@ -77,19 +154,19 @@ function AddToList() {
         aria-label={t("lista.search")}
         enterKeyHint="done"
         autoComplete="off"
-        className="w-full rounded-xl border border-zinc-300 bg-background px-4 py-3 text-base dark:border-zinc-700"
+        className={`${field} w-full px-4 py-3`}
       />
       {result && (
-        <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+        <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
           {result.matches.map((product) => (
             <li key={product._id}>
               <button
                 type="button"
-                onClick={() => pick(product._id)}
+                onClick={() => pick(product)}
                 className="flex min-h-11 w-full items-center justify-between gap-3 py-1.5 text-left"
               >
                 <span className="truncate">{product.name}</span>
-                <span className="shrink-0 text-sm text-zinc-500">
+                <span className="shrink-0 text-sm text-stone-500">
                   {t("lista.stock", { stock: product.stock })}
                 </span>
               </button>
@@ -100,7 +177,7 @@ function AddToList() {
               <button
                 type="button"
                 onClick={add}
-                className="mt-1 min-h-11 w-full truncate rounded-xl bg-foreground px-4 py-2 text-left font-semibold text-background"
+                className={`${primaryButton} mt-1 min-h-11 w-full truncate px-4 py-2 text-left`}
               >
                 {t("lista.addOneOff", { name: result.name })}
               </button>
@@ -114,15 +191,19 @@ function AddToList() {
 
 
 function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
+  const sectionMotion = useSectionMotion();
   return (
-    <section className="flex flex-col gap-1">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
-        {entries.map((entry) => (
-          <EntryRow key={entry._id} entry={entry} />
-        ))}
+    <motion.section {...sectionMotion} className="flex flex-col gap-1.5">
+      <h2 className="px-1 font-display text-lg">{title}</h2>
+      <ul className={`${cardList} flex flex-col`}>
+        <AnimatePresence initial={false}>
+          {entries.map((entry) => (
+            // On the list a Product or One-off has one Entry, so the row stays when the server gives it a new id.
+            <EntryRow key={productOrOneOff(entry)} entry={entry} />
+          ))}
+        </AnimatePresence>
       </ul>
-    </section>
+    </motion.section>
   );
 }
 
@@ -130,13 +211,15 @@ function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
  * "In the bag": Entries ticked off in the shop, put away one at a time or all
  * at once. "Put away all" first asks for a date for each Product with an Expiry Kind.
  */
-function Bag({ entries }: { entries: Entry[] }) {
+function Bag({ entries, onEmptied }: { entries: Entry[]; onEmptied: () => void }) {
   const t = useT();
-  const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll);
+  const sectionMotion = useSectionMotion();
+  const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll).withOptimisticUpdate(putAwayAllLocally);
   const showPutAway = usePutAwayToast();
-  const putAwayAll = async (expiryDates?: Record<string, string>) => {
-    const { putAway } = await putAwayAllEntries({ expiryDates });
-    showPutAway(t("lista.putAwayAllDone", { count: putAway.length }), putAway);
+  const putAwayAll = (expiryDates?: Record<string, string>) => {
+    const done = putAwayAllEntries({ expiryDates }).then(({ putAway }) => putAway);
+    showPutAway(t("lista.putAwayAllDone", { count: entries.length }), done);
+    onEmptied();
   };
   const [prompts, setPrompts] = useState<{ asking: Entry[]; index: number; dates: Record<string, string> } | null>(
     null,
@@ -146,7 +229,7 @@ function Bag({ entries }: { entries: Entry[] }) {
     const asking = entries.filter(
       (entry, i) => entry.asksForDate && entries.findIndex((e) => e.productId === entry.productId) === i,
     );
-    if (asking.length === 0) void putAwayAll();
+    if (asking.length === 0) putAwayAll();
     else setPrompts({ asking, index: 0, dates: {} });
   };
   const answer = (date: string | undefined) => {
@@ -158,182 +241,187 @@ function Bag({ entries }: { entries: Entry[] }) {
       return;
     }
     setPrompts(null);
-    void putAwayAll(dates);
+    putAwayAll(dates);
   };
 
   return (
-    <section className="flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{t("lista.bag")}</h2>
+    <motion.section {...sectionMotion} className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h2 className="font-display text-lg">{t("lista.bag")}</h2>
         {!prompts && (
           <button
             type="button"
             onClick={start}
-            className="min-h-11 rounded-xl bg-foreground px-4 py-2 font-semibold text-background"
+            className={`${primaryButton} min-h-11 px-4 py-2`}
           >
             {t("lista.putAwayAll")}
           </button>
         )}
       </div>
-      {prompts && (
-        <DatePrompt
-          key={prompts.asking[prompts.index]._id}
-          name={prompts.asking[prompts.index].name}
-          step={{ index: prompts.index, count: prompts.asking.length }}
-          onAnswer={answer}
-          onCancel={() => setPrompts(null)}
-        />
-      )}
-      <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
-        {entries.map((entry) => (
-          <EntryRow key={entry._id} entry={entry} inBag />
-        ))}
+      <AnimatePresence initial={false}>
+        {prompts && (
+          <Reveal key="prompts">
+            <DatePrompt
+              key={prompts.asking[prompts.index]._id}
+              name={prompts.asking[prompts.index].name}
+              step={{ index: prompts.index, count: prompts.asking.length }}
+              onAnswer={answer}
+              onCancel={() => setPrompts(null)}
+            />
+          </Reveal>
+        )}
+      </AnimatePresence>
+      <ul className={`${cardList} flex flex-col`}>
+        <AnimatePresence initial={false}>
+          {entries.map((entry) => (
+            <EntryRow key={entry._id} entry={entry} inBag onEmptied={entries.length === 1 ? onEmptied : undefined} />
+          ))}
+        </AnimatePresence>
       </ul>
-    </section>
+    </motion.section>
   );
 }
 
-const roundButton =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-300 disabled:opacity-30 dark:border-zinc-700";
+const tickButton =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-stone-300 dark:border-stone-700";
 
 /**
- * One Entry: a tick toggle, its name (and the Product's Stock at home), then a
- * quantity stepper and delete on the list, or Put away in the Bag. A One-off
- * can be made into a Product.
+ * One Entry: a tick toggle, its name (and the Product's Stock at home), then
+ * its quantity as a number that opens –, + and delete on the list, or the
+ * quantity and Put away in the Bag. A One-off can be made into a Product.
+ * Every change and its toast show at once, even on a weak signal in the shop.
+ * Ticked, the row moves into the Bag (landing with a little bounce), and
+ * taken back out, it moves back up; it slides in and out when added,
+ * deleted or put away.
  */
-function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
+function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: boolean; onEmptied?: () => void }) {
   const t = useT();
   const [makingProduct, setMakingProduct] = useState(false);
   const [askingDate, setAskingDate] = useState(false);
-  const showUndoToast = useUndoToast();
-  const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate((store, args) => {
-    const list = store.getQuery(api.shoppingList.get, {});
-    if (!list) return;
-    const update = <E extends Entry>(e: E): E => (e._id === args.entryId ? { ...e, quantity: args.quantity } : e);
-    store.setQuery(api.shoppingList.get, {}, {
-      locations: list.locations.map((location) => ({ ...location, entries: location.entries.map(update) })),
-      oneOffs: list.oneOffs.map(update),
-      bag: list.bag,
-    });
-  });
-  // Ticking moves the Entry to the Bag straight away, even with a bad signal in the shop.
-  const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate((store, args) => {
-    const list = store.getQuery(api.shoppingList.get, {});
-    if (!list) return;
-    const ticked = [...list.locations.flatMap((location) => location.entries), ...list.oneOffs].find(
-      (e) => e._id === args.entryId,
-    );
-    if (!ticked) return;
-    const others = <E extends Entry>(e: E) => e._id !== args.entryId;
-    store.setQuery(api.shoppingList.get, {}, {
-      locations: list.locations
-        .map((location) => ({ ...location, entries: location.entries.filter(others) }))
-        .filter((location) => location.entries.length > 0),
-      oneOffs: list.oneOffs.filter(others),
-      bag: [...list.bag, ticked].sort((a, b) => a.name.localeCompare(b.name, "fi")),
-    });
-  });
-  const untick = useMutation(api.shoppingList.untick);
-  const putAwayEntry = useMutation(api.shoppingList.putAway);
+  const showChangeToast = useChangeToast();
+  const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
+  const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate(tickLocally);
+  const untick = useMutation(api.shoppingList.untick).withOptimisticUpdate(untickLocally);
+  const putAwayEntry = useMutation(api.shoppingList.putAway).withOptimisticUpdate(putAwayLocally);
   const showPutAway = usePutAwayToast();
-  const putAway = async (expiryDate?: string) => {
-    const done = await putAwayEntry({ entryId: entry._id, expiryDate });
-    showPutAway(t("lista.putAwayDone", { name: entry.name }), done.putAway);
-  };
-  const remove = useMutation(api.shoppingList.remove);
+  const remove = useMutation(api.shoppingList.remove).withOptimisticUpdate(removeLocally);
   const restore = useMutation(api.shoppingList.restore);
+  const rowMotion = useRowMotion();
+  const reduced = useReducedMotion();
+  const { moved, onMove, listedOnce } = useContext(BagMoves);
+  const listed = productOrOneOff(entry);
+  const moving = moved === listed && !reduced;
 
-  const tickEntry = async () => {
-    await tick({ entryId: entry._id });
-    showUndoToast(t("lista.ticked", { name: entry.name }), () => void untick({ entryId: entry._id }));
+  const putAway = (expiryDate?: string) => {
+    const done = putAwayEntry({ entryId: entry._id, expiryDate }).then(({ putAway }) => putAway);
+    showPutAway(t("lista.putAwayDone", { name: entry.name }), done);
+    onEmptied?.();
   };
-  const deleteEntry = async () => {
-    const deleted = await remove({ entryId: entry._id });
-    showUndoToast(t("lista.deleted", { name: deleted.name }), () => void restore(deleted));
+  const tickEntry = () => {
+    onMove(listed);
+    showChangeToast(t("lista.ticked", { name: entry.name }), tick({ entryId: entry._id }), () => {
+      onMove(listed);
+      return untick({ entryId: entry._id });
+    });
+  };
+  const untickEntry = () => {
+    onMove(listed);
+    void untick({ entryId: entry._id });
+  };
+  const deleteEntry = () => {
+    const deleted = { productId: entry.productId, name: entry.name, quantity: entry.quantity };
+    showChangeToast(t("lista.deleted", { name: entry.name }), remove({ entryId: entry._id }), () => restore(deleted));
   };
 
   return (
-    <li className="flex flex-col gap-2 py-1.5">
-      <div className="flex items-center gap-2">
+    <motion.li
+      {...rowMotion}
+      // A Product on screen twice (say, in the Bag and on the list again) doesn't move between them.
+      layoutId={listedOnce.has(listed) ? listed : undefined}
+      // A row that moved arrives as itself, not fading in.
+      initial={moving ? false : rowMotion.initial}
+      transition={{ ...rowMotion.transition, layout: moving && inBag ? landInBag : settle }}
+      onLayoutAnimationComplete={moving ? () => onMove(null) : undefined}
+      className="flex flex-col gap-2 px-4 py-1.5"
+    >
+      <div className="flex min-h-11 items-center gap-2">
         <button
           type="button"
-          className={`${roundButton} ${inBag ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-600" : ""}`}
+          className={`${tickButton} ${inBag ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-600" : ""}`}
           aria-label={t(inBag ? "lista.untick" : "lista.tick", { name: entry.name })}
           aria-pressed={inBag}
-          onClick={() => void (inBag ? untick({ entryId: entry._id }) : tickEntry())}
+          onClick={() => (inBag ? untickEntry() : tickEntry())}
         >
           {inBag && <CheckIcon width={20} height={20} />}
         </button>
         <div className="min-w-0 flex-1">
-          <p className={`truncate ${inBag ? "text-zinc-500" : ""}`}>{entry.name}</p>
+          <p className={`truncate ${inBag ? "text-stone-500" : ""}`}>{entry.name}</p>
           {entry.stock !== undefined && (
-            <p className="truncate text-xs text-zinc-500">{t("lista.stock", { stock: entry.stock })}</p>
+            <p className="truncate text-xs text-stone-500">{t("lista.stock", { stock: entry.stock })}</p>
           )}
           {entry.productId === undefined && !makingProduct && (
-            <button type="button" className="text-xs text-zinc-500 underline" onClick={() => setMakingProduct(true)}>
+            <button type="button" className={`${textLink} text-xs`} onClick={() => setMakingProduct(true)}>
               {t("lista.makeProduct")}
             </button>
           )}
         </div>
         {inBag ? (
           <>
-            <span className="w-8 text-center font-semibold tabular-nums">
-              {t("lista.quantity", { quantity: entry.quantity })}
+            <span className="min-w-8 text-center font-display text-lg text-stone-500 tabular-nums">
+              <RollingNumber value={entry.quantity}>{t("lista.quantity", { quantity: entry.quantity })}</RollingNumber>
             </span>
             <button
               type="button"
-              className="min-h-11 shrink-0 rounded-xl border border-zinc-300 px-3 font-semibold dark:border-zinc-700"
+              className={`${secondaryButton} min-h-11 shrink-0 px-3`}
               aria-label={t("lista.putAwayName", { name: entry.name })}
-              onClick={() => (entry.asksForDate ? setAskingDate(true) : void putAway())}
+              onClick={() => (entry.asksForDate ? setAskingDate(true) : putAway())}
             >
               {t("lista.putAway")}
             </button>
           </>
         ) : (
-          <>
-            <button
-              type="button"
-              className={roundButton}
-              disabled={entry.quantity <= 1}
-              aria-label={t("lista.decrease", { name: entry.name })}
-              onClick={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity - 1 })}
-            >
-              <MinusIcon width={20} height={20} />
-            </button>
-            <span className="w-8 text-center font-semibold tabular-nums">
-              {t("lista.quantity", { quantity: entry.quantity })}
-            </span>
-            <button
-              type="button"
-              className={roundButton}
-              aria-label={t("lista.increase", { name: entry.name })}
-              onClick={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity + 1 })}
-            >
-              <PlusIcon width={20} height={20} />
-            </button>
-            <button
-              type="button"
-              className="flex h-11 w-11 shrink-0 items-center justify-center text-zinc-500"
-              aria-label={t("lista.delete", { name: entry.name })}
-              onClick={() => void deleteEntry()}
-            >
-              <TrashIcon width={20} height={20} />
-            </button>
-          </>
+          <NumberStepper
+            value={entry.quantity}
+            text={t("lista.quantity", { quantity: entry.quantity })}
+            label={t("lista.changeQuantity", { name: entry.name, quantity: entry.quantity })}
+            onDecrease={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity - 1 })}
+            decreaseLabel={t("lista.decrease", { name: entry.name })}
+            decreaseDisabled={entry.quantity <= 1}
+            onIncrease={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity + 1 })}
+            increaseLabel={t("lista.increase", { name: entry.name })}
+            extra={
+              <button
+                type="button"
+                className={stepButton}
+                aria-label={t("lista.delete", { name: entry.name })}
+                onClick={deleteEntry}
+              >
+                <TrashIcon width={18} height={18} />
+              </button>
+            }
+          />
         )}
       </div>
-      {makingProduct && <MakeProduct entry={entry} onDone={() => setMakingProduct(false)} />}
-      {askingDate && (
-        <DatePrompt
-          name={entry.name}
-          onAnswer={(expiryDate) => {
-            setAskingDate(false);
-            void putAway(expiryDate);
-          }}
-          onCancel={() => setAskingDate(false)}
-        />
-      )}
-    </li>
+      <AnimatePresence initial={false}>
+        {makingProduct && (
+          <Reveal key="makeProduct">
+            <MakeProduct entry={entry} onDone={() => setMakingProduct(false)} />
+          </Reveal>
+        )}
+        {askingDate && (
+          <Reveal key="askingDate">
+            <DatePrompt
+              name={entry.name}
+              onAnswer={(expiryDate) => {
+                setAskingDate(false);
+                putAway(expiryDate);
+              }}
+              onCancel={() => setAskingDate(false)}
+            />
+          </Reveal>
+        )}
+      </AnimatePresence>
+    </motion.li>
   );
 }
 
@@ -355,7 +443,6 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
     rememberLocation(locationId);
     onDone();
   };
-  const fieldClass = "min-h-11 rounded-xl border border-zinc-300 bg-background px-3 dark:border-zinc-700";
 
   return (
     <form
@@ -371,14 +458,14 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
         aria-label={t("product.name")}
         autoComplete="off"
         autoFocus
-        className={`${fieldClass} w-full text-base`}
+        className={`${field} w-full px-3`}
       />
       <div className="flex items-center gap-2">
         <select
           value={locationId}
           onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
           aria-label={t("product.homeLocation")}
-          className={`${fieldClass} min-w-0 flex-1`}
+          className={`${field} min-w-0 flex-1 px-3`}
         >
           {inventory.map((location) => (
             <option key={location._id} value={location._id}>
@@ -386,10 +473,10 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
             </option>
           ))}
         </select>
-        <button type="button" className="min-h-11 px-3 text-zinc-500" onClick={onDone}>
+        <button type="button" className="min-h-11 px-3 text-stone-500" onClick={onDone}>
           {t("common.cancel")}
         </button>
-        <button type="submit" className="min-h-11 rounded-xl bg-foreground px-4 font-semibold text-background">
+        <button type="submit" className={`${primaryButton} min-h-11 px-4`}>
           {t("common.save")}
         </button>
       </div>

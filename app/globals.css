@@ -1,24 +1,144 @@
 @import "tailwindcss";
 
+/* Birch by day, night in dark mode, lake blue as the one accent (spec #19 "Theme"). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light dark;
+  --background: #f7f4ee;
+  --surface: #fffdf9;
+  --foreground: #1f1b16;
+  --accent: #2b5d86;
+  --accent-foreground: #ffffff;
+  --ink: #1f1b16;
+  --ink-foreground: #f7f4ee;
+  --ink-accent: #9cc4e8;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
   --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-ink-accent: var(--ink-accent);
+  --font-display: var(--font-nunito), system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0d141c;
+    --surface: #172230;
+    --foreground: #e6edf3;
+    --accent: #8cc0ec;
+    --accent-foreground: #10202e;
+    --ink: #283647;
+    --ink-foreground: #e6edf3;
+    --ink-accent: #9cc4e8;
+    /* Slate values, so greys in dark mode are cool rather than brown. */
+    --color-stone-300: #cad5e2;
+    --color-stone-400: #90a1b9;
+    --color-stone-500: #62748e;
+    --color-stone-600: #45556c;
+    --color-stone-700: #2c3a4f;
+    --color-stone-800: #1f2b3b;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .font-display {
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Respond on press; double taps count twice instead of zooming. */
+  button,
+  a,
+  summary,
+  select {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled),
+  a {
+    transition:
+      transform 120ms ease-out,
+      opacity 120ms ease-out;
+  }
+
+  button:not(:disabled):active,
+  a:active {
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    button:not(:disabled):active,
+    a:active {
+      transform: none;
+    }
+  }
+}
+
+/* Frosted header and bottom bar; solid when the system asks for less transparency. */
+.material {
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .material {
+    background: var(--background);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* The cupboard's doors swing open once; already open under reduced motion. */
+@keyframes cupboard-door {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0.18);
+  }
+}
+
+.cupboard * {
+  vector-effect: non-scaling-stroke;
+}
+
+.cupboard-door {
+  transform-box: fill-box;
+  animation: cupboard-door 900ms cubic-bezier(0.3, 0.7, 0.2, 1) both;
+}
+
+.cupboard-door-left {
+  transform-origin: left;
+  animation-delay: 300ms;
+}
+
+.cupboard-door-right {
+  transform-origin: right;
+  animation-delay: 420ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cupboard-door {
+    animation: none;
+    transform: scaleX(0.18);
+  }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { AppLink, navigate } from "@/components/AppLink";
+import { goBack, navigate } from "@/components/AppLink";
 import { ActivityList } from "@/components/ActivityList";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { TrashIcon } from "@/components/icons";
@@ -12,8 +12,9 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { isDate } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
+import { card, cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
 
-const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-4 py-2 text-base dark:border-zinc-700";
+const fieldClass = `${field} w-full px-4 py-2`;
 
 /**
  * Everything about one Product: rename it, move it to another Home Location,
@@ -33,12 +34,12 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
   const needMore = useNeedMore();
   const showRunningLow = useRunningLowToast();
 
-  if (product === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
+  if (product === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
   if (product === null) {
     return (
       <div className="flex flex-col gap-4">
         <BackLink />
-        <p className="text-zinc-500">{t("product.notFound")}</p>
+        <p className="text-stone-500">{t("product.notFound")}</p>
       </div>
     );
   }
@@ -63,118 +64,120 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
   return (
     <div className="flex flex-col gap-6">
       <BackLink />
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-500">{t("product.name")}</span>
-        <input
-          // Remounts when the name changes elsewhere, so the field shows the latest name.
-          key={product.name}
-          defaultValue={product.name}
-          onBlur={(event) => {
-            if (event.target.value.trim() === "") event.target.value = product.name;
-            saveName(event.target.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-          enterKeyHint="done"
-          autoComplete="off"
-          className={`${fieldClass} text-lg font-semibold`}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-500">{t("product.homeLocation")}</span>
-        <select
-          value={product.locationId}
-          onChange={(event) => void update({ productId, locationId: event.target.value as Id<"locations"> })}
-          className={fieldClass}
-        >
-          {inventory?.map((location) => (
-            <option key={location._id} value={location._id}>
-              {location.name}
-            </option>
-          )) ?? <option value={product.locationId}>{product.locationName}</option>}
-        </select>
-      </label>
-      <div className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-500">{t("product.stock")}</span>
-        <p className={`text-2xl font-semibold tabular-nums ${product.stock === 0 ? "text-zinc-400" : ""}`}>
-          {product.stock}
-        </p>
-      </div>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-500">{t("product.minimumStock")}</span>
-        <input
-          // Remounts when the Minimum Stock changes elsewhere, so the field shows the latest value.
-          key={product.minimumStock ?? "none"}
-          type="number"
-          inputMode="numeric"
-          min={0}
-          step={1}
-          defaultValue={product.minimumStock ?? ""}
-          placeholder={t("product.minimumStockNone")}
-          onBlur={(event) => {
-            const text = event.target.value.trim();
-            const minimumStock = text === "" ? null : Number(text);
-            if (minimumStock !== null && !(Number.isInteger(minimumStock) && minimumStock >= 0)) {
-              event.target.value = String(product.minimumStock ?? "");
-              return;
-            }
-            if (minimumStock !== product.minimumStock) void saveMinimumStock(minimumStock);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-          enterKeyHint="done"
-          className={fieldClass}
-        />
-        <span className="text-xs text-zinc-500">{t("product.minimumStockHint")}</span>
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-500">{t("product.expiryKind")}</span>
-        <ExpiryKindSelect
-          value={product.expiryKind}
-          onChange={(expiryKind) => void update({ productId, expiryKind })}
-          className={fieldClass}
-        />
-      </label>
-      {product.expiryKind && (
+      <div className={`${card} flex flex-col gap-5 p-4`}>
         <label className="flex flex-col gap-1">
-          <span className="text-sm text-zinc-500">{t("product.expiryDate")}</span>
+          <span className="text-sm text-stone-500">{t("product.name")}</span>
           <input
-            // Remounts when the date changes elsewhere, so the field shows the latest date.
-            key={product.expiryDate ?? "none"}
-            type="date"
-            defaultValue={product.expiryDate ?? ""}
-            // A picked date saves straight away; an emptied field clears the date once it loses focus.
-            onChange={(event) => {
-              const expiryDate = event.target.value;
-              if (isDate(expiryDate) && expiryDate !== product.expiryDate) void update({ productId, expiryDate });
-            }}
+            // Remounts when the name changes elsewhere, so the field shows the latest name.
+            key={product.name}
+            defaultValue={product.name}
             onBlur={(event) => {
-              if (event.target.value === "" && product.expiryDate) void update({ productId, expiryDate: null });
+              if (event.target.value.trim() === "") event.target.value = product.name;
+              saveName(event.target.value);
             }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            enterKeyHint="done"
+            autoComplete="off"
+            className={`${fieldClass} text-lg font-semibold`}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-stone-500">{t("product.homeLocation")}</span>
+          <select
+            value={product.locationId}
+            onChange={(event) => void update({ productId, locationId: event.target.value as Id<"locations"> })}
+            className={fieldClass}
+          >
+            {inventory?.map((location) => (
+              <option key={location._id} value={location._id}>
+                {location.name}
+              </option>
+            )) ?? <option value={product.locationId}>{product.locationName}</option>}
+          </select>
+        </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-stone-500">{t("product.stock")}</span>
+          <p className={`text-2xl font-semibold tabular-nums ${product.stock === 0 ? "text-stone-400" : ""}`}>
+            {product.stock}
+          </p>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-stone-500">{t("product.minimumStock")}</span>
+          <input
+            // Remounts when the Minimum Stock changes elsewhere, so the field shows the latest value.
+            key={product.minimumStock ?? "none"}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={1}
+            defaultValue={product.minimumStock ?? ""}
+            placeholder={t("product.minimumStockNone")}
+            onBlur={(event) => {
+              const text = event.target.value.trim();
+              const minimumStock = text === "" ? null : Number(text);
+              if (minimumStock !== null && !(Number.isInteger(minimumStock) && minimumStock >= 0)) {
+                event.target.value = String(product.minimumStock ?? "");
+                return;
+              }
+              if (minimumStock !== product.minimumStock) void saveMinimumStock(minimumStock);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            enterKeyHint="done"
             className={fieldClass}
           />
-          <span className="text-xs text-zinc-500">{t("product.expiryDateHint")}</span>
+          <span className="text-xs text-stone-500">{t("product.minimumStockHint")}</span>
         </label>
-      )}
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-stone-500">{t("product.expiryKind")}</span>
+          <ExpiryKindSelect
+            value={product.expiryKind}
+            onChange={(expiryKind) => void update({ productId, expiryKind })}
+            className={fieldClass}
+          />
+        </label>
+        {product.expiryKind && (
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-stone-500">{t("product.expiryDate")}</span>
+            <input
+              // Remounts when the date changes elsewhere, so the field shows the latest date.
+              key={product.expiryDate ?? "none"}
+              type="date"
+              defaultValue={product.expiryDate ?? ""}
+              // A picked date saves straight away; an emptied field clears the date once it loses focus.
+              onChange={(event) => {
+                const expiryDate = event.target.value;
+                if (isDate(expiryDate) && expiryDate !== product.expiryDate) void update({ productId, expiryDate });
+              }}
+              onBlur={(event) => {
+                if (event.target.value === "" && product.expiryDate) void update({ productId, expiryDate: null });
+              }}
+              className={fieldClass}
+            />
+            <span className="text-xs text-stone-500">{t("product.expiryDateHint")}</span>
+          </label>
+        )}
+      </div>
       <Barcodes barcodes={product.barcodes} />
       <button
         type="button"
-        onClick={() => void needMore(productId)}
-        className="rounded-xl bg-foreground py-3 text-lg font-semibold text-background"
+        onClick={() => needMore(product)}
+        className={`${primaryButton} py-3 text-lg`}
       >
         {t("lista.needMore")}
       </button>
       <button
         type="button"
         onClick={() => void deleteProduct()}
-        className="mt-4 rounded-xl border border-zinc-300 py-3 text-lg font-semibold text-red-600 dark:border-zinc-700"
+        className={`${secondaryButton} mt-4 py-3 text-lg text-red-700 dark:text-red-400`}
       >
         {t("product.delete")}
       </button>
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm text-zinc-500">{t("activity.recent")}</h2>
+        <h2 className="text-sm text-stone-500">{t("activity.recent")}</h2>
         <ActivityList activities={activities} />
       </section>
     </div>
@@ -195,32 +198,35 @@ function Barcodes({ barcodes }: { barcodes: { _id: Id<"barcodes">; code: string 
 
   return (
     <section className="flex flex-col gap-1">
-      <h2 className="text-sm text-zinc-500">{t("product.barcodes")}</h2>
-      {barcodes.length === 0 && <p className="text-sm text-zinc-500">{t("product.noBarcodes")}</p>}
-      <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
-        {barcodes.map((barcode) => (
-          <li key={barcode._id} className="flex items-center justify-between gap-2">
-            <span className="font-mono tabular-nums">{barcode.code}</span>
-            <button
-              type="button"
-              onClick={() => void removeBarcode(barcode._id)}
-              aria-label={t("product.removeBarcode", { code: barcode.code })}
-              className="flex h-11 w-11 items-center justify-center text-zinc-500"
-            >
-              <TrashIcon width={20} height={20} />
-            </button>
-          </li>
-        ))}
-      </ul>
+      <h2 className="text-sm text-stone-500">{t("product.barcodes")}</h2>
+      {barcodes.length === 0 && <p className="text-sm text-stone-500">{t("product.noBarcodes")}</p>}
+      {barcodes.length > 0 && (
+        <ul className={`${cardList} flex flex-col`}>
+          {barcodes.map((barcode) => (
+            <li key={barcode._id} className="flex items-center justify-between gap-2 pl-3">
+              <span className="font-mono tabular-nums">{barcode.code}</span>
+              <button
+                type="button"
+                onClick={() => void removeBarcode(barcode._id)}
+                aria-label={t("product.removeBarcode", { code: barcode.code })}
+                className="flex h-11 w-11 items-center justify-center text-stone-500"
+              >
+                <TrashIcon width={20} height={20} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
 
+/** Back to where the Member came from (Koti, Needs Attention or search results), or to Koti. */
 function BackLink() {
   const t = useT();
   return (
-    <AppLink href="/koti" className="-my-2 self-start py-2 text-zinc-600 dark:text-zinc-300">
+    <button type="button" onClick={goBack} className={`${textLink} -my-2 self-start py-2`}>
       {t("nav.back")}
-    </AppLink>
+    </button>
   );
 }

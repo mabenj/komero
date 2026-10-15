@@ -1,75 +1,62 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { AnimatePresence, motion } from "motion/react";
 import { AppLink } from "@/components/AppLink";
-import { useState } from "react";
-import { ChevronDownIcon } from "@/components/icons";
-import { useNeedMore } from "@/components/NeedMore";
+import { useSectionMotion } from "@/components/motion";
 import { api } from "@/convex/_generated/api";
+import type { AttentionStatus } from "@/convex/stock";
 import { localToday } from "@/lib/dates";
 import { useT } from "@/lib/i18n";
+import { card } from "@/lib/styles";
+
+const dots: Record<AttentionStatus, string> = {
+  expired: "bg-red-600",
+  checkIt: "bg-amber-500",
+  expiringSoon: "bg-amber-400",
+  runningLow: "bg-stone-400",
+};
+
+/** Status text: red for expired, amber for check it or expiring soon, grey otherwise (also on Koti's rows). */
+export const statusText: Record<AttentionStatus, string> = {
+  expired: "font-semibold text-red-700 dark:text-red-400",
+  checkIt: "text-amber-700 dark:text-amber-400",
+  expiringSoon: "text-amber-700 dark:text-amber-400",
+  runningLow: "text-stone-500",
+};
 
 /**
- * The top of Koti: Products that need attention on the phone's date, most
- * urgent first, with a count that stays visible when collapsed. Hidden when
- * nothing needs attention.
+ * The top of Koti: a row of chips, scrolled sideways, for the Products that
+ * need attention on the phone's date, most urgent first. A chip opens the
+ * Product page. Hidden when nothing needs attention; it fades in and out, and
+ * Koti below it slides to make room.
  */
 export function NeedsAttention() {
   const t = useT();
   const products = useQuery(api.inventory.needsAttention, { today: localToday() });
-  const needMore = useNeedMore();
-  const [open, setOpen] = useState(true);
-
-  if (!products || products.length === 0) return null;
+  const sectionMotion = useSectionMotion();
 
   return (
-    <section className="rounded-xl bg-amber-50 px-3 dark:bg-amber-950/40">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex min-h-11 w-full items-center justify-between gap-2 text-left"
-      >
-        <h2 className="text-lg font-semibold">{t("attention.title")}</h2>
-        <span className="flex items-center gap-2">
-          <span className="min-w-6 rounded-full bg-amber-500 px-2 text-center text-sm font-semibold text-white tabular-nums">
-            {products.length}
-          </span>
-          <ChevronDownIcon
-            width={20}
-            height={20}
-            aria-hidden="true"
-            className={`transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        </span>
-      </button>
-      {open && (
-        <ul className="flex flex-col divide-y divide-amber-200 pb-1 dark:divide-amber-900">
-          {products.map((product) => (
-            <li key={product._id} className="flex items-center gap-3 py-1.5">
-              <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
-                <p className="truncate">{product.name}</p>
-                <p
-                  className={`truncate text-xs ${product.attention === "expired" ? "font-semibold text-red-700 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"}`}
-                >
-                  {t("attention.detail", {
-                    status: t(`attention.${product.attention}`),
-                    location: product.locationName,
-                    stock: product.stock,
-                  })}
-                </p>
-              </AppLink>
-              <button
-                type="button"
-                onClick={() => void needMore(product._id)}
-                className="min-h-11 shrink-0 rounded-full bg-foreground px-4 text-sm font-semibold text-background"
-              >
-                {t("lista.needMore")}
-              </button>
-            </li>
-          ))}
-        </ul>
+    <AnimatePresence initial={false}>
+      {products && products.length > 0 && (
+        <motion.section key="attention" {...sectionMotion} aria-label={t("attention.title")}>
+          <ul className="-mx-4 flex snap-x scroll-px-4 gap-2 overflow-x-auto px-4 pt-1 pb-3">
+            {products.map((product) => (
+              <li key={product._id} className="shrink-0 snap-start">
+                <AppLink href={`/koti/${product._id}`} className={`${card} flex min-h-11 items-center gap-2 px-3 py-2`}>
+                  <span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${dots[product.attention]}`} />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium">{product.name}</span>
+                    <span className={`text-xs ${statusText[product.attention]}`}>
+                      {t(`attention.${product.attention}`)}
+                    </span>
+                  </span>
+                </AppLink>
+              </li>
+            ))}
+          </ul>
+        </motion.section>
       )}
-    </section>
+    </AnimatePresence>
   );
 }

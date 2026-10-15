@@ -47,7 +47,8 @@ then `pnpm dev`. The first person to open the app creates the first Member.
   JSX. User text (Product, Location, One-off names) is never translated.
 - **App icon**: `public/icons/icon.svg` is the source. After changing it, re-render the PNGs with
   `convert -density 300 public/icons/icon.svg -resize N -alpha off <file>` for
-  `public/icons/icon-192.png`, `public/icons/icon-512.png` and `app/apple-icon.png` (180).
+  `public/icons/icon-192.png`, `public/icons/icon-512.png` and `app/apple-icon.png` (180), and
+  `app/favicon.ico` with `convert -density 300 public/icons/icon.svg -alpha off -define icon:auto-resize=48,32,16 app/favicon.ico`.
   Keep the glyph inside the central 80% so the 512 icon also works as maskable.
 
 ## Deploy (human steps)

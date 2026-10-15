@@ -16,6 +16,7 @@
     "@convex-dev/auth": "0.0.96",
     "barcode-detector": "3.2.2",
     "convex": "1.46.0",
+    "motion": "13.4.6",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
