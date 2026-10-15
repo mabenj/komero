@@ -216,8 +216,9 @@ function useScanConfirmation() {
 /**
  * An unknown barcode: either a New Product (name typed, Location chosen) or
  * an existing Product (searched), in a sheet over the paused camera. The
- * barcode is linked, then the mode applies. Open Food Facts is asked in the background; its suggestion fills the name
- * only if the Member hasn't started typing, and never links by itself.
+ * barcode is linked, then the mode applies. Open Food Facts is asked in the
+ * background; its suggestion fills the name only if the Member hasn't started
+ * typing, and never links by itself.
  */
 function UnknownBarcode({
   code,
