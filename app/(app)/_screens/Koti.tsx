@@ -404,7 +404,11 @@ function QuickAdd({ location, onDone }: { location: Location; onDone: () => void
         />
         <button
           type="button"
-          onClick={onDone}
+          // A name still in the field is added too, so Done works without Enter.
+          onClick={() => {
+            add();
+            onDone();
+          }}
           className={`${primaryButton} min-h-11 px-4`}
         >
           {t("koti.quickAddDone")}
