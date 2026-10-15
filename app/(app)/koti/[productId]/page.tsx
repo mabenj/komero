@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use } from "react";
 import { ActivityList } from "@/components/ActivityList";
+import { TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
@@ -159,6 +160,7 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
           <span className="text-xs text-zinc-500">{t("product.expiryDateHint")}</span>
         </label>
       )}
+      <Barcodes barcodes={product.barcodes} />
       <button
         type="button"
         onClick={() => void needMore(productId)}
@@ -178,6 +180,41 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
         <ActivityList activities={activities} />
       </section>
     </div>
+  );
+}
+
+/** The Product's Barcodes; removing a wrong one can be undone. */
+function Barcodes({ barcodes }: { barcodes: { _id: Id<"barcodes">; code: string }[] }) {
+  const t = useT();
+  const showUndoToast = useUndoToast();
+  const remove = useMutation(api.barcodes.remove);
+  const link = useMutation(api.barcodes.link);
+
+  const removeBarcode = async (barcodeId: Id<"barcodes">) => {
+    const removed = await remove({ barcodeId });
+    showUndoToast(t("product.barcodeRemoved", { code: removed.code }), () => void link(removed));
+  };
+
+  return (
+    <section className="flex flex-col gap-1">
+      <h2 className="text-sm text-zinc-500">{t("product.barcodes")}</h2>
+      {barcodes.length === 0 && <p className="text-sm text-zinc-500">{t("product.noBarcodes")}</p>}
+      <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+        {barcodes.map((barcode) => (
+          <li key={barcode._id} className="flex items-center justify-between gap-2">
+            <span className="font-mono tabular-nums">{barcode.code}</span>
+            <button
+              type="button"
+              onClick={() => void removeBarcode(barcode._id)}
+              aria-label={t("product.removeBarcode", { code: barcode.code })}
+              className="flex h-11 w-11 items-center justify-center text-zinc-500"
+            >
+              <TrashIcon width={20} height={20} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

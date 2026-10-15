@@ -40,6 +40,10 @@ export const get = query({
     const product = await ctx.db.get(productId);
     if (product === null) return null;
     const location = await ctx.db.get(product.locationId);
+    const barcodes = await ctx.db
+      .query("barcodes")
+      .withIndex("by_product", (q) => q.eq("productId", productId))
+      .collect();
     return {
       _id: product._id,
       name: product.name,
@@ -49,6 +53,7 @@ export const get = query({
       expiryDate: product.expiryDate ?? null,
       locationId: product.locationId,
       locationName: location?.name ?? "",
+      barcodes: barcodes.map(({ _id, code }) => ({ _id, code })),
     };
   },
 });
@@ -112,9 +117,13 @@ const deletedProduct = {
   expiryKind: v.optional(expiryKind),
   expiryDate: v.optional(v.string()),
   entries: removedEntries,
+  barcodes: v.array(v.string()),
 };
 
-/** Deletes a Product and its Shopping List Entries. Returns what `restore` needs for the undo toast. */
+/**
+ * Deletes a Product with its Barcodes and Shopping List Entries. Returns what
+ * `restore` needs for the undo toast.
+ */
 export const remove = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, { productId }) => {
@@ -122,22 +131,38 @@ export const remove = mutation({
     const product = await requireProduct(ctx, productId);
     const { name, locationId, stock, minimumStock, expiryKind, expiryDate } = product;
     const entries = await removeEntriesOf(ctx, productId);
+    const barcodes = await ctx.db
+      .query("barcodes")
+      .withIndex("by_product", (q) => q.eq("productId", productId))
+      .collect();
+    for (const barcode of barcodes) await ctx.db.delete(barcode._id);
     await ctx.db.delete(productId);
     await recordActivity(ctx, memberId, "delete", product);
-    return { productId, name, locationId, stock, minimumStock, expiryKind, expiryDate, entries };
+    return {
+      productId,
+      name,
+      locationId,
+      stock,
+      minimumStock,
+      expiryKind,
+      expiryDate,
+      entries,
+      barcodes: barcodes.map((barcode) => barcode.code),
+    };
   },
 });
 
 /**
- * The delete undo toast: puts the Product back as it was, with its Shopping
- * List Entries. Returns its new id, which takes over the deleted Product's Activities.
+ * The delete undo toast: puts the Product back as it was, with its Barcodes
+ * (those not linked to another Product meanwhile) and Shopping List Entries.
+ * Returns its new id, which takes over the deleted Product's Activities.
  * If its Home Location was deleted meanwhile, it goes to the first Location.
  */
 export const restore = mutation({
   args: deletedProduct,
   handler: async (
     ctx,
-    { productId: deletedId, name, locationId, stock, minimumStock, expiryKind, expiryDate, entries },
+    { productId: deletedId, name, locationId, stock, minimumStock, expiryKind, expiryDate, entries, barcodes },
   ) => {
     const memberId = await requireMemberId(ctx);
     const home =
@@ -155,6 +180,13 @@ export const restore = mutation({
     });
     await relinkActivities(ctx, deletedId, productId);
     await restoreEntriesOf(ctx, productId, entries);
+    for (const code of barcodes) {
+      const taken = await ctx.db
+        .query("barcodes")
+        .withIndex("by_code", (q) => q.eq("code", code))
+        .unique();
+      if (taken === null) await ctx.db.insert("barcodes", { code, productId });
+    }
     await recordActivity(ctx, memberId, "restore", { _id: productId, name }, { to: stock });
     return productId;
   },
@@ -228,16 +260,29 @@ export const adjustStock = mutation({
     const memberId = await requireMemberId(ctx);
     const product = await ctx.db.get(productId);
     if (product === null) throw new ConvexError("PRODUCT_NOT_FOUND");
-    const next = change === "restock" ? applyRestock(product, 1) : applyUse(product);
-    await ctx.db.patch(productId, next);
-    await recordStockChange(ctx, memberId, change, product, next.stock);
-    return {
-      from: product.stock,
-      to: next.stock,
-      crossedIntoRunningLow: crossedIntoRunningLow(product, { ...product, ...next }),
-    };
+    return await changeStock(ctx, memberId, product, change);
   },
 });
+
+/**
+ * Restocks 1 or Uses 1 and records it. Koti's + / – and scanning both use it.
+ * Returns the Stock before and after, and whether this change made the Product Running Low.
+ */
+export async function changeStock(
+  ctx: MutationCtx,
+  memberId: Id<"users">,
+  product: Doc<"products">,
+  change: "restock" | "use",
+) {
+  const next = change === "restock" ? applyRestock(product, 1) : applyUse(product);
+  await ctx.db.patch(product._id, next);
+  await recordStockChange(ctx, memberId, change, product, next.stock);
+  return {
+    from: product.stock,
+    to: next.stock,
+    crossedIntoRunningLow: crossedIntoRunningLow(product, { ...product, ...next }),
+  };
+}
 
 /**
  * The undo toast: reverses what an adjustStock call did (`from` → `to`) on top

@@ -5,8 +5,9 @@ import { useT } from "@/lib/i18n";
 
 /** A button shown next to Undo, such as "Add to list" on the Running Low toast. */
 export type ToastAction = { label: string; run: () => void };
-type Toast = { id: number; message: string; undo: () => void; action?: ToastAction };
-type ShowUndoToast = (message: string, undo: () => void, action?: ToastAction) => void;
+type Toast = { id: number; message: string; undo?: () => void; action?: ToastAction };
+/** Without `undo`, the toast is a plain confirmation (e.g. a scan that Put Away from the Bag). */
+type ShowUndoToast = (message: string, undo?: () => void, action?: ToastAction) => void;
 
 const VISIBLE_MS = 5000;
 
@@ -49,7 +50,7 @@ function UndoToast({ toast, onClose }: { toast: Toast | null; onClose: () => voi
   return (
     <div
       role="status"
-      className="fixed inset-x-0 bottom-24 z-20 mx-auto flex max-w-md items-center justify-between gap-4 rounded-xl bg-foreground px-4 py-1 text-background shadow-lg"
+      className="fixed inset-x-0 bottom-24 z-20 mx-auto flex min-h-13 max-w-md items-center justify-between gap-4 rounded-xl bg-foreground px-4 py-1 text-background shadow-lg"
       style={{ width: "calc(100% - 2rem)" }}
     >
       <span className="truncate">{toast.message}</span>
@@ -66,16 +67,18 @@ function UndoToast({ toast, onClose }: { toast: Toast | null; onClose: () => voi
             {toast.action.label}
           </button>
         )}
-        <button
-          type="button"
-          className={buttonClass}
-          onClick={() => {
-            toast.undo();
-            onClose();
-          }}
-        >
-          {t("common.undo")}
-        </button>
+        {toast.undo && (
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => {
+              toast.undo!();
+              onClose();
+            }}
+          >
+            {t("common.undo")}
+          </button>
+        )}
       </div>
     </div>
   );
