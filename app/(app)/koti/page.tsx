@@ -9,7 +9,8 @@ import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MinusIcon, PlusIcon } from "@/components/icons";
-import { SwipeToNeedMore } from "@/components/NeedMore";
+import { NeedsAttention } from "@/components/NeedsAttention";
+import { SwipeToNeedMore, useNeedMore } from "@/components/NeedMore";
 import { tidyName } from "@/convex/productNames";
 import { applyRestock, applyUse } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
@@ -31,6 +32,7 @@ export default function KotiPage() {
   return (
     <div className="flex flex-col gap-6">
       <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
+      <NeedsAttention />
       {inventory.map((location) => (
         <section key={location._id} data-location-id={location._id} className="flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
@@ -257,10 +259,15 @@ function ProductRow({
   );
 }
 
-/** Applies + / – (optimistically, so taps feel instant) and offers to undo it. */
+/**
+ * Applies + / – (optimistically, so taps feel instant) and offers to undo it.
+ * When the change makes the Product Running Low, the toast says so and offers
+ * Need More; nothing goes on the list unless it is tapped.
+ */
 function useStockChange() {
   const t = useT();
   const showUndoToast = useUndoToast();
+  const needMore = useNeedMore();
   const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate(
     (store, { productId, change }) => setStockLocally(store, productId, (stock) => apply(stock, change)),
   );
@@ -268,13 +275,19 @@ function useStockChange() {
 
   return useCallback(
     async (product: ProductRowData, change: StockChange) => {
-      const { from, to } = await adjustStock({ productId: product._id, change });
+      const { from, to, crossedIntoRunningLow } = await adjustStock({ productId: product._id, change });
       if (from === to) return;
-      showUndoToast(t("koti.stockChanged", { name: product.name, from, to }), () => {
-        void undoStockChange({ productId: product._id, from, to });
-      });
+      const undo = () => void undoStockChange({ productId: product._id, from, to });
+      if (crossedIntoRunningLow) {
+        showUndoToast(t("koti.runningLow", { name: product.name }), undo, {
+          label: t("koti.addToList"),
+          run: () => void needMore(product._id),
+        });
+      } else {
+        showUndoToast(t("koti.stockChanged", { name: product.name, from, to }), undo);
+      }
     },
-    [adjustStock, undoStockChange, showUndoToast, t],
+    [adjustStock, undoStockChange, showUndoToast, needMore, t],
   );
 }
 

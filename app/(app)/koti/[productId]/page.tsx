@@ -15,7 +15,8 @@ const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-backgro
 
 /**
  * Everything about one Product: rename it, move it to another Home Location,
- * put it on the Shopping List, delete it, and see its recent Activity.
+ * set or clear its Minimum Stock, put it on the Shopping List, delete it, and
+ * see its recent Activity.
  */
 export default function ProductPage({ params }: PageProps<"/koti/[productId]">) {
   const productId = use(params).productId as Id<"products">;
@@ -93,6 +94,34 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
           {product.stock}
         </p>
       </div>
+      <label className="flex flex-col gap-1">
+        <span className="text-sm text-zinc-500">{t("product.minimumStock")}</span>
+        <input
+          // Remounts when the Minimum Stock changes elsewhere, so the field shows the latest value.
+          key={product.minimumStock ?? "none"}
+          type="number"
+          inputMode="numeric"
+          min={0}
+          step={1}
+          defaultValue={product.minimumStock ?? ""}
+          placeholder={t("product.minimumStockNone")}
+          onBlur={(event) => {
+            const text = event.target.value.trim();
+            const minimumStock = text === "" ? null : Number(text);
+            if (minimumStock !== null && !(Number.isInteger(minimumStock) && minimumStock >= 0)) {
+              event.target.value = String(product.minimumStock ?? "");
+              return;
+            }
+            if (minimumStock !== product.minimumStock) void update({ productId, minimumStock });
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+          enterKeyHint="done"
+          className={fieldClass}
+        />
+        <span className="text-xs text-zinc-500">{t("product.minimumStockHint")}</span>
+      </label>
       <button
         type="button"
         onClick={() => void needMore(productId)}
