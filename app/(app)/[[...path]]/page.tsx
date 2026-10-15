@@ -4,7 +4,7 @@ import { AnimatePresence } from "motion/react";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect } from "react";
 import { navigate } from "@/components/AppLink";
-import { SlideOver } from "@/components/SlideOver";
+import { CoveredScreen, SlideOver } from "@/components/SlideOver";
 import type { Id } from "@/convex/_generated/dataModel";
 import { lastTab } from "@/lib/remembered";
 import { scrollFor } from "@/lib/screenHistory";
@@ -18,7 +18,8 @@ import SettingsScreen from "../_screens/Settings";
  * The whole signed-in app is this one route, which picks the screen from the
  * URL on the client. Moving between screens (see `AppLink`) never asks the
  * server for a route, so it keeps working while offline. A Product page
- * slides in over the screen it was opened from.
+ * (/koti/<id>) is opened from Koti and slides in over it; Koti stays mounted
+ * underneath, so Back returns to it as it was left, search results and all.
  */
 export default function AppScreens() {
   const pathname = usePathname();
@@ -26,14 +27,15 @@ export default function AppScreens() {
   const [, first, second, ...rest] = pathname.split("/");
   const productId = first === "koti" && second && rest.length === 0 ? (second as Id<"products">) : null;
   const screen =
-    rest.length > 0 || second ? null
+    productId !== null ? <KotiScreen />
+    : rest.length > 0 || second ? null
     : first === "koti" ? <KotiScreen />
     : first === "scan" ? <ScanScreen />
     : first === "lista" ? <ListaScreen />
     : first === "settings" ? <SettingsScreen />
     : null;
 
-  const known = screen !== null || productId !== null;
+  const known = screen !== null;
   // The start URL ("/") reopens the last used tab; an unknown path goes to Koti.
   useEffect(() => {
     if (!known) navigate(pathname === "/" ? `/${lastTab()}` : "/koti", { replace: true });
@@ -41,7 +43,7 @@ export default function AppScreens() {
 
   return (
     <>
-      {screen}
+      <CoveredScreen covered={productId !== null}>{screen}</CoveredScreen>
       <AnimatePresence initial={false}>
         {productId && (
           <SlideOver key={productId}>

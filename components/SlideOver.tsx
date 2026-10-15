@@ -5,10 +5,11 @@ import { type ReactNode, useLayoutEffect, useRef } from "react";
 import { useEnterExit } from "@/components/motion";
 
 /**
- * A screen (a Product page) that slides in from the right and back out to the
- * right. Render it inside `AnimatePresence`. While it leaves, it is pinned
- * where it was on screen, so the screen returned to can take its place, and
- * its scroll position, underneath it.
+ * A screen (a Product page) that slides in from the right over a
+ * `CoveredScreen`, and back out to the right. Render it inside
+ * `AnimatePresence`. While it leaves, it is pinned where it was on screen, so
+ * the screen returned to can take its place, and its scroll position,
+ * underneath it.
  */
 export function SlideOver({ children }: { children: ReactNode }) {
   const screen = useRef<HTMLDivElement>(null);
@@ -47,8 +48,43 @@ export function SlideOver({ children }: { children: ReactNode }) {
   }, [isPresent]);
 
   return (
-    <motion.div ref={screen} {...slide} className="-mx-4 -mt-4 bg-background px-4 pt-4">
+    // Positioned, so it stays over the `CoveredScreen` once the slide's transform is gone.
+    <motion.div ref={screen} {...slide} className="relative -mx-4 -mt-4 bg-background px-4 pt-4">
       {children}
     </motion.div>
+  );
+}
+
+/**
+ * The screen a `SlideOver` opened from, rendered before it. It stays mounted
+ * while `covered`, so it keeps its state (such as Koti's search) and the
+ * SlideOver slides in and back out over it. While covered, it is fixed where
+ * it was on screen, so the SlideOver has the page's scroll to itself, inert,
+ * and hidden once the SlideOver has had time to slide in. Uncovered, it
+ * returns to the page at once, for the screen's scroll position to be restored.
+ */
+export function CoveredScreen({ covered, children }: { covered: boolean; children: ReactNode }) {
+  const screen = useRef<HTMLDivElement>(null);
+
+  // Before the page scrolls for the SlideOver (see `useScrollRestore`), which runs after this.
+  useLayoutEffect(() => {
+    const element = screen.current;
+    if (!covered || !element) return;
+    const { top, left, width } = element.getBoundingClientRect();
+    const fixed = { position: "fixed", top: `${top}px`, left: `${left}px`, width: `${width}px` } as const;
+    Object.assign(element.style, fixed);
+    return () => {
+      Object.assign(element.style, Object.fromEntries(Object.keys(fixed).map((property) => [property, ""])));
+    };
+  }, [covered]);
+
+  return (
+    <div
+      ref={screen}
+      inert={covered}
+      className={covered ? "invisible transition-[visibility] delay-1000 duration-0" : undefined}
+    >
+      {children}
+    </div>
   );
 }
