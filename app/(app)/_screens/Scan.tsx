@@ -5,17 +5,19 @@ import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
-import { useNeedMore, useNeedMoreToast } from "@/components/NeedMore";
+import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
+import { useNeedMoreToast } from "@/components/NeedMore";
+import { usePutAwayToast, useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
+import type { ExpiryKind } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
-import { lastLocation, rememberLocation } from "@/lib/lastLocation";
-import { lastScanMode, rememberScanMode, SCAN_MODES, type ScanMode } from "@/lib/lastScanMode";
+import { lastLocation, lastScanMode, rememberLocation, rememberScanMode } from "@/lib/remembered";
 
 type ScanOutcome = Exclude<FunctionReturnType<typeof api.barcodes.scan>, { unknown: true }>;
 type Suggestion = FunctionReturnType<typeof api.barcodes.lookup>;
-type ExpiryKind = "bestBefore" | "useBy" | null;
 
 const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-4 py-2 text-base dark:border-zinc-700";
 
@@ -26,7 +28,7 @@ const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-backgro
  * of a Product with an Expiry Kind then asks for the package's date (Skip is
  * the big button), with the camera paused until it is answered.
  */
-export default function ScanPage() {
+export default function ScanScreen() {
   const [mode, setMode] = useState<ScanMode>(lastScanMode);
   const [scanning, setScanning] = useState(false);
 
@@ -87,14 +89,14 @@ function Scanning({
   const t = useT();
   const scan = useMutation(api.barcodes.scan);
   const dateScan = useMutation(api.barcodes.dateScan);
-  const confirm = useScanConfirmation();
+  const showConfirmation = useScanConfirmation();
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
-  const [dating, setDating] = useState<ScanOutcome | null>(null);
+  const [awaitingDate, setAwaitingDate] = useState<ScanOutcome | null>(null);
   const [cameraError, setCameraError] = useState(false);
 
   const scanned = (outcome: ScanOutcome) => {
-    confirm(outcome);
-    if (outcome.asksForDate) setDating((current) => current ?? outcome);
+    showConfirmation(outcome);
+    if (outcome.asksForDate) setAwaitingDate((current) => current ?? outcome);
   };
 
   const onCode = async (code: string) => {
@@ -120,14 +122,14 @@ function Scanning({
           </button>
         ))}
       </div>
-      {dating && (
+      {awaitingDate && (
         <DatePrompt
-          key={`${dating.productId}-${dating.to}`}
-          name={dating.name}
+          key={`${awaitingDate.productId}-${awaitingDate.to}`}
+          name={awaitingDate.name}
           answerLabel={t("common.save")}
           onAnswer={(expiryDate) => {
-            setDating(null);
-            if (expiryDate) void dateScan({ productId: dating.productId, expiryDate });
+            setAwaitingDate(null);
+            if (expiryDate) void dateScan({ productId: awaitingDate.productId, expiryDate });
           }}
         />
       )}
@@ -140,7 +142,7 @@ function Scanning({
           <BarcodeScanner
             onCode={(code) => void onCode(code)}
             onError={() => setCameraError(true)}
-            paused={unknownCode !== null || dating !== null}
+            paused={unknownCode !== null || awaitingDate !== null}
           />
           <p className="absolute inset-x-0 bottom-0 bg-black/50 px-4 py-2 text-center text-sm text-white">
             {t("scan.hint")}
@@ -172,36 +174,35 @@ function Scanning({
 /**
  * The confirmation after each scan: the Product and its new Stock, with undo.
  * A Use that makes the Product Running Low gets Koti's "running low" toast
- * with "Add to list" instead. A Put Away from the Bag has no undo, as on Lista.
+ * with "Add to list" instead. Undoing a Put Away from the Bag puts it back in the Bag.
  */
 function useScanConfirmation() {
   const t = useT();
   const showUndoToast = useUndoToast();
   const showNeedMoreToast = useNeedMoreToast();
-  const needMore = useNeedMore();
-  const undoStockChange = useMutation(api.products.undoStockChange);
+  const showRunningLow = useRunningLowToast();
+  const showPutAway = usePutAwayToast();
+  const undoStockChange = useUndoStockChange();
 
   return useCallback(
     (outcome: ScanOutcome) => {
-      const { productId, name, from, to } = outcome;
-      const undo = () => void undoStockChange({ productId, from, to });
+      const { name, from, to } = outcome;
+      const product = { _id: outcome.productId, name };
+      const undo = undoStockChange(product, outcome);
       switch (outcome.action) {
         case "restock":
           return showUndoToast(t("scan.restocked", { name, stock: to }), undo);
         case "putAway":
-          return showUndoToast(t("scan.putAway", { name, stock: to }));
+          return showPutAway(t("scan.putAway", { name, stock: to }), outcome.putAway);
         case "use":
           if (from === to) return showUndoToast(t("scan.alreadyOut", { name }));
           if (!outcome.crossedIntoRunningLow) return showUndoToast(t("scan.used", { name, stock: to }), undo);
-          return showUndoToast(t("koti.runningLow", { name }), undo, {
-            label: t("koti.addToList"),
-            run: () => void needMore(productId),
-          });
+          return showRunningLow(product, undo);
         case "needMore":
           return showNeedMoreToast(outcome);
       }
     },
-    [showUndoToast, showNeedMoreToast, needMore, undoStockChange, t],
+    [showUndoToast, showNeedMoreToast, showRunningLow, showPutAway, undoStockChange, t],
   );
 }
 
@@ -292,14 +293,14 @@ function NewProductForm({
   onSubmit,
 }: {
   suggestion: Suggestion | null;
-  onSubmit: (name: string, locationId: Id<"locations">, expiryKind: ExpiryKind) => void;
+  onSubmit: (name: string, locationId: Id<"locations">, expiryKind: ExpiryKind | null) => void;
 }) {
   const t = useT();
   const inventory = useQuery(api.inventory.get);
   const nameField = useRef<HTMLInputElement>(null);
   const [typedName, setTypedName] = useState<string | null>(null);
   const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
-  const [pickedExpiryKind, setPickedExpiryKind] = useState<ExpiryKind | undefined>(undefined);
+  const [pickedExpiryKind, setPickedExpiryKind] = useState<ExpiryKind | null | undefined>(undefined);
   const name = typedName ?? suggestion?.name ?? "";
   const suggested = typedName === null && name !== "";
   const expiryKind = pickedExpiryKind === undefined ? (suggestion?.expiryKind ?? null) : pickedExpiryKind;
@@ -353,18 +354,7 @@ function NewProductForm({
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-sm text-zinc-500">{t("product.expiryKind")}</span>
-        <select
-          value={expiryKind ?? "none"}
-          onChange={(event) => {
-            const value = event.target.value;
-            setPickedExpiryKind(value === "bestBefore" || value === "useBy" ? value : null);
-          }}
-          className={fieldClass}
-        >
-          <option value="none">{t("product.expiryKind.none")}</option>
-          <option value="bestBefore">{t("product.expiryKind.bestBefore")}</option>
-          <option value="useBy">{t("product.expiryKind.useBy")}</option>
-        </select>
+        <ExpiryKindSelect value={expiryKind} onChange={setPickedExpiryKind} className={fieldClass} />
       </label>
       <button
         type="submit"

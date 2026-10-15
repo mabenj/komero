@@ -3,32 +3,27 @@ import { type MutationCtx, mutation, query } from "./_generated/server";
 import { recordActivity, relinkActivities } from "./activities";
 import { requireMemberId } from "./members";
 import type { Doc, Id } from "./_generated/dataModel";
+import { createProduct, requireMinimumStock } from "./newProduct";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
 import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingList";
-import { expiryKind } from "./schema";
-import { applyRestock, applyUse, crossedIntoRunningLow, isDate, type StockState } from "./stock";
+import { applyRestock, applyUndo, applyUse, crossedIntoRunningLow, expiryKind, isDate, stockChange } from "./stock";
 
 /**
  * Adds a Product by name to its Home Location. A new Product starts with Stock 1.
- * Both the search/add field and quick-add use this; a name that already exists
- * (in any case) is refused.
+ * Both the search/add field and quick-add use this; the add form's "More" can
+ * also set a Minimum Stock and an Expiry Kind. A name that already exists is
+ * only warned about (`search`), so this adds a second Product with it.
  */
 export const create = mutation({
-  args: { name: v.string(), locationId: v.id("locations") },
-  handler: async (ctx, { name, locationId }) => {
+  args: {
+    name: v.string(),
+    locationId: v.id("locations"),
+    minimumStock: v.optional(v.number()),
+    expiryKind: v.optional(expiryKind),
+  },
+  handler: async (ctx, details) => {
     const memberId = await requireMemberId(ctx);
-    const tidy = tidyName(name);
-    if (tidy === "") throw new ConvexError("NAME_REQUIRED");
-    if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
-    const key = nameKey(tidy);
-    const existing = await ctx.db
-      .query("products")
-      .withIndex("by_nameKey", (q) => q.eq("nameKey", key))
-      .first();
-    if (existing !== null) throw new ConvexError("PRODUCT_EXISTS");
-    const productId = await ctx.db.insert("products", { name: tidy, nameKey: key, locationId, stock: 1 });
-    await recordActivity(ctx, memberId, "create", { _id: productId, name: tidy }, { to: 1 });
-    return productId;
+    return (await createProduct(ctx, memberId, { ...details, stock: 1 }))._id;
   },
 });
 
@@ -74,7 +69,8 @@ export const rename = mutation({
 /**
  * Changes a Product's details from its page. Fields left out stay as they are;
  * null clears one. Clearing the Expiry Kind clears the Expiry Date too, and only
- * a Product with an Expiry Kind can have a date.
+ * a Product with an Expiry Kind can have a date. Returns whether the change
+ * (a raised Minimum Stock) made the Product Running Low, for the "running low" toast.
  */
 export const update = mutation({
   args: {
@@ -92,9 +88,7 @@ export const update = mutation({
       await ctx.db.patch(productId, { locationId });
     }
     if (minimumStock !== undefined) {
-      if (minimumStock !== null && !(Number.isInteger(minimumStock) && minimumStock >= 0)) {
-        throw new ConvexError("MINIMUM_STOCK_INVALID");
-      }
+      if (minimumStock !== null) requireMinimumStock(minimumStock);
       await ctx.db.patch(productId, { minimumStock: minimumStock ?? undefined });
     }
     if (expiryDate != null) {
@@ -104,6 +98,7 @@ export const update = mutation({
     if (expiryKind === null) await ctx.db.patch(productId, { expiryKind: undefined, expiryDate: undefined });
     else if (expiryKind !== undefined) await ctx.db.patch(productId, { expiryKind });
     if (expiryDate !== undefined) await ctx.db.patch(productId, { expiryDate: expiryDate ?? undefined });
+    return { crossedIntoRunningLow: crossedIntoRunningLow(product, (await ctx.db.get(productId))!) };
   },
 });
 
@@ -251,22 +246,22 @@ export const search = query({
 /**
  * Koti's inline + (Restock 1) and – (Use 1). A read-modify-write inside one
  * mutation, so concurrent taps on different phones all count.
- * Returns the Stock before and after, for the undo toast, and whether this
+ * Returns what `undoStockChange` needs for the undo toast, and whether this
  * change made the Product Running Low, for the "running low" toast.
  */
 export const adjustStock = mutation({
   args: { productId: v.id("products"), change: v.union(v.literal("restock"), v.literal("use")) },
   handler: async (ctx, { productId, change }) => {
     const memberId = await requireMemberId(ctx);
-    const product = await ctx.db.get(productId);
-    if (product === null) throw new ConvexError("PRODUCT_NOT_FOUND");
+    const product = await requireProduct(ctx, productId);
     return await changeStock(ctx, memberId, product, change);
   },
 });
 
 /**
  * Restocks 1 or Uses 1 and records it. Koti's + / – and scanning both use it.
- * Returns the Stock before and after, and whether this change made the Product Running Low.
+ * Returns the Stock before and after and the Expiry Date before (for undo),
+ * and whether this change made the Product Running Low.
  */
 export async function changeStock(
   ctx: MutationCtx,
@@ -280,25 +275,25 @@ export async function changeStock(
   return {
     from: product.stock,
     to: next.stock,
+    expiryDateBefore: product.expiryDate,
     crossedIntoRunningLow: crossedIntoRunningLow(product, { ...product, ...next }),
   };
 }
 
 /**
- * The undo toast: reverses what an adjustStock call did (`from` → `to`) on top
- * of the current Stock, so changes made on other phones in between are kept.
+ * The undo toast after + / – or a scan: reverses the Stock change on top of
+ * the current Stock, so changes made on other phones in between are kept, and
+ * puts the Expiry Date back as it was (see `applyUndo`). Returns whether the
+ * undo made the Product Running Low, for the "running low" toast.
  */
 export const undoStockChange = mutation({
-  args: { productId: v.id("products"), from: v.number(), to: v.number() },
-  handler: async (ctx, { productId, from, to }) => {
+  args: { productId: v.id("products"), ...stockChange.fields },
+  handler: async (ctx, { productId, ...undone }) => {
     const memberId = await requireMemberId(ctx);
-    const product = await ctx.db.get(productId);
-    if (product === null) throw new ConvexError("PRODUCT_NOT_FOUND");
-    const { stock, expiryKind, expiryDate } = product;
-    let next: StockState = { stock, expiryKind, expiryDate };
-    if (to < from) next = applyRestock(next, from - to);
-    for (let i = 0; i < to - from; i++) next = applyUse(next);
+    const product = await requireProduct(ctx, productId);
+    const next = applyUndo(product, undone);
     await ctx.db.patch(productId, next);
     await recordStockChange(ctx, memberId, "undoStockChange", product, next.stock);
+    return { crossedIntoRunningLow: crossedIntoRunningLow(product, { ...product, ...next }) };
   },
 });

@@ -214,9 +214,39 @@ describe("Expiry Date rules", () => {
     await restock(anna, maito);
 
     for (const adjust of [restock, use]) {
-      const { from, to } = await adjust(anna, maito);
-      await anna.mutation(api.products.undoStockChange, { productId: maito, from, to });
+      const { from, to, expiryDateBefore } = await adjust(anna, maito);
+      await anna.mutation(api.products.undoStockChange, { productId: maito, from, to, expiryDateBefore });
       expect(await expiry(anna, maito)).toEqual({ kind: "useBy", date: "2026-10-20", stock: 2 });
     }
+  });
+
+  test("undoing the – that used the last Maito brings its Expiry Date back", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoUseBy(anna, "2026-10-20");
+
+    const { from, to, expiryDateBefore } = await use(anna, maito);
+    expect(await expiry(anna, maito)).toEqual({ kind: "useBy", date: null, stock: 0 });
+
+    await anna.mutation(api.products.undoStockChange, { productId: maito, from, to, expiryDateBefore });
+    expect(await expiry(anna, maito)).toEqual({ kind: "useBy", date: "2026-10-20", stock: 1 });
+  });
+
+  test("undoing an Add scan whose package had an earlier date brings back the date from before", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoUseBy(anna, "2026-10-20");
+    await anna.mutation(api.barcodes.link, { code: "6408430000012", productId: maito });
+
+    const scanned = await anna.mutation(api.barcodes.scan, { code: "6408430000012", mode: "add" });
+    if (scanned.unknown) throw new Error("Maito's barcode should be known");
+    await anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-10-17" });
+    expect(await expiry(anna, maito)).toEqual({ kind: "useBy", date: "2026-10-17", stock: 2 });
+
+    await anna.mutation(api.products.undoStockChange, {
+      productId: maito,
+      from: scanned.from,
+      to: scanned.to,
+      expiryDateBefore: scanned.expiryDateBefore,
+    });
+    expect(await expiry(anna, maito)).toEqual({ kind: "useBy", date: "2026-10-20", stock: 1 });
   });
 });

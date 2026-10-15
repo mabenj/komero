@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import Link from "next/link";
+import { AppLink } from "@/components/AppLink";
 import { useState } from "react";
 import { ChevronDownIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
@@ -47,7 +47,7 @@ export function NeedsAttention() {
         <ul className="flex flex-col divide-y divide-amber-200 pb-1 dark:divide-amber-900">
           {products.map((product) => (
             <li key={product._id} className="flex items-center gap-3 py-1.5">
-              <Link href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
+              <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
                 <p className="truncate">{product.name}</p>
                 <p
                   className={`truncate text-xs ${product.attention === "expired" ? "font-semibold text-red-700 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"}`}
@@ -58,7 +58,7 @@ export function NeedsAttention() {
                     stock: product.stock,
                   })}
                 </p>
-              </Link>
+              </AppLink>
               <button
                 type="button"
                 onClick={() => void needMore(product._id)}

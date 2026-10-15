@@ -3,13 +3,14 @@
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { DatePrompt } from "@/components/DatePrompt";
+import { usePutAwayToast } from "@/components/StockToasts";
 import { CheckIcon, MinusIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useT } from "@/lib/i18n";
-import { lastLocation, rememberLocation } from "@/lib/lastLocation";
+import { lastLocation, rememberLocation } from "@/lib/remembered";
 
 type Entry = {
   _id: Id<"entries">;
@@ -21,7 +22,7 @@ type Entry = {
 };
 
 /** The shared Shopping List: to-buy Entries grouped by Location, then One-offs under "Other", then the Bag. */
-export default function ListaPage() {
+export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
 
@@ -131,7 +132,12 @@ function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
  */
 function Bag({ entries }: { entries: Entry[] }) {
   const t = useT();
-  const putAwayAll = useMutation(api.shoppingList.putAwayAll);
+  const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll);
+  const showPutAway = usePutAwayToast();
+  const putAwayAll = async (expiryDates?: Record<string, string>) => {
+    const { putAway } = await putAwayAllEntries({ expiryDates });
+    showPutAway(t("lista.putAwayAllDone", { count: putAway.length }), putAway);
+  };
   const [prompts, setPrompts] = useState<{ asking: Entry[]; index: number; dates: Record<string, string> } | null>(
     null,
   );
@@ -140,7 +146,7 @@ function Bag({ entries }: { entries: Entry[] }) {
     const asking = entries.filter(
       (entry, i) => entry.asksForDate && entries.findIndex((e) => e.productId === entry.productId) === i,
     );
-    if (asking.length === 0) void putAwayAll({});
+    if (asking.length === 0) void putAwayAll();
     else setPrompts({ asking, index: 0, dates: {} });
   };
   const answer = (date: string | undefined) => {
@@ -152,7 +158,7 @@ function Bag({ entries }: { entries: Entry[] }) {
       return;
     }
     setPrompts(null);
-    void putAwayAll({ expiryDates: dates });
+    void putAwayAll(dates);
   };
 
   return (
@@ -228,7 +234,12 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
     });
   });
   const untick = useMutation(api.shoppingList.untick);
-  const putAway = useMutation(api.shoppingList.putAway);
+  const putAwayEntry = useMutation(api.shoppingList.putAway);
+  const showPutAway = usePutAwayToast();
+  const putAway = async (expiryDate?: string) => {
+    const done = await putAwayEntry({ entryId: entry._id, expiryDate });
+    showPutAway(t("lista.putAwayDone", { name: entry.name }), done.putAway);
+  };
   const remove = useMutation(api.shoppingList.remove);
   const restore = useMutation(api.shoppingList.restore);
 
@@ -273,7 +284,7 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
               type="button"
               className="min-h-11 shrink-0 rounded-xl border border-zinc-300 px-3 font-semibold dark:border-zinc-700"
               aria-label={t("lista.putAwayName", { name: entry.name })}
-              onClick={() => (entry.asksForDate ? setAskingDate(true) : void putAway({ entryId: entry._id }))}
+              onClick={() => (entry.asksForDate ? setAskingDate(true) : void putAway())}
             >
               {t("lista.putAway")}
             </button>
@@ -317,7 +328,7 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
           name={entry.name}
           onAnswer={(expiryDate) => {
             setAskingDate(false);
-            void putAway({ entryId: entry._id, expiryDate });
+            void putAway(expiryDate);
           }}
           onCancel={() => setAskingDate(false)}
         />

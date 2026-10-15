@@ -1,12 +1,10 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { expiryKind } from "./stock";
 
 /** A Member's UI language. Finnish is the default. */
 export const language = v.union(v.literal("fi"), v.literal("en"));
-
-/** A Product's Expiry Kind. Absent means none: the Product never asks for a date. */
-export const expiryKind = v.union(v.literal("bestBefore"), v.literal("useBy"));
 
 /**
  * What an Activity records. To record a new kind: add it here, add
@@ -28,6 +26,7 @@ export const activityKind = v.union(
   v.literal("tick"),
   v.literal("untick"),
   v.literal("putAway"),
+  v.literal("undoPutAway"),
 );
 
 export default defineSchema({

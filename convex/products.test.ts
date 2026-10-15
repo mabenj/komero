@@ -42,6 +42,45 @@ describe("Products", () => {
     expect((await productsIn(anna, "Kaappi")).map((p) => p.name)).toEqual(["Ananas", "Kahvi", "riisi", "Öljy"]);
   });
 
+  test("the optional details under More (Expiry Kind, Minimum Stock) are saved with a new Product", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+
+    const wc = await anna.mutation(api.products.create, {
+      name: "Vessapaperi",
+      locationId: await locationId(anna, "Kylpyhuone"),
+      minimumStock: 2,
+    });
+    const jugurtti = await anna.mutation(api.products.create, {
+      name: "Jugurtti",
+      locationId: await locationId(anna, "Jääkaappi"),
+      expiryKind: "useBy",
+    });
+
+    expect(await anna.query(api.products.get, { productId: wc })).toMatchObject({
+      stock: 1,
+      minimumStock: 2,
+      expiryKind: null,
+    });
+    expect(await anna.query(api.products.get, { productId: jugurtti })).toMatchObject({
+      stock: 1,
+      minimumStock: null,
+      expiryKind: "useBy",
+    });
+  });
+
+  test("a new Product's Minimum Stock must be a whole number of packages", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+
+    await expect(
+      anna.mutation(api.products.create, {
+        name: "Vessapaperi",
+        locationId: await locationId(anna, "Kylpyhuone"),
+        minimumStock: -1,
+      }),
+    ).rejects.toThrow(/MINIMUM_STOCK_INVALID/);
+    expect(await productsIn(anna, "Kylpyhuone")).toEqual([]);
+  });
+
   test("a Product needs a name", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
 

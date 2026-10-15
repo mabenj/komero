@@ -1,12 +1,12 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { use } from "react";
+import { AppLink, navigate } from "@/components/AppLink";
 import { ActivityList } from "@/components/ActivityList";
+import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
+import { useRunningLowToast } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -20,10 +20,8 @@ const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-backgro
  * set or clear its Minimum Stock, Expiry Kind and Expiry Date, put it on the Shopping List, delete it, and
  * see its recent Activity.
  */
-export default function ProductPage({ params }: PageProps<"/koti/[productId]">) {
-  const productId = use(params).productId as Id<"products">;
+export default function ProductScreen({ productId }: { productId: Id<"products"> }) {
   const t = useT();
-  const router = useRouter();
   const showUndoToast = useUndoToast();
   const product = useQuery(api.products.get, { productId });
   const inventory = useQuery(api.inventory.get);
@@ -33,6 +31,7 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
   const remove = useMutation(api.products.remove);
   const restore = useMutation(api.products.restore);
   const needMore = useNeedMore();
+  const showRunningLow = useRunningLowToast();
 
   if (product === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
   if (product === null) {
@@ -44,13 +43,19 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
     );
   }
 
+  // Raising the Minimum Stock up to the Stock makes the Product Running Low, which the toast says.
+  const saveMinimumStock = async (minimumStock: number | null) => {
+    const { crossedIntoRunningLow } = await update({ productId, minimumStock });
+    if (crossedIntoRunningLow) showRunningLow(product);
+  };
+
   const saveName = (name: string) => {
     if (name.trim() === "" || name.trim() === product.name) return;
     void rename({ productId, name });
   };
 
   const deleteProduct = async () => {
-    router.replace("/koti");
+    navigate("/koti", { replace: true });
     const deleted = await remove({ productId });
     showUndoToast(t("product.deleted", { name: deleted.name }), () => void restore(deleted));
   };
@@ -114,7 +119,7 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
               event.target.value = String(product.minimumStock ?? "");
               return;
             }
-            if (minimumStock !== product.minimumStock) void update({ productId, minimumStock });
+            if (minimumStock !== product.minimumStock) void saveMinimumStock(minimumStock);
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter") event.currentTarget.blur();
@@ -126,18 +131,11 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-sm text-zinc-500">{t("product.expiryKind")}</span>
-        <select
-          value={product.expiryKind ?? "none"}
-          onChange={(event) => {
-            const value = event.target.value;
-            void update({ productId, expiryKind: value === "bestBefore" || value === "useBy" ? value : null });
-          }}
+        <ExpiryKindSelect
+          value={product.expiryKind}
+          onChange={(expiryKind) => void update({ productId, expiryKind })}
           className={fieldClass}
-        >
-          <option value="none">{t("product.expiryKind.none")}</option>
-          <option value="bestBefore">{t("product.expiryKind.bestBefore")}</option>
-          <option value="useBy">{t("product.expiryKind.useBy")}</option>
-        </select>
+        />
       </label>
       {product.expiryKind && (
         <label className="flex flex-col gap-1">
@@ -221,8 +219,8 @@ function Barcodes({ barcodes }: { barcodes: { _id: Id<"barcodes">; code: string 
 function BackLink() {
   const t = useT();
   return (
-    <Link href="/koti" className="-my-2 self-start py-2 text-zinc-600 dark:text-zinc-300">
+    <AppLink href="/koti" className="-my-2 self-start py-2 text-zinc-600 dark:text-zinc-300">
       {t("nav.back")}
-    </Link>
+    </AppLink>
   );
 }

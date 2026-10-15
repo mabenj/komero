@@ -1,17 +1,13 @@
-import { ConvexError, type Infer, v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { type MutationCtx, action, mutation } from "./_generated/server";
-import { recordActivity } from "./activities";
 import { requireMemberId } from "./members";
-import { expiryKind } from "./schema";
-import { nameKey, tidyName } from "./productNames";
+import { type ScanMode, scanMode } from "./scanModes";
+import { findOrCreateProduct } from "./newProduct";
 import { changeStock } from "./products";
 import { needMoreOf, putAwayOneFromBag } from "./shoppingList";
-import { applyRestock, isDate } from "./stock";
+import { applyRestock, type ExpiryKind, expiryKind, isDate } from "./stock";
 
-/** The scan modes, chosen before scanning. */
-export const scanMode = v.union(v.literal("add"), v.literal("use"), v.literal("needMore"));
-type ScanMode = Infer<typeof scanMode>;
 
 /**
  * Codes are matched as strings. A UPC-A read as 12 digits is stored as its
@@ -49,7 +45,7 @@ type OpenFoodFactsProduct = Partial<Record<"product_type" | `${"product" | "gene
  */
 export const lookup = action({
   args: { code: v.string() },
-  handler: async (ctx, { code }): Promise<{ name: string | null; expiryKind: "bestBefore" | null }> => {
+  handler: async (ctx, { code }): Promise<{ name: string | null; expiryKind: ExpiryKind | null }> => {
     await requireMemberId(ctx);
     const product = /^\d{8,14}$/.test(code) ? await fetchOpenFoodFactsProduct(code) : null;
     if (!product) return { name: null, expiryKind: null };
@@ -127,25 +123,12 @@ export const linkNew = mutation({
   },
   handler: async (ctx, { code, name, locationId, mode, expiryKind }) => {
     const memberId = await requireMemberId(ctx);
-    const tidy = tidyName(name);
-    if (tidy === "") throw new ConvexError("NAME_REQUIRED");
-    if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
-    const key = nameKey(tidy);
-    let product = await ctx.db
-      .query("products")
-      .withIndex("by_nameKey", (q) => q.eq("nameKey", key))
-      .first();
-    if (product === null) {
-      const productId = await ctx.db.insert("products", {
-        name: tidy,
-        nameKey: key,
-        locationId,
-        stock: 0,
-        expiryKind: expiryKind ?? undefined,
-      });
-      product = (await ctx.db.get(productId))!;
-      await recordActivity(ctx, memberId, "create", product, { to: 0 });
-    }
+    const product = await findOrCreateProduct(ctx, memberId, {
+      name,
+      locationId,
+      stock: 0,
+      expiryKind: expiryKind ?? undefined,
+    });
     await linkCode(ctx, normalizeBarcode(code), product._id);
     return await applyMode(ctx, memberId, product, mode);
   },
@@ -186,7 +169,12 @@ async function applyMode(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"
     expiryKind: product.expiryKind ?? null,
     asksForDate: mode === "add" && product.expiryKind !== undefined,
   };
-  const unchanged = { from: product.stock, to: product.stock, crossedIntoRunningLow: false };
+  const unchanged = {
+    from: product.stock,
+    to: product.stock,
+    expiryDateBefore: product.expiryDate,
+    crossedIntoRunningLow: false,
+  };
   switch (mode) {
     case "add": {
       const fromBag = await putAwayOneFromBag(ctx, memberId, product);

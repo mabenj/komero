@@ -3,7 +3,7 @@
 A household Inventory and shared Shopping List for phones. Domain language is in
 [`GLOSSARY.md`](GLOSSARY.md); architecture decisions are in [`docs/adr/`](docs/adr/).
 
-Stack: Next.js 16 (App Router, client-rendered shell) on Vercel, Convex for data,
+Stack: Next.js 16 (App Router, client-routed shell) on Vercel, Convex for data,
 live queries and auth (Convex Auth, Password provider). Node 20.17+, pnpm 9.
 
 ## Develop
@@ -26,7 +26,16 @@ then `pnpm dev`. The first person to open the app creates the first Member.
 - **Tests** live next to the Convex functions as `convex/*.test.ts`. They drive Komero only
   through public Convex functions as signed-in Members (`newKomero()`, `signUp()`, `signIn()`
   in `convex/test.helpers.ts`), assert only through public queries, and are named as household
-  scenarios in glossary terms. No UI or end-to-end tests.
+  scenarios in glossary terms. No UI or end-to-end tests. The single exception is a cron target
+  with no public route: the 90-day purge test calls `internal.activities.purgeOld` the way the
+  daily cron does. `vitest.setup.ts` swaps the Password provider's slow Scrypt hash for a cheap
+  one, so sign-ups in tests stay fast; the sign-up and sign-in flow is otherwise the real one.
+- **Navigation** in the signed-in app stays on the client: the whole app is one route
+  (`app/(app)/[[...path]]/page.tsx`) that picks the screen from the URL, and links use
+  `AppLink` / `navigate()` (`components/AppLink.tsx`), not Next's `<Link>` or `router.push`,
+  which fetch the route from the server and reload the page when offline. `KeepOfflineData`
+  keeps the tabs' queries subscribed so screens show the last data offline (ADR-0001).
+- **Per-device conveniences** (last tab, scan mode, Location) go through `lib/remembered.ts`.
 - Files in `convex/` with two dots in the name (`*.test.ts`, `test.helpers.ts`, `test.setup.ts`)
   are not deployed.
 - Member-only Convex functions start with `await requireMemberId(ctx)` (`convex/members.ts`).

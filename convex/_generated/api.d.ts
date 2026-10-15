@@ -17,8 +17,10 @@ import type * as inventory from "../inventory.js";
 import type * as invites from "../invites.js";
 import type * as locations from "../locations.js";
 import type * as members from "../members.js";
+import type * as newProduct from "../newProduct.js";
 import type * as productNames from "../productNames.js";
 import type * as products from "../products.js";
+import type * as scanModes from "../scanModes.js";
 import type * as shoppingList from "../shoppingList.js";
 import type * as stock from "../stock.js";
 
@@ -38,8 +40,10 @@ declare const fullApi: ApiFromModules<{
   invites: typeof invites;
   locations: typeof locations;
   members: typeof members;
+  newProduct: typeof newProduct;
   productNames: typeof productNames;
   products: typeof products;
+  scanModes: typeof scanModes;
   shoppingList: typeof shoppingList;
   stock: typeof stock;
 }>;

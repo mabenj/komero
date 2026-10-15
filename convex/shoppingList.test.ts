@@ -266,6 +266,57 @@ describe("Bag and Put Away", () => {
     expect(await lista(anna)).toEqual([{ group: "Jääkaappi", entries: ["Juusto ×1 (Stock 1)"] }]);
   });
 
+  test("undoing a Put Away puts Maito ×2 back in the Bag, with its Stock and Expiry Date as before", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "useBy", expiryDate: "2026-10-20" });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.tick, { entryId: await entryId(anna, "Maito") });
+
+    const putAway = await anna.mutation(api.shoppingList.putAway, {
+      entryId: await entryId(anna, "Maito"),
+      expiryDate: "2026-10-18",
+    });
+    expect(await anna.query(api.products.get, { productId: maito })).toMatchObject({
+      stock: 3,
+      expiryDate: "2026-10-18",
+    });
+
+    await anna.mutation(api.shoppingList.undoPutAway, putAway);
+
+    expect(await lista(anna)).toEqual([{ group: "In the bag", entries: ["Maito ×2 (Stock 1)"] }]);
+    expect(await anna.query(api.products.get, { productId: maito })).toMatchObject({
+      stock: 1,
+      expiryDate: "2026-10-20",
+    });
+  });
+
+  test("undoing Put away all puts the whole Bag back, One-offs too, and is recorded", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
+    for (const name of ["Maito", "Synttärikynttilät"]) {
+      await anna.mutation(api.shoppingList.tick, { entryId: await entryId(anna, name) });
+    }
+
+    const putAway = await anna.mutation(api.shoppingList.putAwayAll, {});
+    expect(await lista(anna)).toEqual([]);
+    await anna.mutation(api.shoppingList.undoPutAway, putAway);
+
+    expect(await lista(anna)).toEqual([
+      { group: "In the bag", entries: ["Maito ×1 (Stock 1)", "Synttärikynttilät ×1"] },
+    ]);
+    const feed = await anna.query(api.activities.feed, {});
+    expect(feed.slice(0, 2).map(({ kind, productName, from, to, quantity }) => ({ kind, productName, from, to, quantity }))).toEqual(
+      expect.arrayContaining([
+        { kind: "undoPutAway", productName: "Maito", from: 2, to: 1, quantity: 1 },
+        { kind: "undoPutAway", productName: "Synttärikynttilät", quantity: 1 },
+      ]),
+    );
+  });
+
   test("tick, untick and Put Away are recorded as Activities", async () => {
     const [anna, ben] = await annaAndBen();
     await anna.mutation(api.shoppingList.needMore, { productId: await product(anna, "Maito", "Jääkaappi") });

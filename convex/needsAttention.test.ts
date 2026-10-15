@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { ExpiryKind } from "./stock";
 import { type MemberSession, newKomero, signUp } from "./test.helpers";
 
 async function locationId(member: MemberSession, name: string) {
@@ -27,7 +28,7 @@ async function needsAttention(member: MemberSession, today = TODAY) {
 }
 
 /** Gives a Product an Expiry Kind and Date from its page. */
-const dated = (member: MemberSession, productId: Id<"products">, expiryKind: "bestBefore" | "useBy", expiryDate: string) =>
+const dated = (member: MemberSession, productId: Id<"products">, expiryKind: ExpiryKind, expiryDate: string) =>
   member.mutation(api.products.update, { productId, expiryKind, expiryDate });
 
 describe("Running Low", () => {
@@ -97,6 +98,32 @@ describe("Running Low", () => {
 
     expect(await use(anna, maito)).toEqual({ from: 1, to: 0, crossedIntoRunningLow: true });
     expect(await use(anna, maito)).toEqual({ from: 0, to: 0, crossedIntoRunningLow: false });
+  });
+
+  test("raising Vessapaperi's Minimum Stock up to its Stock crosses into Running Low; changing it while low doesn't", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const paperi = await product(anna, "Vessapaperi", "Kylpyhuone");
+    await restock(anna, paperi);
+    const setMinimum = (minimumStock: number | null) =>
+      anna.mutation(api.products.update, { productId: paperi, minimumStock });
+
+    expect(await setMinimum(1)).toEqual({ crossedIntoRunningLow: false });
+    expect(await setMinimum(2)).toEqual({ crossedIntoRunningLow: true });
+    expect(await setMinimum(3)).toEqual({ crossedIntoRunningLow: false });
+    expect(await setMinimum(null)).toEqual({ crossedIntoRunningLow: false });
+  });
+
+  test("undoing the + that took Vessapaperi above its Minimum Stock crosses back into Running Low", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const paperi = await product(anna, "Vessapaperi", "Kylpyhuone");
+    await anna.mutation(api.products.update, { productId: paperi, minimumStock: 1 });
+
+    const { from, to } = await restock(anna, paperi);
+
+    expect(await anna.mutation(api.products.undoStockChange, { productId: paperi, from, to })).toEqual({
+      crossedIntoRunningLow: true,
+    });
+    expect(await needsAttention(anna)).toEqual(["Vessapaperi (Kylpyhuone, Stock 1): runningLow"]);
   });
 
   test("ignoring the Running Low toast puts nothing on the Shopping List", async () => {

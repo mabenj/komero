@@ -32,7 +32,7 @@ describe("Quick-add", () => {
     expect(await productsIn(anna, "Pakastin")).toEqual([]);
   });
 
-  test("entering a name that already exists, in any case, warns and adds no second Product", async () => {
+  test("a name that already exists, in any case, is only warned about: entering it anyway adds a second Product", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const jaakaappi = await locationId(anna, "Jääkaappi");
     await anna.mutation(api.products.create, { name: "Maito", locationId: jaakaappi });
@@ -41,11 +41,9 @@ describe("Quick-add", () => {
       name: "Maito",
       locationName: "Jääkaappi",
     });
-    await expect(
-      anna.mutation(api.products.create, { name: "maito", locationId: await locationId(anna, "Kaappi") }),
-    ).rejects.toThrow(/PRODUCT_EXISTS/);
+    await anna.mutation(api.products.create, { name: "maito", locationId: await locationId(anna, "Kaappi") });
 
     expect(await productsIn(anna, "Jääkaappi")).toEqual([{ name: "Maito", stock: 1 }]);
-    expect(await productsIn(anna, "Kaappi")).toEqual([]);
+    expect(await productsIn(anna, "Kaappi")).toEqual([{ name: "maito", stock: 1 }]);
   });
 });

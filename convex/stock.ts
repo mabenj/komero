@@ -1,11 +1,17 @@
 // The Stock rules, in one place. Pure: mutations read a Product, apply a rule
 // here and write the result back within the same transaction.
+import { type Infer, v } from "convex/values";
+
+/** A Product's Expiry Kind. Absent means none: the Product never asks for a date. */
+export const expiryKind = v.union(v.literal("bestBefore"), v.literal("useBy"));
+export type ExpiryKind = Infer<typeof expiryKind>;
+export const EXPIRY_KINDS: ExpiryKind[] = expiryKind.members.map((member) => member.value);
 
 /**
  * Stock and its Expiry Date ("YYYY-MM-DD"). The date only applies with an
  * Expiry Kind; `expiryDate: undefined` in a result means the date is cleared.
  */
-export type StockState = { stock: number; expiryKind?: "bestBefore" | "useBy"; expiryDate?: string };
+export type StockState = { stock: number; expiryKind?: ExpiryKind; expiryDate?: string };
 
 /**
  * Restock: n packages put away or scanned in, with the date printed on them if
@@ -26,6 +32,23 @@ export function applyRestock(product: StockState, n: number, date?: string): Sto
 export function applyUse(product: StockState): StockState {
   const stock = Math.max(0, product.stock - 1);
   return { stock, expiryDate: stock === 0 ? undefined : product.expiryDate };
+}
+
+/** What undoing a Stock change needs: the Stock before and after, and the Expiry Date before. */
+export const stockChange = v.object({ from: v.number(), to: v.number(), expiryDateBefore: v.optional(v.string()) });
+
+/**
+ * Undo of a Stock change from `from` to `to` (a + or –, a scan, a Put Away):
+ * the change is reversed on top of the current Stock, so changes made on other
+ * phones in between are kept, and the Expiry Date goes back to what it was
+ * before the change (`expiryDateBefore`), cleared if Stock ends up at 0.
+ */
+export function applyUndo(
+  product: StockState,
+  { from, to, expiryDateBefore }: Infer<typeof stockChange>,
+): StockState {
+  const stock = Math.max(0, product.stock - (to - from));
+  return { stock, expiryDate: stock > 0 && product.expiryKind ? expiryDateBefore : undefined };
 }
 
 /** Whether `text` is a real calendar day written "YYYY-MM-DD", the form Expiry Dates are kept in. */
