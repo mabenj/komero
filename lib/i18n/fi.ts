@@ -97,6 +97,7 @@ export const fi = {
   "scan.newProduct": "Uusi tuote",
   "scan.existingProduct": "Olemassa oleva tuote",
   "scan.productName": "Tuotteen nimi",
+  "scan.suggestedName": "Nimiehdotus Open Food Factsista. Muokkaa vapaasti.",
   "scan.searchProduct": "Hae tuotetta",
   "scan.noMatches": "Ei osuvia tuotteita",
   "scan.linkFailed": "Viivakoodia ei voitu liittää. Se voi kuulua jo toiselle tuotteelle.",

@@ -5,7 +5,7 @@ import { mutation, query } from "./_generated/server";
 import { language } from "./schema";
 
 /** The signed-in Member's id. Every Member-only function starts with this. */
-export async function requireMemberId(ctx: QueryCtx) {
+export async function requireMemberId(ctx: Pick<QueryCtx, "auth">) {
   const memberId = await getAuthUserId(ctx);
   if (memberId === null) throw new ConvexError("NOT_SIGNED_IN");
   return memberId;

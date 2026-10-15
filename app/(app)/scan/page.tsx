@@ -1,8 +1,8 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
 import { useNeedMore, useNeedMoreToast } from "@/components/NeedMore";
@@ -14,6 +14,8 @@ import { lastLocation, rememberLocation } from "@/lib/lastLocation";
 import { lastScanMode, rememberScanMode, SCAN_MODES, type ScanMode } from "@/lib/lastScanMode";
 
 type ScanOutcome = Exclude<FunctionReturnType<typeof api.barcodes.scan>, { unknown: true }>;
+type Suggestion = FunctionReturnType<typeof api.barcodes.lookup>;
+type ExpiryKind = "bestBefore" | "useBy" | null;
 
 const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-4 py-2 text-base dark:border-zinc-700";
 
@@ -206,6 +208,8 @@ function useScanConfirmation() {
 /**
  * An unknown barcode: either a New Product (name typed, Location chosen) or
  * an existing Product (searched). The barcode is linked, then the mode applies.
+ * Open Food Facts is asked in the background; its suggestion fills the name
+ * only if the Member hasn't started typing, and never links by itself.
  */
 function UnknownBarcode({
   code,
@@ -223,6 +227,18 @@ function UnknownBarcode({
   const [failed, setFailed] = useState(false);
   const linkNew = useMutation(api.barcodes.linkNew);
   const link = useMutation(api.barcodes.link);
+  const lookup = useAction(api.barcodes.lookup);
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    lookup({ code })
+      .then((found) => current && setSuggestion(found))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [code, lookup]);
 
   const finish = (linking: Promise<ScanOutcome | null>) => {
     setFailed(false);
@@ -250,9 +266,10 @@ function UnknownBarcode({
       </div>
       {choice === "new" ? (
         <NewProductForm
-          onSubmit={(name, locationId) => {
+          suggestion={suggestion}
+          onSubmit={(name, locationId, expiryKind) => {
             rememberLocation(locationId);
-            finish(linkNew({ code, name, locationId, mode }));
+            finish(linkNew({ code, name, locationId, mode, expiryKind }));
           }}
         />
       ) : (
@@ -270,16 +287,32 @@ function UnknownBarcode({
   );
 }
 
-function NewProductForm({ onSubmit }: { onSubmit: (name: string, locationId: Id<"locations">) => void }) {
+function NewProductForm({
+  suggestion,
+  onSubmit,
+}: {
+  suggestion: Suggestion | null;
+  onSubmit: (name: string, locationId: Id<"locations">, expiryKind: ExpiryKind) => void;
+}) {
   const t = useT();
   const inventory = useQuery(api.inventory.get);
-  const [name, setName] = useState("");
+  const nameField = useRef<HTMLInputElement>(null);
+  const [typedName, setTypedName] = useState<string | null>(null);
   const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
+  const [pickedExpiryKind, setPickedExpiryKind] = useState<ExpiryKind | undefined>(undefined);
+  const name = typedName ?? suggestion?.name ?? "";
+  const suggested = typedName === null && name !== "";
+  const expiryKind = pickedExpiryKind === undefined ? (suggestion?.expiryKind ?? null) : pickedExpiryKind;
   const remembered = inventory?.find((location) => location._id === lastLocation())?._id;
   const locationId = pickedLocation ?? remembered ?? inventory?.[0]?._id;
 
+  // A suggested name is selected, so typing replaces it ("Eila laktoositon…" → "Maito").
+  useEffect(() => {
+    if (suggested && document.activeElement === nameField.current) nameField.current?.select();
+  }, [suggested]);
+
   const submit = () => {
-    if (name.trim() !== "" && locationId) onSubmit(name, locationId);
+    if (name.trim() !== "" && locationId) onSubmit(name, locationId, expiryKind);
   };
 
   return (
@@ -290,16 +323,20 @@ function NewProductForm({ onSubmit }: { onSubmit: (name: string, locationId: Id<
         submit();
       }}
     >
-      <input
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        placeholder={t("scan.productName")}
-        aria-label={t("scan.productName")}
-        autoFocus
-        autoComplete="off"
-        enterKeyHint="done"
-        className={fieldClass}
-      />
+      <div className="flex flex-col gap-1">
+        <input
+          ref={nameField}
+          value={name}
+          onChange={(event) => setTypedName(event.target.value)}
+          placeholder={t("scan.productName")}
+          aria-label={t("scan.productName")}
+          autoFocus
+          autoComplete="off"
+          enterKeyHint="done"
+          className={fieldClass}
+        />
+        {suggested && <span className="text-xs text-zinc-500">{t("scan.suggestedName")}</span>}
+      </div>
       <label className="flex flex-col gap-1">
         <span className="text-sm text-zinc-500">{t("product.homeLocation")}</span>
         <select
@@ -312,6 +349,21 @@ function NewProductForm({ onSubmit }: { onSubmit: (name: string, locationId: Id<
               {location.name}
             </option>
           ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-sm text-zinc-500">{t("product.expiryKind")}</span>
+        <select
+          value={expiryKind ?? "none"}
+          onChange={(event) => {
+            const value = event.target.value;
+            setPickedExpiryKind(value === "bestBefore" || value === "useBy" ? value : null);
+          }}
+          className={fieldClass}
+        >
+          <option value="none">{t("product.expiryKind.none")}</option>
+          <option value="bestBefore">{t("product.expiryKind.bestBefore")}</option>
+          <option value="useBy">{t("product.expiryKind.useBy")}</option>
         </select>
       </label>
       <button
