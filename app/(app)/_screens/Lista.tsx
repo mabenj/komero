@@ -10,7 +10,7 @@ import { CheckIcon, TrashIcon } from "@/components/icons";
 import { landInBag, Reveal, RollingNumber, settle, useRowMotion, useSectionMotion } from "@/components/motion";
 import { useNeedMore } from "@/components/NeedMore";
 import { NumberStepper, stepButton } from "@/components/NumberStepper";
-import { useUndoToast } from "@/components/UndoToast";
+import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey } from "@/convex/productNames";
@@ -298,7 +298,7 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   const t = useT();
   const [makingProduct, setMakingProduct] = useState(false);
   const [askingDate, setAskingDate] = useState(false);
-  const showUndoToast = useUndoToast();
+  const showChangeToast = useChangeToast();
   const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
   const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate(tickLocally);
   const untick = useMutation(api.shoppingList.untick).withOptimisticUpdate(untickLocally);
@@ -319,10 +319,9 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   };
   const tickEntry = () => {
     onMove(listed);
-    void tick({ entryId: entry._id });
-    showUndoToast(t("lista.ticked", { name: entry.name }), () => {
+    showChangeToast(t("lista.ticked", { name: entry.name }), tick({ entryId: entry._id }), () => {
       onMove(listed);
-      void untick({ entryId: entry._id });
+      return untick({ entryId: entry._id });
     });
   };
   const untickEntry = () => {
@@ -330,9 +329,8 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
     void untick({ entryId: entry._id });
   };
   const deleteEntry = () => {
-    void remove({ entryId: entry._id });
     const deleted = { productId: entry.productId, name: entry.name, quantity: entry.quantity };
-    showUndoToast(t("lista.deleted", { name: entry.name }), () => void restore(deleted));
+    showChangeToast(t("lista.deleted", { name: entry.name }), remove({ entryId: entry._id }), () => restore(deleted));
   };
 
   return (

@@ -4,7 +4,7 @@ import { useConvex, useMutation } from "convex/react";
 import { animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import { type PointerEvent, type ReactNode, useCallback, useRef, useState } from "react";
 import { crossFade, swipeBack, useRowMotion } from "@/components/motion";
-import { useUndoToast } from "@/components/UndoToast";
+import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { haptic } from "@/lib/haptics";
@@ -36,23 +36,22 @@ export function useNeedMore() {
 
 /**
  * The toast after Need More (also from a scan): how many are now on the list,
- * and undo, which waits for the server's Entry if it hasn't arrived yet.
+ * and undo, which waits for the server's Entry if it hasn't arrived yet. If
+ * Need More fails, the toast goes away.
  */
 export function useNeedMoreToast() {
   const t = useT();
-  const showUndoToast = useUndoToast();
+  const showChangeToast = useChangeToast();
   const setQuantity = useMutation(api.shoppingList.setQuantity);
   const remove = useMutation(api.shoppingList.remove);
 
   return useCallback(
     (shown: { name: string; quantity: number }, added: Added | Promise<Added>) => {
-      showUndoToast(t("lista.onList", shown), async () => {
-        const { entryId, quantity } = await added;
-        if (quantity === 1) void remove({ entryId });
-        else void setQuantity({ entryId, quantity: quantity - 1 });
-      });
+      showChangeToast(t("lista.onList", shown), added, ({ entryId, quantity }) =>
+        quantity === 1 ? remove({ entryId }) : setQuantity({ entryId, quantity: quantity - 1 }),
+      );
     },
-    [setQuantity, remove, showUndoToast, t],
+    [setQuantity, remove, showChangeToast, t],
   );
 }
 
