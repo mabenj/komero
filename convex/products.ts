@@ -5,7 +5,7 @@ import { requireMemberId } from "./members";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
 import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingList";
-import { applyRestock, applyUse, type StockState } from "./stock";
+import { applyRestock, applyUse, crossedIntoRunningLow, type StockState } from "./stock";
 
 /**
  * Adds a Product by name to its Home Location. A new Product starts with Stock 1.
@@ -43,6 +43,7 @@ export const get = query({
       _id: product._id,
       name: product.name,
       stock: product.stock,
+      minimumStock: product.minimumStock ?? null,
       locationId: product.locationId,
       locationName: location?.name ?? "",
     };
@@ -62,15 +63,28 @@ export const rename = mutation({
   },
 });
 
-/** Changes a Product's details from its page. Fields left out stay as they are. */
+/**
+ * Changes a Product's details from its page. Fields left out stay as they are;
+ * a `minimumStock` of null clears it.
+ */
 export const update = mutation({
-  args: { productId: v.id("products"), locationId: v.optional(v.id("locations")) },
-  handler: async (ctx, { productId, locationId }) => {
+  args: {
+    productId: v.id("products"),
+    locationId: v.optional(v.id("locations")),
+    minimumStock: v.optional(v.union(v.number(), v.null())),
+  },
+  handler: async (ctx, { productId, locationId, minimumStock }) => {
     await requireMemberId(ctx);
     await requireProduct(ctx, productId);
     if (locationId !== undefined) {
       if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
       await ctx.db.patch(productId, { locationId });
+    }
+    if (minimumStock !== undefined) {
+      if (minimumStock !== null && !(Number.isInteger(minimumStock) && minimumStock >= 0)) {
+        throw new ConvexError("MINIMUM_STOCK_INVALID");
+      }
+      await ctx.db.patch(productId, { minimumStock: minimumStock ?? undefined });
     }
   },
 });
@@ -81,6 +95,7 @@ const deletedProduct = {
   name: v.string(),
   locationId: v.id("locations"),
   stock: v.number(),
+  minimumStock: v.optional(v.number()),
   entries: removedEntries,
 };
 
@@ -90,11 +105,11 @@ export const remove = mutation({
   handler: async (ctx, { productId }) => {
     const memberId = await requireMemberId(ctx);
     const product = await requireProduct(ctx, productId);
-    const { name, locationId, stock } = product;
+    const { name, locationId, stock, minimumStock } = product;
     const entries = await removeEntriesOf(ctx, productId);
     await ctx.db.delete(productId);
     await recordActivity(ctx, memberId, "delete", product);
-    return { productId, name, locationId, stock, entries };
+    return { productId, name, locationId, stock, minimumStock, entries };
   },
 });
 
@@ -105,13 +120,19 @@ export const remove = mutation({
  */
 export const restore = mutation({
   args: deletedProduct,
-  handler: async (ctx, { productId: deletedId, name, locationId, stock, entries }) => {
+  handler: async (ctx, { productId: deletedId, name, locationId, stock, minimumStock, entries }) => {
     const memberId = await requireMemberId(ctx);
     const home =
       (await ctx.db.get(locationId)) ??
       (await ctx.db.query("locations").withIndex("by_sortOrder").first());
     if (home === null) throw new ConvexError("LOCATION_NOT_FOUND");
-    const productId = await ctx.db.insert("products", { name, nameKey: nameKey(name), locationId: home._id, stock });
+    const productId = await ctx.db.insert("products", {
+      name,
+      nameKey: nameKey(name),
+      locationId: home._id,
+      stock,
+      minimumStock,
+    });
     await relinkActivities(ctx, deletedId, productId);
     await restoreEntriesOf(ctx, productId, entries);
     await recordActivity(ctx, memberId, "restore", { _id: productId, name }, { to: stock });
@@ -178,7 +199,8 @@ export const search = query({
 /**
  * Koti's inline + (Restock 1) and – (Use 1). A read-modify-write inside one
  * mutation, so concurrent taps on different phones all count.
- * Returns the Stock before and after, for the undo toast.
+ * Returns the Stock before and after, for the undo toast, and whether this
+ * change made the Product Running Low, for the "running low" toast.
  */
 export const adjustStock = mutation({
   args: { productId: v.id("products"), change: v.union(v.literal("restock"), v.literal("use")) },
@@ -189,7 +211,11 @@ export const adjustStock = mutation({
     const next = change === "restock" ? applyRestock(product, 1) : applyUse(product);
     await ctx.db.patch(productId, next);
     await recordStockChange(ctx, memberId, change, product, next.stock);
-    return { from: product.stock, to: next.stock };
+    return {
+      from: product.stock,
+      to: next.stock,
+      crossedIntoRunningLow: crossedIntoRunningLow(product, { ...product, ...next }),
+    };
   },
 });
 
