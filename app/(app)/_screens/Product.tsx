@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { AppLink, navigate } from "@/components/AppLink";
+import { goBack, navigate } from "@/components/AppLink";
 import { ActivityList } from "@/components/ActivityList";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { TrashIcon } from "@/components/icons";
@@ -221,11 +221,12 @@ function Barcodes({ barcodes }: { barcodes: { _id: Id<"barcodes">; code: string 
   );
 }
 
+/** Back to where the Member came from (Koti, Needs Attention or search results), or to Koti. */
 function BackLink() {
   const t = useT();
   return (
-    <AppLink href="/koti" className={`${textLink} -my-2 self-start py-2`}>
+    <button type="button" onClick={goBack} className={`${textLink} -my-2 self-start py-2`}>
       {t("nav.back")}
-    </AppLink>
+    </button>
   );
 }

@@ -1,15 +1,17 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { AppLink } from "@/components/AppLink";
 import { Cupboard } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { ScanIcon } from "@/components/icons";
+import { ChevronDownIcon, ScanIcon } from "@/components/icons";
+import { Reveal, settle, useLayoutMotion } from "@/components/motion";
 import { NeedsAttention, statusText } from "@/components/NeedsAttention";
 import { SwipeToNeedMore } from "@/components/NeedMore";
 import { NumberStepper } from "@/components/NumberStepper";
@@ -41,47 +43,62 @@ export default function KotiScreen() {
   const locationInView = useLocationInView(inventory !== undefined);
   const changeStock = useStockChange();
   const [quickAddLocation, setQuickAddLocation] = useState<Id<"locations"> | null>(null);
+  const layout = useLayoutMotion();
 
   if (inventory === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
   const empty = inventory.every((location) => location.products.length === 0);
+  // One layout group, so a part that opens or a row that leaves moves everything below it smoothly.
   return (
-    <div className="flex flex-col gap-6">
-      <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
-      {empty ? <EmptyKoti /> : <NeedsAttention />}
-      {inventory.map((location) => (
-        <section key={location._id} data-location-id={location._id} className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-2 px-1">
-            <h2 className="flex items-baseline gap-2">
-              <span className="font-display text-lg">{location.name}</span>
-              <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
-            </h2>
-            {quickAddLocation !== location._id && (
-              <button
-                type="button"
-                // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
-                onClick={() => flushSync(() => setQuickAddLocation(location._id))}
-                className="min-h-11 rounded-full px-3 text-sm font-medium text-stone-600 dark:text-stone-400"
-              >
-                {t("koti.quickAdd")}
-              </button>
+    <LayoutGroup>
+      <div className="flex flex-col gap-6">
+        <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
+        {empty ? <EmptyKoti /> : <NeedsAttention />}
+        {inventory.map((location) => (
+          <motion.section
+            key={location._id}
+            layout={layout}
+            data-location-id={location._id}
+            className="flex flex-col gap-1.5"
+          >
+            <div className="flex items-center justify-between gap-2 px-1">
+              <h2 className="flex items-baseline gap-2">
+                <span className="font-display text-lg">{location.name}</span>
+                <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
+              </h2>
+              {quickAddLocation !== location._id && (
+                <button
+                  type="button"
+                  // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
+                  onClick={() => flushSync(() => setQuickAddLocation(location._id))}
+                  className="min-h-11 rounded-full px-3 text-sm font-medium text-stone-600 dark:text-stone-400"
+                >
+                  {t("koti.quickAdd")}
+                </button>
+              )}
+            </div>
+            <AnimatePresence initial={false}>
+              {quickAddLocation === location._id && (
+                <Reveal key="quickAdd">
+                  <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
+                </Reveal>
+              )}
+            </AnimatePresence>
+            {location.products.length > 0 ? (
+              <ul className={`${cardList} flex flex-col overflow-hidden`}>
+                <AnimatePresence initial={false}>
+                  {location.products.map((product) => (
+                    <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            ) : (
+              !empty && <p className={`${cardList} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
             )}
-          </div>
-          {quickAddLocation === location._id && (
-            <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
-          )}
-          {location.products.length > 0 ? (
-            <ul className={`${cardList} flex flex-col overflow-hidden`}>
-              {location.products.map((product) => (
-                <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
-              ))}
-            </ul>
-          ) : (
-            !empty && <p className={`${cardList} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
-          )}
-        </section>
-      ))}
-    </div>
+          </motion.section>
+        ))}
+      </div>
+    </LayoutGroup>
   );
 }
 
@@ -143,14 +160,16 @@ function SearchAdd({
           {result.duplicate && <DuplicateWarning duplicate={result.duplicate} />}
           {result.matches.length > 0 && (
             <ul className={`${cardList} flex flex-col overflow-hidden`}>
-              {result.matches.map((product) => (
-                <ProductRow
-                  key={product._id}
-                  product={product}
-                  detail={product.locationName}
-                  onChangeStock={onChangeStock}
-                />
-              ))}
+              <AnimatePresence initial={false}>
+                {result.matches.map((product) => (
+                  <ProductRow
+                    key={product._id}
+                    product={product}
+                    detail={product.locationName}
+                    onChangeStock={onChangeStock}
+                  />
+                ))}
+              </AnimatePresence>
             </ul>
           )}
           {result.name && locationId && (
@@ -177,8 +196,7 @@ function SearchAdd({
                   ))}
                 </select>
               </div>
-              <details className="text-sm">
-                <summary className="min-h-11 content-center text-stone-600 dark:text-stone-400">{t("koti.more")}</summary>
+              <Disclosure summary={t("koti.more")}>
                 <div className="flex gap-2">
                   <label className="flex flex-1 flex-col gap-1">
                     <span className="text-stone-500">{t("product.expiryKind")}</span>
@@ -202,11 +220,40 @@ function SearchAdd({
                     />
                   </label>
                 </div>
-              </details>
+              </Disclosure>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** A part that opens under its summary; its content moves with the same spring as its chevron. */
+function Disclosure({ summary, children }: { summary: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+  return (
+    <div className="flex flex-col text-sm">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen(!open)}
+        className="flex min-h-11 items-center gap-1 self-start text-stone-600 dark:text-stone-400"
+      >
+        {summary}
+        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={settle} className="flex">
+          <ChevronDownIcon width={18} height={18} />
+        </motion.span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <Reveal key="content">
+            <div id={contentId}>{children}</div>
+          </Reveal>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

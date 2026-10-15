@@ -1,16 +1,19 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Cupboard } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
 import { CheckIcon, TrashIcon } from "@/components/icons";
+import { landInBag, Reveal, RollingNumber, settle, useRowMotion, useSectionMotion } from "@/components/motion";
 import { useNeedMore } from "@/components/NeedMore";
 import { NumberStepper, stepButton } from "@/components/NumberStepper";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { nameKey } from "@/convex/productNames";
 import { useT } from "@/lib/i18n";
 import {
   putAwayAllLocally,
@@ -35,11 +38,36 @@ type Entry = {
 // How long "All put away!" shows after Put Away empties the Bag.
 const ALL_PUT_AWAY_MS = 4000;
 
+/**
+ * What an Entry stands for, the same on the list and in the Bag, and before
+ * and after the server gives a new Entry its id: its Product, or a One-off's name.
+ */
+const thingOf = (entry: Entry) => entry.productId ?? `oneOff:${nameKey(entry.name)}`;
+
+/**
+ * Rows moving between the list and the Bag (a Tick, or taking it back out):
+ * the thing that just moved, and the things listed only once, which are the
+ * ones that can move.
+ */
+const Moving = createContext<{ moved: string | null; onMove: (thing: string | null) => void; movable: Set<string> }>({
+  moved: null,
+  onMove: () => {},
+  movable: new Set(),
+});
+
+/** The things listed exactly once across the list and the Bag. */
+function listedOnce(entries: Entry[]) {
+  const counts = new Map<string, number>();
+  for (const entry of entries) counts.set(thingOf(entry), (counts.get(thingOf(entry)) ?? 0) + 1);
+  return new Set([...counts].filter(([, count]) => count === 1).map(([thing]) => thing));
+}
+
 /** The shared Shopping List: to-buy Entries grouped by Location, then One-offs under "Other", then the Bag. */
 export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
   const [allPutAway, setAllPutAway] = useState(false);
+  const [moved, setMoved] = useState<string | null>(null);
 
   useEffect(() => {
     if (!allPutAway) return;
@@ -52,18 +80,26 @@ export default function ListaScreen() {
   const nothingToBuy = list.locations.length === 0 && list.oneOffs.length === 0;
   // An undo that refills the Bag ends the moment.
   const showAllPutAway = allPutAway && list.bag.length === 0;
+  const movable = listedOnce([...list.locations.flatMap((location) => location.entries), ...list.oneOffs, ...list.bag]);
+  // One layout group, so a row that moves or leaves moves everything below it smoothly.
   return (
-    <div className="flex flex-col gap-6">
-      <AddToList />
-      {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
-      {nothingToBuy && list.bag.length === 0 && <CupboardNote allPutAway={showAllPutAway} />}
-      {list.locations.map((location) => (
-        <EntryGroup key={location._id} title={location.name} entries={location.entries} />
-      ))}
-      {list.oneOffs.length > 0 && <EntryGroup title={t("lista.other")} entries={list.oneOffs} />}
-      {list.bag.length > 0 && <Bag entries={list.bag} onEmptied={() => setAllPutAway(true)} />}
-      {showAllPutAway && !nothingToBuy && <CupboardNote allPutAway />}
-    </div>
+    <LayoutGroup>
+      <Moving value={{ moved, onMove: setMoved, movable }}>
+        <div className="flex flex-col gap-6">
+          <AddToList />
+          {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
+          {nothingToBuy && list.bag.length === 0 && <CupboardNote allPutAway={showAllPutAway} />}
+          <AnimatePresence initial={false}>
+            {list.locations.map((location) => (
+              <EntryGroup key={location._id} title={location.name} entries={location.entries} />
+            ))}
+            {list.oneOffs.length > 0 && <EntryGroup key="oneOffs" title={t("lista.other")} entries={list.oneOffs} />}
+            {list.bag.length > 0 && <Bag key="bag" entries={list.bag} onEmptied={() => setAllPutAway(true)} />}
+          </AnimatePresence>
+          {showAllPutAway && !nothingToBuy && <CupboardNote allPutAway />}
+        </div>
+      </Moving>
+    </LayoutGroup>
   );
 }
 
@@ -156,15 +192,19 @@ function AddToList() {
 
 
 function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
+  const sectionMotion = useSectionMotion();
   return (
-    <section className="flex flex-col gap-1.5">
+    <motion.section {...sectionMotion} className="flex flex-col gap-1.5">
       <h2 className="px-1 font-display text-lg">{title}</h2>
       <ul className={`${cardList} flex flex-col`}>
-        {entries.map((entry) => (
-          <EntryRow key={entry._id} entry={entry} />
-        ))}
+        <AnimatePresence initial={false}>
+          {entries.map((entry) => (
+            // On the list a thing has one Entry, so the row stays when the server gives it a new id.
+            <EntryRow key={thingOf(entry)} entry={entry} />
+          ))}
+        </AnimatePresence>
       </ul>
-    </section>
+    </motion.section>
   );
 }
 
@@ -174,6 +214,7 @@ function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
  */
 function Bag({ entries, onEmptied }: { entries: Entry[]; onEmptied: () => void }) {
   const t = useT();
+  const sectionMotion = useSectionMotion();
   const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll).withOptimisticUpdate(putAwayAllLocally);
   const showPutAway = usePutAwayToast();
   const putAwayAll = (expiryDates?: Record<string, string>) => {
@@ -205,7 +246,7 @@ function Bag({ entries, onEmptied }: { entries: Entry[]; onEmptied: () => void }
   };
 
   return (
-    <section className="flex flex-col gap-1.5">
+    <motion.section {...sectionMotion} className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2 px-1">
         <h2 className="font-display text-lg">{t("lista.bag")}</h2>
         {!prompts && (
@@ -218,21 +259,27 @@ function Bag({ entries, onEmptied }: { entries: Entry[]; onEmptied: () => void }
           </button>
         )}
       </div>
-      {prompts && (
-        <DatePrompt
-          key={prompts.asking[prompts.index]._id}
-          name={prompts.asking[prompts.index].name}
-          step={{ index: prompts.index, count: prompts.asking.length }}
-          onAnswer={answer}
-          onCancel={() => setPrompts(null)}
-        />
-      )}
+      <AnimatePresence initial={false}>
+        {prompts && (
+          <Reveal key="prompts">
+            <DatePrompt
+              key={prompts.asking[prompts.index]._id}
+              name={prompts.asking[prompts.index].name}
+              step={{ index: prompts.index, count: prompts.asking.length }}
+              onAnswer={answer}
+              onCancel={() => setPrompts(null)}
+            />
+          </Reveal>
+        )}
+      </AnimatePresence>
       <ul className={`${cardList} flex flex-col`}>
-        {entries.map((entry) => (
-          <EntryRow key={entry._id} entry={entry} inBag onEmptied={entries.length === 1 ? onEmptied : undefined} />
-        ))}
+        <AnimatePresence initial={false}>
+          {entries.map((entry) => (
+            <EntryRow key={entry._id} entry={entry} inBag onEmptied={entries.length === 1 ? onEmptied : undefined} />
+          ))}
+        </AnimatePresence>
       </ul>
-    </section>
+    </motion.section>
   );
 }
 
@@ -244,6 +291,9 @@ const tickButton =
  * its quantity as a number that opens –, + and delete on the list, or the
  * quantity and Put away in the Bag. A One-off can be made into a Product.
  * Every change and its toast show at once, even on a weak signal in the shop.
+ * Ticked, the row moves into the Bag (landing with a little bounce), and
+ * taken back out, it moves back up; it slides in and out when added,
+ * deleted or put away.
  */
 function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: boolean; onEmptied?: () => void }) {
   const t = useT();
@@ -257,6 +307,11 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   const showPutAway = usePutAwayToast();
   const remove = useMutation(api.shoppingList.remove).withOptimisticUpdate(removeLocally);
   const restore = useMutation(api.shoppingList.restore);
+  const rowMotion = useRowMotion();
+  const reduced = useReducedMotion();
+  const { moved, onMove, movable } = useContext(Moving);
+  const thing = thingOf(entry);
+  const moving = moved === thing && !reduced;
 
   const putAway = (expiryDate?: string) => {
     const done = putAwayEntry({ entryId: entry._id, expiryDate }).then(({ putAway }) => putAway);
@@ -264,8 +319,16 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
     onEmptied?.();
   };
   const tickEntry = () => {
+    onMove(thing);
     void tick({ entryId: entry._id });
-    showUndoToast(t("lista.ticked", { name: entry.name }), () => void untick({ entryId: entry._id }));
+    showUndoToast(t("lista.ticked", { name: entry.name }), () => {
+      onMove(thing);
+      void untick({ entryId: entry._id });
+    });
+  };
+  const untickEntry = () => {
+    onMove(thing);
+    void untick({ entryId: entry._id });
   };
   const deleteEntry = () => {
     void remove({ entryId: entry._id });
@@ -274,14 +337,23 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
   };
 
   return (
-    <li className="flex flex-col gap-2 px-4 py-1.5">
+    <motion.li
+      {...rowMotion}
+      // A thing on screen twice (say, in the Bag and on the list again) doesn't move between them.
+      layoutId={movable.has(thing) ? thing : undefined}
+      // A row that moved arrives as itself, not fading in.
+      initial={moving ? false : rowMotion.initial}
+      transition={{ ...rowMotion.transition, layout: moving && inBag ? landInBag : settle }}
+      onLayoutAnimationComplete={moving ? () => onMove(null) : undefined}
+      className="flex flex-col gap-2 px-4 py-1.5"
+    >
       <div className="flex min-h-11 items-center gap-2">
         <button
           type="button"
           className={`${tickButton} ${inBag ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-600" : ""}`}
           aria-label={t(inBag ? "lista.untick" : "lista.tick", { name: entry.name })}
           aria-pressed={inBag}
-          onClick={() => (inBag ? void untick({ entryId: entry._id }) : tickEntry())}
+          onClick={() => (inBag ? untickEntry() : tickEntry())}
         >
           {inBag && <CheckIcon width={20} height={20} />}
         </button>
@@ -299,7 +371,7 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
         {inBag ? (
           <>
             <span className="min-w-8 text-center font-display text-lg text-stone-500 tabular-nums">
-              {t("lista.quantity", { quantity: entry.quantity })}
+              <RollingNumber value={entry.quantity}>{t("lista.quantity", { quantity: entry.quantity })}</RollingNumber>
             </span>
             <button
               type="button"
@@ -312,7 +384,8 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
           </>
         ) : (
           <NumberStepper
-            value={t("lista.quantity", { quantity: entry.quantity })}
+            value={entry.quantity}
+            text={t("lista.quantity", { quantity: entry.quantity })}
             label={t("lista.changeQuantity", { name: entry.name, quantity: entry.quantity })}
             onDecrease={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity - 1 })}
             decreaseLabel={t("lista.decrease", { name: entry.name })}
@@ -332,18 +405,26 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
           />
         )}
       </div>
-      {makingProduct && <MakeProduct entry={entry} onDone={() => setMakingProduct(false)} />}
-      {askingDate && (
-        <DatePrompt
-          name={entry.name}
-          onAnswer={(expiryDate) => {
-            setAskingDate(false);
-            putAway(expiryDate);
-          }}
-          onCancel={() => setAskingDate(false)}
-        />
-      )}
-    </li>
+      <AnimatePresence initial={false}>
+        {makingProduct && (
+          <Reveal key="makeProduct">
+            <MakeProduct entry={entry} onDone={() => setMakingProduct(false)} />
+          </Reveal>
+        )}
+        {askingDate && (
+          <Reveal key="askingDate">
+            <DatePrompt
+              name={entry.name}
+              onAnswer={(expiryDate) => {
+                setAskingDate(false);
+                putAway(expiryDate);
+              }}
+              onCancel={() => setAskingDate(false)}
+            />
+          </Reveal>
+        )}
+      </AnimatePresence>
+    </motion.li>
   );
 }
 

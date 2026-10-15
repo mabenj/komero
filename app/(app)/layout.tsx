@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { HomeIcon, ListIcon, ScanIcon, SettingsIcon } from "@/components/icons";
 import { KeepOfflineData } from "@/components/KeepOfflineData";
+import { MotionProvider } from "@/components/motion";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { UndoToastProvider } from "@/components/UndoToast";
 import { useT } from "@/lib/i18n";
@@ -40,13 +41,15 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         <OfflineBanner />
         <ChromeFade edge="top" />
       </header>
-      <main className="flex-1 px-4 py-4 pb-28">
+      <main className="flex-1 overflow-x-clip px-4 py-4 pb-28">
         <AuthLoading>
           <p className="text-stone-500">{t("common.loading")}</p>
         </AuthLoading>
         <Authenticated>
           <KeepOfflineData />
-          <UndoToastProvider>{children}</UndoToastProvider>
+          <MotionProvider>
+            <UndoToastProvider>{children}</UndoToastProvider>
+          </MotionProvider>
         </Authenticated>
       </main>
       <BottomBar current={currentTab} />

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComponentProps, MouseEvent } from "react";
+import { arrive, backFrom, leave } from "@/lib/screenHistory";
 
 /**
  * Moves within the signed-in app (tabs, Product pages, Settings) on the client
@@ -11,9 +12,20 @@ import type { ComponentProps, MouseEvent } from "react";
  * back to a full page load when that fails.
  */
 export function navigate(href: string, { replace = false } = {}) {
-  if (replace) window.history.replaceState(null, "", href);
-  else window.history.pushState(null, "", href);
+  const { history } = window;
+  if (replace) history.replaceState(arrive(history.state, { replace }), "", href);
+  else {
+    // Remembered for when Back returns to this screen (see `useScrollRestore` in the app's screens).
+    history.replaceState(leave(history.state, window.scrollY), "");
+    history.pushState(arrive(history.state, { replace }), "", href);
+  }
   window.scrollTo(0, 0);
+}
+
+/** Back to the previous screen of the app, or to Koti when the page was opened directly. */
+export function goBack() {
+  if (backFrom(window.history.state) === "history") window.history.back();
+  else navigate("/koti", { replace: true });
 }
 
 /** A link within the signed-in app; see `navigate`. */
