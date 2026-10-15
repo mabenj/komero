@@ -38,8 +38,8 @@ const id = <T extends "entries" | "products" | "locations">(value: string) => va
 const fridge = { _id: id<"locations">("fridge"), name: "Jääkaappi" };
 const cupboard = { _id: id<"locations">("cupboard"), name: "Kaappi" };
 
-const milk = { _id: id<"products">("milk"), name: "Maito", stock: 0, expiryKind: "useBy" as const, expiryDate: null };
-const oats = { _id: id<"products">("oats"), name: "Kaurahiutaleet", stock: 2, expiryKind: null, expiryDate: null };
+const milk = { _id: id<"products">("milk"), name: "Maito", stock: 0, expiryKind: "useBy" as const, expiryDate: null, minimumStock: null };
+const oats = { _id: id<"products">("oats"), name: "Kaurahiutaleet", stock: 2, expiryKind: null, expiryDate: null, minimumStock: null };
 const inventory: Inventory = [
   { ...fridge, products: [milk] },
   { ...cupboard, products: [oats] },
@@ -190,7 +190,7 @@ describe("Need More", () => {
 
 describe("Put away all", () => {
   test("the Bag empties and each Product is Restocked with its own date, keeping an earlier one at home", () => {
-    const yoghurt = { _id: id<"products">("yoghurt"), name: "Jogurtti", stock: 1, expiryKind: "bestBefore" as const, expiryDate: "2026-10-18" };
+    const yoghurt = { _id: id<"products">("yoghurt"), name: "Jogurtti", stock: 1, expiryKind: "bestBefore" as const, expiryDate: "2026-10-18", minimumStock: null };
     const yoghurtEntry = { _id: id<"entries">("yoghurtEntry"), productId: yoghurt._id, name: "Jogurtti", quantity: 3, stock: 1, asksForDate: true };
     const store = withList({ locations: [], oneOffs: [], bag: [yoghurtEntry, candles, oatsEntry, milkEntry] });
     store.setQuery(api.inventory.get, {}, [

@@ -42,3 +42,8 @@ export const lastScanMode = (): ScanMode => scanMode.get() ?? "add";
 const location = remembered("komero.lastLocation", (stored): stored is string => stored !== "");
 export const rememberLocation = location.set;
 export const lastLocation = location.get;
+
+// Category ids folded shut on Koti, comma-separated; ids of deleted Categories do no harm.
+const folded = remembered("komero.foldedLocations", (stored): stored is string => stored !== "");
+export const rememberFoldedLocations = (ids: string[]) => folded.set(ids.join(","));
+export const foldedLocations = (): string[] => folded.get()?.split(",") ?? [];

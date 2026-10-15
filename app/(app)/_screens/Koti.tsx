@@ -17,11 +17,18 @@ import { SwipeToNeedMore } from "@/components/NeedMore";
 import { NumberStepper } from "@/components/NumberStepper";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { tidyName } from "@/convex/productNames";
-import { applyRestock, applyUse, type ExpiryKind, expiryStatus, type StockState } from "@/convex/stock";
+import {
+  applyRestock,
+  applyUse,
+  type ExpiryKind,
+  expiryStatus,
+  isRunningLow,
+  type StockState,
+} from "@/convex/stock";
 import { formatDay, localToday } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
 import { changeStockLocally } from "@/lib/listUpdates";
-import { lastLocation, rememberLocation } from "@/lib/remembered";
+import { foldedLocations, lastLocation, rememberFoldedLocations, rememberLocation } from "@/lib/remembered";
 import { cardList, field, primaryButton } from "@/lib/styles";
 
 type StockChange = "restock" | "use";
@@ -35,7 +42,12 @@ type ProductRowData = {
   stock: number;
   expiryKind?: ExpiryKind | null;
   expiryDate?: string | null;
+  minimumStock?: number | null;
 };
+
+/** Running Low but not yet Out of Stock, which rows already show. */
+const lowNotOut = (product: ProductRowData) =>
+  product.stock > 0 && isRunningLow({ stock: product.stock, minimumStock: product.minimumStock ?? undefined });
 
 export default function KotiScreen() {
   const t = useT();
@@ -43,6 +55,7 @@ export default function KotiScreen() {
   const locationInView = useLocationInView(inventory !== undefined);
   const changeStock = useStockChange();
   const [quickAddLocation, setQuickAddLocation] = useState<Id<"locations"> | null>(null);
+  const [folded, toggleFolded] = useFoldedLocations();
   const layout = useLayoutMotion();
 
   if (inventory === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
@@ -62,15 +75,37 @@ export default function KotiScreen() {
             className="flex flex-col gap-1.5"
           >
             <div className="flex items-center justify-between gap-2 px-1">
-              <h2 className="flex items-baseline gap-2">
-                <span className="font-display text-lg">{location.name}</span>
-                <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
+              <h2>
+                <button
+                  type="button"
+                  aria-expanded={!folded.has(location._id)}
+                  aria-controls={`products-${location._id}`}
+                  onClick={() => toggleFolded(location._id)}
+                  className="flex min-h-11 items-center gap-2"
+                >
+                  <span className="font-display text-lg">{location.name}</span>
+                  <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
+                  <LowCount products={location.products} />
+                  <motion.span
+                    animate={{ rotate: folded.has(location._id) ? -90 : 0 }}
+                    transition={settle}
+                    className="flex text-stone-400"
+                  >
+                    <ChevronDownIcon width={18} height={18} />
+                  </motion.span>
+                </button>
               </h2>
               {quickAddLocation !== location._id && (
                 <button
                   type="button"
                   // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
-                  onClick={() => flushSync(() => setQuickAddLocation(location._id))}
+                  // A folded Category opens too, so the Products being added show up.
+                  onClick={() =>
+                    flushSync(() => {
+                      setQuickAddLocation(location._id);
+                      if (folded.has(location._id)) toggleFolded(location._id);
+                    })
+                  }
                   className="min-h-11 rounded-full px-3 text-sm font-medium text-stone-600 dark:text-stone-400"
                 >
                   {t("koti.quickAdd")}
@@ -84,21 +119,51 @@ export default function KotiScreen() {
                 </Reveal>
               )}
             </AnimatePresence>
-            {location.products.length > 0 ? (
-              <ul className={`${cardList} flex flex-col overflow-hidden`}>
-                <AnimatePresence initial={false}>
-                  {location.products.map((product) => (
-                    <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
-                  ))}
-                </AnimatePresence>
-              </ul>
-            ) : (
-              !empty && <p className={`${cardList} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
-            )}
+            <AnimatePresence initial={false}>
+              {folded.has(location._id) ? (
+                location.products.length > 0 && (
+                  <Reveal key="names">
+                    <p className="truncate px-1 text-sm text-stone-500">
+                      {location.products.map((product) => product.name).join(", ")}
+                    </p>
+                  </Reveal>
+                )
+              ) : (
+                <Reveal key="products">
+                  <div id={`products-${location._id}`}>
+                    {location.products.length > 0 ? (
+                      <ul className={`${cardList} flex flex-col overflow-hidden`}>
+                        <AnimatePresence initial={false}>
+                          {location.products.map((product) => (
+                            <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
+                          ))}
+                        </AnimatePresence>
+                      </ul>
+                    ) : (
+                      !empty && (
+                        <p className={`${cardList} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
+                      )
+                    )}
+                  </div>
+                </Reveal>
+              )}
+            </AnimatePresence>
           </motion.section>
         ))}
       </div>
     </LayoutGroup>
+  );
+}
+
+/** How many of a Category's Products are Running Low, in the heading; nothing when none are. */
+function LowCount({ products }: { products: ProductRowData[] }) {
+  const t = useT();
+  const count = products.filter(lowNotOut).length;
+  if (count === 0) return null;
+  return (
+    <span className={`text-xs font-semibold tabular-nums ${statusText.runningLow}`}>
+      {t("koti.lowCount", { count })}
+    </span>
   );
 }
 
@@ -343,7 +408,7 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
 
 /**
  * A Product with its Expiry Date under its name, coloured by what it means
- * today, and its Stock as a number that opens – / +; swipe it left for Need
+ * today, a mark when it is Running Low, and its Stock as a number that opens – / +; swipe it left for Need
  * More. Out of Stock Products stay listed, dimmed.
  */
 function ProductRow({
@@ -360,12 +425,13 @@ function ProductRow({
   const outOfStock = product.stock === 0;
   const { expiryKind, expiryDate } = product;
   const status = expiryKind && expiryDate && expiryStatus({ stock: 1, expiryKind, expiryDate }, localToday());
+  const low = lowNotOut(product);
 
   return (
     <SwipeToNeedMore product={product}>
       <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
         <p className={`truncate ${outOfStock ? "text-stone-400 dark:text-stone-500" : ""}`}>{product.name}</p>
-        {(detail || expiryDate || outOfStock) && (
+        {(detail || expiryDate || outOfStock || low) && (
           <p className="flex gap-2 text-xs tabular-nums">
             {detail && <span className="truncate text-stone-500">{detail}</span>}
             {expiryKind && expiryDate ? (
@@ -375,6 +441,7 @@ function ProductRow({
             ) : (
               outOfStock && <span className="text-stone-400">{t("koti.out")}</span>
             )}
+            {low && <span className={`shrink-0 ${statusText.runningLow}`}>{t("attention.runningLow")}</span>}
           </p>
         )}
       </AppLink>
@@ -428,6 +495,20 @@ function useStockChange() {
     },
     [adjustStock, undoStockChange, showChangeToast, showRunningLow, t],
   );
+}
+
+/** The Categories folded shut on Koti, remembered on this device, and a toggle for one. */
+function useFoldedLocations() {
+  const [folded, setFolded] = useState(() => new Set(foldedLocations()));
+  const toggle = useCallback((id: Id<"locations">) => {
+    setFolded((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      rememberFoldedLocations([...next]);
+      return next;
+    });
+  }, []);
+  return [folded, toggle] as const;
 }
 
 /**
