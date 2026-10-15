@@ -16,7 +16,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
 import type { ExpiryKind } from "@/convex/stock";
-import { tick } from "@/lib/haptics";
+import { haptic } from "@/lib/haptics";
 import { useT } from "@/lib/i18n";
 import { card, field, primaryButton, secondaryButton } from "@/lib/styles";
 import { lastLocation, lastScanMode, rememberLocation, rememberScanMode } from "@/lib/remembered";
@@ -110,7 +110,7 @@ function Scanning({
   const onCode = async (code: string) => {
     // Confirm the read at once, before the server has answered.
     setReads((count) => count + 1);
-    tick();
+    haptic();
     const result = await scan({ code, mode });
     if (result.unknown) setUnknownCode((current) => current ?? result.code);
     else scanned(result);

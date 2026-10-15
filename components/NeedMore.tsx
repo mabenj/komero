@@ -7,7 +7,7 @@ import { crossFade, swipeBack, useRowMotion } from "@/components/motion";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { tick } from "@/lib/haptics";
+import { haptic } from "@/lib/haptics";
 import { useT } from "@/lib/i18n";
 import { needMoreLocally, quantityAfterNeedMore } from "@/lib/listUpdates";
 import { type PointerSample, readSwipe, type Swipe } from "@/lib/swipe";
@@ -60,8 +60,8 @@ const sample = (event: PointerEvent): PointerSample => ({ x: event.clientX, y: e
 
 /**
  * A Koti row that does Need More when swiped left (see `lib/swipe`). It
- * follows the finger, shows and ticks the moment letting go would do Need
- * More, and springs back at the speed it was let go. Vertical scrolling still
+ * follows the finger, shows the moment letting go would do Need More with a
+ * haptic, and springs back at the speed it was let go. Vertical scrolling still
  * works, and a swipe doesn't count as a tap on the row. In `AnimatePresence`,
  * the row slides in when added and out when deleted.
  */
@@ -81,7 +81,7 @@ export function SwipeToNeedMore({ product, children }: { product: Product; child
     if (commits === armed.current) return;
     armed.current = commits;
     setShowArmed(commits);
-    if (commits) tick();
+    if (commits) haptic();
   };
 
   const springBack = (velocity: number) => {
