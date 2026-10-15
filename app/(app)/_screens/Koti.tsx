@@ -11,6 +11,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MinusIcon, PlusIcon } from "@/components/icons";
 import { NeedsAttention } from "@/components/NeedsAttention";
+import { KotiPrototype } from "./Koti.prototype";
 import { SwipeToNeedMore } from "@/components/NeedMore";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { tidyName } from "@/convex/productNames";
@@ -42,6 +43,9 @@ export default function KotiScreen() {
   if (inventory === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
 
   return (
+    <KotiPrototype
+      inventory={inventory}
+      current={
     <div className="flex flex-col gap-6">
       <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
       <NeedsAttention />
@@ -72,6 +76,8 @@ export default function KotiScreen() {
         </section>
       ))}
     </div>
+      }
+    />
   );
 }
 

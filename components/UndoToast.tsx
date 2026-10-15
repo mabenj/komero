@@ -46,12 +46,12 @@ function UndoToast({ toast, onClose }: { toast: Toast | null; onClose: () => voi
   }, [toast, onClose]);
 
   if (!toast) return null;
-  const buttonClass = "min-h-11 shrink-0 font-semibold uppercase tracking-wide";
+  const buttonClass = "min-h-11 shrink-0 font-semibold text-ink-accent";
   return (
     <div
       role="status"
-      className="fixed inset-x-0 bottom-24 z-20 mx-auto flex min-h-13 max-w-md items-center justify-between gap-4 rounded-xl bg-foreground px-4 py-1 text-background shadow-lg"
-      style={{ width: "calc(100% - 2rem)" }}
+      className="fixed inset-x-0 z-20 mx-auto flex min-h-13 max-w-md items-center justify-between gap-4 rounded-2xl bg-ink px-4 py-1 text-ink-foreground shadow-xl shadow-black/20"
+      style={{ width: "calc(100% - 2rem)", bottom: "calc(6.5rem + env(safe-area-inset-bottom))" }}
     >
       <span className="truncate">{toast.message}</span>
       <div className="flex shrink-0 items-center gap-4">
