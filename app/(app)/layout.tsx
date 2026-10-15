@@ -41,7 +41,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         <OfflineBanner />
         <ChromeFade edge="top" />
       </header>
-      <main className="flex-1 px-4 py-4 pb-28">
+      <main className="flex-1 overflow-x-clip px-4 py-4 pb-28">
         <AuthLoading>
           <p className="text-stone-500">{t("common.loading")}</p>
         </AuthLoading>
