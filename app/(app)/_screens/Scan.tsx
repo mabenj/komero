@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { Reveal } from "@/components/motion";
+import { crossFade, Reveal } from "@/components/motion";
 import { Sheet } from "@/components/Sheet";
 import { useNeedMoreToast } from "@/components/NeedMore";
 import { usePutAwayToast, useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
@@ -209,7 +209,7 @@ function ReadFlash() {
       className="pointer-events-none absolute inset-0 rounded-2xl bg-accent/20 ring-4 ring-accent ring-inset"
       initial={reduced ? { opacity: 1 } : { opacity: 1, scale: 1.04 }}
       animate={reduced ? { opacity: 0 } : { opacity: 0, scale: 1 }}
-      transition={reduced ? { duration: 0.2, ease: "easeOut" } : { duration: 0.5, ease: "easeOut" }}
+      transition={reduced ? crossFade : { duration: 0.5, ease: "easeOut" }}
     />
   );
 }

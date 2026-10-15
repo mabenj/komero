@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { AppLink } from "@/components/AppLink";
-import { Cupboard } from "@/components/Cupboard";
+import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -262,10 +262,7 @@ function Disclosure({ summary, children }: { summary: string; children: ReactNod
 function EmptyKoti() {
   const t = useT();
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-4 text-center">
-      <Cupboard />
-      <h2 className="font-display text-2xl">{t("koti.emptyTitle")}</h2>
-      <p className="text-stone-600 dark:text-stone-400">{t("koti.emptyHint")}</p>
+    <CupboardNote title={t("koti.emptyTitle")} hint={t("koti.emptyHint")}>
       <AppLink
         href="/scan"
         className="mt-1 flex min-h-12 items-center gap-2 rounded-full bg-accent px-6 font-semibold text-accent-foreground"
@@ -273,7 +270,7 @@ function EmptyKoti() {
         <ScanIcon width={20} height={20} />
         {t("nav.scan")}
       </AppLink>
-    </div>
+    </CupboardNote>
   );
 }
 

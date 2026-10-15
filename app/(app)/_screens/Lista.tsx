@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { createContext, useContext, useEffect, useState } from "react";
-import { Cupboard } from "@/components/Cupboard";
+import { CupboardNote } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
 import { CheckIcon, TrashIcon } from "@/components/icons";
@@ -89,7 +89,7 @@ export default function ListaScreen() {
         <div className="flex flex-col gap-6">
           <AddToList />
           {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
-          {nothingToBuy && list.bag.length === 0 && <CupboardNote allPutAway={showAllPutAway} />}
+          {nothingToBuy && list.bag.length === 0 && <ListNote allPutAway={showAllPutAway} />}
           <AnimatePresence initial={false}>
             {list.locations.map((location) => (
               <EntryGroup key={location._id} title={location.name} entries={location.entries} />
@@ -97,7 +97,7 @@ export default function ListaScreen() {
             {list.oneOffs.length > 0 && <EntryGroup key="oneOffs" title={t("lista.other")} entries={list.oneOffs} />}
             {list.bag.length > 0 && <Bag key="bag" entries={list.bag} onEmptied={() => setAllPutAway(true)} />}
           </AnimatePresence>
-          {showAllPutAway && !nothingToBuy && <CupboardNote allPutAway />}
+          {showAllPutAway && !nothingToBuy && <ListNote allPutAway />}
         </div>
       </BagMoves>
     </LayoutGroup>
@@ -108,16 +108,14 @@ export default function ListaScreen() {
  * The cupboard with a short, friendly line: nothing to buy, or for a moment
  * after Put Away empties the Bag, "All put away!".
  */
-function CupboardNote({ allPutAway }: { allPutAway: boolean }) {
+function ListNote({ allPutAway }: { allPutAway: boolean }) {
   const t = useT();
   return (
-    <div role="status" className="flex flex-col items-center gap-3 px-6 py-4 text-center">
-      <Cupboard />
-      <h2 className="font-display text-2xl">{t(allPutAway ? "lista.allPutAwayTitle" : "lista.emptyTitle")}</h2>
-      <p className="text-stone-600 dark:text-stone-400">
-        {t(allPutAway ? "lista.allPutAwayHint" : "lista.emptyHint")}
-      </p>
-    </div>
+    <CupboardNote
+      role="status"
+      title={t(allPutAway ? "lista.allPutAwayTitle" : "lista.emptyTitle")}
+      hint={t(allPutAway ? "lista.allPutAwayHint" : "lista.emptyHint")}
+    />
   );
 }
 
