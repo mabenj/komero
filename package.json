@@ -1,0 +1,39 @@
+{
+  "name": "komero",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit && tsc --noEmit -p convex",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@auth/core": "0.41.3",
+    "@convex-dev/auth": "0.0.96",
+    "barcode-detector": "3.2.2",
+    "convex": "1.46.0",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "5.0.0",
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "convex-test": "0.0.61",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "jose": "6.2.12",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vite": "6.4.4",
+    "vitest": "4.1.11"
+  },
+  "packageManager": "pnpm@9.9.0"
+}
