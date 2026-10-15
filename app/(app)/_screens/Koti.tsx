@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery } from "convex/react";
 import type { OptimisticLocalStore } from "convex/browser";
-import Link from "next/link";
+import { AppLink } from "@/components/AppLink";
+import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useUndoToast } from "@/components/UndoToast";
@@ -12,22 +13,25 @@ import { MinusIcon, PlusIcon } from "@/components/icons";
 import { NeedsAttention } from "@/components/NeedsAttention";
 import { SwipeToNeedMore, useNeedMore } from "@/components/NeedMore";
 import { tidyName } from "@/convex/productNames";
-import { applyRestock, applyUse, expiryStatus } from "@/convex/stock";
+import { applyRestock, applyUse, type ExpiryKind, expiryStatus } from "@/convex/stock";
 import { formatDay, localToday } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
-import { lastLocation, rememberLocation } from "@/lib/lastLocation";
+import { lastLocation, rememberLocation } from "@/lib/remembered";
 
 type StockChange = "restock" | "use";
+
+const noMore = { expiryKind: null, minimumStock: "" };
+const moreFieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-3 text-base dark:border-zinc-700";
 type Location = { _id: Id<"locations">; name: string };
 type ProductRowData = {
   _id: Id<"products">;
   name: string;
   stock: number;
-  expiryKind?: "bestBefore" | "useBy" | null;
+  expiryKind?: ExpiryKind | null;
   expiryDate?: string | null;
 };
 
-export default function KotiPage() {
+export default function KotiScreen() {
   const t = useT();
   const inventory = useQuery(api.inventory.get);
   const locationInView = useLocationInView(inventory !== undefined);
@@ -89,12 +93,19 @@ function SearchAdd({
   const remembered = locations.find((location) => location._id === lastLocation())?._id;
   const locationId = pickedLocation ?? locationInView ?? remembered ?? locations[0]?._id;
 
-  const add = async () => {
-    if (!result?.canAdd || !locationId) return;
-    await createProduct({ name: result.name, locationId });
+  const [more, setMore] = useState<{ expiryKind: ExpiryKind | null; minimumStock: string }>(noMore);
+  const minimumStock = more.minimumStock.trim() === "" ? undefined : Number(more.minimumStock);
+  const minimumStockValid = minimumStock === undefined || (Number.isInteger(minimumStock) && minimumStock >= 0);
+
+  // A name that already exists can still be added with the button, next to its
+  // warning; Enter, typed while searching for it, doesn't add a second one.
+  const add = async ({ fromEnter = false } = {}) => {
+    if (!result?.name || !locationId || !minimumStockValid || (fromEnter && !result.canAdd)) return;
+    await createProduct({ name: result.name, locationId, minimumStock, expiryKind: more.expiryKind ?? undefined });
     rememberLocation(locationId);
     setText("");
     setPickedLocation(null);
+    setMore(noMore);
   };
 
   return (
@@ -104,7 +115,7 @@ function SearchAdd({
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") void add();
+          if (event.key === "Enter") void add({ fromEnter: true });
         }}
         placeholder={t("koti.search")}
         aria-label={t("koti.search")}
@@ -127,27 +138,56 @@ function SearchAdd({
               ))}
             </ul>
           )}
-          {result.canAdd && locationId && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void add()}
-                className="min-h-11 flex-1 truncate rounded-xl bg-foreground px-4 py-2 text-left font-semibold text-background"
-              >
-                {t("koti.add", { name: result.name })}
-              </button>
-              <select
-                value={locationId}
-                onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
-                aria-label={t("koti.addTo")}
-                className="min-h-11 rounded-xl border border-zinc-300 bg-background px-2 dark:border-zinc-700"
-              >
-                {locations.map((location) => (
-                  <option key={location._id} value={location._id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
+          {result.name && locationId && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void add()}
+                  disabled={!minimumStockValid}
+                  className="min-h-11 flex-1 truncate rounded-xl bg-foreground px-4 py-2 text-left font-semibold text-background disabled:opacity-40"
+                >
+                  {t("koti.add", { name: result.name })}
+                </button>
+                <select
+                  value={locationId}
+                  onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
+                  aria-label={t("koti.addTo")}
+                  className="min-h-11 rounded-xl border border-zinc-300 bg-background px-2 dark:border-zinc-700"
+                >
+                  {locations.map((location) => (
+                    <option key={location._id} value={location._id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <details className="text-sm">
+                <summary className="min-h-11 content-center text-zinc-600 dark:text-zinc-400">{t("koti.more")}</summary>
+                <div className="flex gap-2">
+                  <label className="flex flex-1 flex-col gap-1">
+                    <span className="text-zinc-500">{t("product.expiryKind")}</span>
+                    <ExpiryKindSelect
+                      value={more.expiryKind}
+                      onChange={(expiryKind) => setMore({ ...more, expiryKind })}
+                      className={moreFieldClass}
+                    />
+                  </label>
+                  <label className="flex flex-1 flex-col gap-1">
+                    <span className="text-zinc-500">{t("product.minimumStock")}</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      value={more.minimumStock}
+                      onChange={(event) => setMore({ ...more, minimumStock: event.target.value })}
+                      placeholder={t("product.minimumStockNone")}
+                      className={moreFieldClass}
+                    />
+                  </label>
+                </div>
+              </details>
             </div>
           )}
         </div>
@@ -166,14 +206,19 @@ function QuickAdd({ location, onDone }: { location: Location; onDone: () => void
   const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
   const createProduct = useMutation(api.products.create);
 
+  // Names being added right now, so a fast second Enter on the same text adds nothing.
+  const adding = useRef(new Set<string>());
+
+  // An existing name is only warned about while typing; Enter adds it anyway.
   const add = () => {
     const name = tidyName(text);
-    if (name === "") return;
-    // An existing name stays in the field next to its warning, as in the search/add field.
-    if (result?.name === name && !result.canAdd) return;
+    if (name === "" || adding.current.has(name)) return;
+    adding.current.add(name);
     setText("");
     rememberLocation(location._id);
-    createProduct({ name, locationId: location._id }).catch(() => setText((current) => current || name));
+    createProduct({ name, locationId: location._id })
+      .catch(() => setText((current) => current || name))
+      .finally(() => adding.current.delete(name));
   };
 
   return (
@@ -238,10 +283,10 @@ function ProductRow({
 
   return (
     <SwipeToNeedMore productId={product._id}>
-      <Link href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
+      <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
         <p className={`truncate ${outOfStock ? "text-zinc-400 dark:text-zinc-500" : ""}`}>{product.name}</p>
         {detail && <p className="truncate text-xs text-zinc-500">{detail}</p>}
-      </Link>
+      </AppLink>
       {product.expiryKind && product.expiryDate && (
         <DateBadge kind={product.expiryKind} date={product.expiryDate} />
       )}
@@ -277,7 +322,7 @@ const badgeTones = {
 };
 
 /** The Expiry Date on a Koti row, coloured by what it means today. */
-function DateBadge({ kind, date }: { kind: "bestBefore" | "useBy"; date: string }) {
+function DateBadge({ kind, date }: { kind: ExpiryKind; date: string }) {
   const t = useT();
   const lang = useLang();
   const status = expiryStatus({ stock: 1, expiryKind: kind, expiryDate: date }, localToday());

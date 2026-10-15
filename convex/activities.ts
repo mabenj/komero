@@ -54,7 +54,7 @@ export const forProduct = query({
 
 /**
  * The delete undo toast brings a Product back under a new id; this moves the
- * deleted Product's Activities over so its page keeps its history.
+ * deleted Product's Activities over so its page keeps listing them.
  */
 export async function relinkActivities(ctx: MutationCtx, from: Id<"products">, to: Id<"products">) {
   const activities = await ctx.db

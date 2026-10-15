@@ -19,9 +19,10 @@ const SCAN_INTERVAL_MS = 120;
 
 /** Warms up the decoder (a ~1 MB WebAssembly download), so the first scan is instant. */
 export function prepareScanner() {
-  void import("barcode-detector/ponyfill").then(({ prepareZXingModule }) =>
-    prepareZXingModule({ fireImmediately: true }),
-  );
+  import("barcode-detector/ponyfill")
+    .then(({ prepareZXingModule }) => prepareZXingModule({ fireImmediately: true }))
+    // Offline it just isn't ready yet; starting the camera loads it again.
+    .catch(() => {});
 }
 
 /**

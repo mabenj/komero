@@ -9,7 +9,7 @@ import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useT } from "@/lib/i18n";
-import { lastLocation, rememberLocation } from "@/lib/lastLocation";
+import { lastLocation, rememberLocation } from "@/lib/remembered";
 
 type Entry = {
   _id: Id<"entries">;
@@ -21,7 +21,7 @@ type Entry = {
 };
 
 /** The shared Shopping List: to-buy Entries grouped by Location, then One-offs under "Other", then the Bag. */
-export default function ListaPage() {
+export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
 

@@ -1,14 +1,15 @@
 "use client";
 
 import { Authenticated, AuthLoading } from "convex/react";
-import Link from "next/link";
+import { AppLink } from "@/components/AppLink";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { HomeIcon, ListIcon, ScanIcon, SettingsIcon } from "@/components/icons";
+import { KeepOfflineData } from "@/components/KeepOfflineData";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { UndoToastProvider } from "@/components/UndoToast";
 import { useT } from "@/lib/i18n";
-import { rememberTab, TABS, type Tab } from "@/lib/lastTab";
+import { rememberTab, TABS, type Tab } from "@/lib/remembered";
 
 /** The signed-in app: header with ⚙ Settings, the page, and the bottom bar. */
 export default function AppLayout({ children }: LayoutProps<"/">) {
@@ -25,14 +26,16 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
     <div className="mx-auto flex min-h-dvh max-w-xl flex-col">
       <header className="sticky top-0 z-10 border-b border-zinc-200 bg-background pt-[env(safe-area-inset-top)] dark:border-zinc-800">
         <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="text-xl font-bold">{t(currentTab ? `nav.${currentTab}` : "nav.settings")}</h1>
-          <Link
+          <h1 className="text-xl font-bold">
+            {currentTab ? t(`nav.${currentTab}`) : pathname === "/settings" && t("nav.settings")}
+          </h1>
+          <AppLink
             href="/settings"
             aria-label={t("nav.settings")}
             className="-m-2 rounded-full p-2 text-zinc-600 dark:text-zinc-300"
           >
             <SettingsIcon />
-          </Link>
+          </AppLink>
         </div>
         <OfflineBanner />
       </header>
@@ -41,6 +44,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           <p className="text-zinc-500">{t("common.loading")}</p>
         </AuthLoading>
         <Authenticated>
+          <KeepOfflineData />
           <UndoToastProvider>{children}</UndoToastProvider>
         </Authenticated>
       </main>
@@ -59,11 +63,11 @@ function BottomBar({ current }: { current: Tab | undefined }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 border-t border-zinc-200 bg-background pb-[env(safe-area-inset-bottom)] dark:border-zinc-800">
       <div className="mx-auto flex max-w-xl items-end">
-        <Link href="/koti" className={tabClass("koti")} aria-current={current === "koti" ? "page" : undefined}>
+        <AppLink href="/koti" className={tabClass("koti")} aria-current={current === "koti" ? "page" : undefined}>
           <HomeIcon />
           {t("nav.koti")}
-        </Link>
-        <Link
+        </AppLink>
+        <AppLink
           href="/scan"
           className="flex flex-1 flex-col items-center gap-0.5 pb-2 text-xs"
           aria-current={current === "scan" ? "page" : undefined}
@@ -76,11 +80,11 @@ function BottomBar({ current }: { current: Tab | undefined }) {
             <ScanIcon width={30} height={30} />
           </span>
           <span className={current === "scan" ? "font-semibold" : "text-zinc-500"}>{t("nav.scan")}</span>
-        </Link>
-        <Link href="/lista" className={tabClass("lista")} aria-current={current === "lista" ? "page" : undefined}>
+        </AppLink>
+        <AppLink href="/lista" className={tabClass("lista")} aria-current={current === "lista" ? "page" : undefined}>
           <ListIcon />
           {t("nav.lista")}
-        </Link>
+        </AppLink>
       </div>
     </nav>
   );

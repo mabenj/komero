@@ -10,7 +10,7 @@ import { LocationsSettings } from "@/components/LocationsSettings";
 import { api } from "@/convex/_generated/api";
 import { useT } from "@/lib/i18n";
 
-export default function SettingsPage() {
+export default function SettingsScreen() {
   const t = useT();
   const router = useRouter();
   const { signOut } = useAuthActions();

@@ -137,7 +137,7 @@ describe("Product page Activity", () => {
     expect(await productActivities(anna, maito)).toEqual(["Ben use", "Anna create"]);
   });
 
-  test("a Product deleted and brought back with undo keeps its history, and its page goes on from there", async () => {
+  test("a Product deleted and brought back with undo keeps its Activities, and its page goes on from there", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const kahvi = await anna.mutation(api.products.create, { name: "Kahvi", locationId: await locationId(anna, "Kaappi") });
     await anna.mutation(api.products.adjustStock, { productId: kahvi, change: "restock" });
@@ -174,6 +174,7 @@ describe("Daily cleanup", () => {
     await anna.mutation(api.products.adjustStock, { productId: maito, change: "use" });
 
     vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
+    // The one internal call in the tests: the daily cron runs it, and nothing public does (see README).
     await t.mutation(internal.activities.purgeOld, {});
 
     const left = await anna.query(api.activities.feed, {});

@@ -41,6 +41,7 @@ export const en = {
   "koti.search": "Search or add a Product",
   "koti.add": "+ Add “{name}”",
   "koti.addTo": "Location",
+  "koti.more": "More",
   "koti.duplicate": "{name} already exists in {location}",
   "koti.use": "Use one: {name}",
   "koti.restock": "Restock one: {name}",

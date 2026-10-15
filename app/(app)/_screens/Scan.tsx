@@ -5,17 +5,19 @@ import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
+import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { useNeedMore, useNeedMoreToast } from "@/components/NeedMore";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { ExpiryKind } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
-import { lastLocation, rememberLocation } from "@/lib/lastLocation";
-import { lastScanMode, rememberScanMode, SCAN_MODES, type ScanMode } from "@/lib/lastScanMode";
+import { lastLocation, rememberLocation } from "@/lib/remembered";
+import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
+import { lastScanMode, rememberScanMode } from "@/lib/remembered";
 
 type ScanOutcome = Exclude<FunctionReturnType<typeof api.barcodes.scan>, { unknown: true }>;
 type Suggestion = FunctionReturnType<typeof api.barcodes.lookup>;
-type ExpiryKind = "bestBefore" | "useBy" | null;
 
 const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-4 py-2 text-base dark:border-zinc-700";
 
@@ -26,7 +28,7 @@ const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-backgro
  * of a Product with an Expiry Kind then asks for the package's date (Skip is
  * the big button), with the camera paused until it is answered.
  */
-export default function ScanPage() {
+export default function ScanScreen() {
   const [mode, setMode] = useState<ScanMode>(lastScanMode);
   const [scanning, setScanning] = useState(false);
 
@@ -292,14 +294,14 @@ function NewProductForm({
   onSubmit,
 }: {
   suggestion: Suggestion | null;
-  onSubmit: (name: string, locationId: Id<"locations">, expiryKind: ExpiryKind) => void;
+  onSubmit: (name: string, locationId: Id<"locations">, expiryKind: ExpiryKind | null) => void;
 }) {
   const t = useT();
   const inventory = useQuery(api.inventory.get);
   const nameField = useRef<HTMLInputElement>(null);
   const [typedName, setTypedName] = useState<string | null>(null);
   const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
-  const [pickedExpiryKind, setPickedExpiryKind] = useState<ExpiryKind | undefined>(undefined);
+  const [pickedExpiryKind, setPickedExpiryKind] = useState<ExpiryKind | null | undefined>(undefined);
   const name = typedName ?? suggestion?.name ?? "";
   const suggested = typedName === null && name !== "";
   const expiryKind = pickedExpiryKind === undefined ? (suggestion?.expiryKind ?? null) : pickedExpiryKind;
@@ -353,18 +355,7 @@ function NewProductForm({
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-sm text-zinc-500">{t("product.expiryKind")}</span>
-        <select
-          value={expiryKind ?? "none"}
-          onChange={(event) => {
-            const value = event.target.value;
-            setPickedExpiryKind(value === "bestBefore" || value === "useBy" ? value : null);
-          }}
-          className={fieldClass}
-        >
-          <option value="none">{t("product.expiryKind.none")}</option>
-          <option value="bestBefore">{t("product.expiryKind.bestBefore")}</option>
-          <option value="useBy">{t("product.expiryKind.useBy")}</option>
-        </select>
+        <ExpiryKindSelect value={expiryKind} onChange={setPickedExpiryKind} className={fieldClass} />
       </label>
       <button
         type="submit"

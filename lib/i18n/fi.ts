@@ -41,6 +41,7 @@ export const fi = {
   "koti.search": "Hae tai lisää tuote",
   "koti.add": "+ Lisää ”{name}”",
   "koti.addTo": "Paikka",
+  "koti.more": "Lisätiedot",
   "koti.duplicate": "{name} on jo olemassa: {location}",
   "koti.use": "Käytä yksi: {name}",
   "koti.restock": "Lisää yksi: {name}",
