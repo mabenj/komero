@@ -39,6 +39,7 @@ export const fi = {
   "auth.goToSignIn": "Kirjaudu sisään",
 
   "koti.noProducts": "Ei tuotteita",
+  "koti.lowCount": "{count} vähissä",
   "koti.out": "Loppu",
   "koti.changeStock": "Muuta saldoa: {name}, komerossa {stock}",
   "koti.emptyTitle": "Komero on vielä tyhjä",

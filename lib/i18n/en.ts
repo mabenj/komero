@@ -39,6 +39,7 @@ export const en = {
   "auth.goToSignIn": "Sign in",
 
   "koti.noProducts": "No Products",
+  "koti.lowCount": "{count} low",
   "koti.out": "Out",
   "koti.changeStock": "Change Stock: {name}, {stock} at home",
   "koti.emptyTitle": "Komero is still empty",
