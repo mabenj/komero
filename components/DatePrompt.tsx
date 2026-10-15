@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { isDate } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
+import { card, field, primaryButton, secondaryButton } from "@/lib/styles";
 
 /**
  * Asks for the date printed on a Product's package when it is put away or
@@ -29,7 +30,7 @@ export function DatePrompt({
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-xl border border-zinc-300 p-3 dark:border-zinc-700"
+      className={`${card} flex flex-col gap-2 p-3`}
       onSubmit={(event) => {
         event.preventDefault();
         if (isDate(date)) onAnswer(date);
@@ -38,7 +39,7 @@ export function DatePrompt({
       <p className="flex items-baseline justify-between gap-2 font-medium">
         <span>{t("lista.datePrompt", { name })}</span>
         {step && (
-          <span className="shrink-0 text-sm text-zinc-500 tabular-nums">
+          <span className="shrink-0 text-sm text-stone-500 tabular-nums">
             {t("lista.datePromptStep", { step: step.index + 1, count: step.count })}
           </span>
         )}
@@ -48,26 +49,26 @@ export function DatePrompt({
         value={date}
         onChange={(event) => setDate(event.target.value)}
         aria-label={t("product.expiryDate")}
-        className="min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-4 py-2 text-base dark:border-zinc-700"
+        className={`${field} w-full px-4 py-2`}
       />
       <div className="flex gap-2">
         <button
           type="button"
           onClick={() => onAnswer(undefined)}
-          className="min-h-14 flex-1 rounded-xl bg-foreground text-lg font-semibold text-background"
+          className={`${primaryButton} min-h-14 flex-1 text-lg`}
         >
           {t("lista.dateSkip")}
         </button>
         <button
           type="submit"
           disabled={!isDate(date)}
-          className="min-h-14 flex-1 rounded-xl border border-zinc-300 text-lg font-semibold disabled:opacity-30 dark:border-zinc-700"
+          className={`${secondaryButton} min-h-14 flex-1 text-lg disabled:opacity-30`}
         >
           {answerLabel ?? t("lista.putAway")}
         </button>
       </div>
       {onCancel && (
-        <button type="button" onClick={onCancel} className="min-h-11 text-zinc-500">
+        <button type="button" onClick={onCancel} className="min-h-11 text-stone-500">
           {t("common.cancel")}
         </button>
       )}

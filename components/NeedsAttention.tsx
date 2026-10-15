@@ -23,7 +23,7 @@ export function NeedsAttention() {
   if (!products || products.length === 0) return null;
 
   return (
-    <section className="rounded-xl bg-amber-50 px-3 dark:bg-amber-950/40">
+    <section className="rounded-xl bg-amber-50 px-3 dark:bg-amber-400/10">
       <button
         type="button"
         aria-expanded={open}
@@ -44,13 +44,13 @@ export function NeedsAttention() {
         </span>
       </button>
       {open && (
-        <ul className="flex flex-col divide-y divide-amber-200 pb-1 dark:divide-amber-900">
+        <ul className="flex flex-col divide-y divide-amber-200 pb-1 dark:divide-amber-400/20">
           {products.map((product) => (
             <li key={product._id} className="flex items-center gap-3 py-1.5">
               <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
                 <p className="truncate">{product.name}</p>
                 <p
-                  className={`truncate text-xs ${product.attention === "expired" ? "font-semibold text-red-700 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"}`}
+                  className={`truncate text-xs ${product.attention === "expired" ? "font-semibold text-red-700 dark:text-red-400" : "text-stone-600 dark:text-stone-400"}`}
                 >
                   {t("attention.detail", {
                     status: t(`attention.${product.attention}`),
@@ -62,7 +62,7 @@ export function NeedsAttention() {
               <button
                 type="button"
                 onClick={() => void needMore(product._id)}
-                className="min-h-11 shrink-0 rounded-full bg-foreground px-4 text-sm font-semibold text-background"
+                className="min-h-11 shrink-0 rounded-full bg-accent px-4 text-sm font-semibold text-accent-foreground"
               >
                 {t("lista.needMore")}
               </button>

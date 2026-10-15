@@ -3,13 +3,14 @@
 import { useMutation, useQuery } from "convex/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import { AppLink } from "@/components/AppLink";
+import { Cupboard } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { MinusIcon, PlusIcon } from "@/components/icons";
+import { MinusIcon, PlusIcon, ScanIcon } from "@/components/icons";
 import { NeedsAttention } from "@/components/NeedsAttention";
 import { SwipeToNeedMore } from "@/components/NeedMore";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
@@ -18,11 +19,12 @@ import { applyRestock, applyUse, type ExpiryKind, expiryStatus } from "@/convex/
 import { formatDay, localToday } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
+import { field, primaryButton } from "@/lib/styles";
 
 type StockChange = "restock" | "use";
 
 const noMore = { expiryKind: null, minimumStock: "" };
-const moreFieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-3 text-base dark:border-zinc-700";
+const moreFieldClass = `${field} w-full px-3`;
 type Location = { _id: Id<"locations">; name: string };
 type ProductRowData = {
   _id: Id<"products">;
@@ -39,22 +41,23 @@ export default function KotiScreen() {
   const changeStock = useStockChange();
   const [quickAddLocation, setQuickAddLocation] = useState<Id<"locations"> | null>(null);
 
-  if (inventory === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
+  if (inventory === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
+  const empty = inventory.every((location) => location.products.length === 0);
   return (
     <div className="flex flex-col gap-6">
       <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
-      <NeedsAttention />
+      {empty ? <EmptyKoti /> : <NeedsAttention />}
       {inventory.map((location) => (
         <section key={location._id} data-location-id={location._id} className="flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">{location.name}</h2>
+            <h2 className="font-display text-lg">{location.name}</h2>
             {quickAddLocation !== location._id && (
               <button
                 type="button"
                 // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
                 onClick={() => flushSync(() => setQuickAddLocation(location._id))}
-                className="min-h-11 rounded-full px-3 text-sm font-medium text-zinc-600 dark:text-zinc-400"
+                className="min-h-11 rounded-full px-3 text-sm font-medium text-stone-600 dark:text-stone-400"
               >
                 {t("koti.quickAdd")}
               </button>
@@ -63,8 +66,10 @@ export default function KotiScreen() {
           {quickAddLocation === location._id && (
             <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
           )}
-          {location.products.length === 0 && <p className="text-sm text-zinc-500">{t("koti.noProducts")}</p>}
-          <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+          {location.products.length === 0 && !empty && (
+            <p className="text-sm text-stone-500">{t("koti.noProducts")}</p>
+          )}
+          <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
             {location.products.map((product) => (
               <ProductRow key={product._id} product={product} onChangeStock={changeStock} />
             ))}
@@ -122,13 +127,13 @@ function SearchAdd({
         aria-label={t("koti.search")}
         enterKeyHint="done"
         autoComplete="off"
-        className="w-full rounded-xl border border-zinc-300 bg-background px-4 py-3 text-base dark:border-zinc-700"
+        className={`${field} w-full px-4 py-3`}
       />
       {result && (
         <div className="flex flex-col gap-2">
           {result.duplicate && <DuplicateWarning duplicate={result.duplicate} />}
           {result.matches.length > 0 && (
-            <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+            <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
               {result.matches.map((product) => (
                 <ProductRow
                   key={product._id}
@@ -146,7 +151,7 @@ function SearchAdd({
                   type="button"
                   onClick={() => void add()}
                   disabled={!minimumStockValid}
-                  className="min-h-11 flex-1 truncate rounded-xl bg-foreground px-4 py-2 text-left font-semibold text-background disabled:opacity-40"
+                  className={`${primaryButton} min-h-11 flex-1 truncate px-4 py-2 text-left`}
                 >
                   {t("koti.add", { name: result.name })}
                 </button>
@@ -154,7 +159,7 @@ function SearchAdd({
                   value={locationId}
                   onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
                   aria-label={t("koti.addTo")}
-                  className="min-h-11 rounded-xl border border-zinc-300 bg-background px-2 dark:border-zinc-700"
+                  className={`${field} px-2`}
                 >
                   {locations.map((location) => (
                     <option key={location._id} value={location._id}>
@@ -164,10 +169,10 @@ function SearchAdd({
                 </select>
               </div>
               <details className="text-sm">
-                <summary className="min-h-11 content-center text-zinc-600 dark:text-zinc-400">{t("koti.more")}</summary>
+                <summary className="min-h-11 content-center text-stone-600 dark:text-stone-400">{t("koti.more")}</summary>
                 <div className="flex gap-2">
                   <label className="flex flex-1 flex-col gap-1">
-                    <span className="text-zinc-500">{t("product.expiryKind")}</span>
+                    <span className="text-stone-500">{t("product.expiryKind")}</span>
                     <ExpiryKindSelect
                       value={more.expiryKind}
                       onChange={(expiryKind) => setMore({ ...more, expiryKind })}
@@ -175,7 +180,7 @@ function SearchAdd({
                     />
                   </label>
                   <label className="flex flex-1 flex-col gap-1">
-                    <span className="text-zinc-500">{t("product.minimumStock")}</span>
+                    <span className="text-stone-500">{t("product.minimumStock")}</span>
                     <input
                       type="number"
                       inputMode="numeric"
@@ -193,6 +198,25 @@ function SearchAdd({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The first visit: the cupboard opens its doors and invites the first Product. */
+function EmptyKoti() {
+  const t = useT();
+  return (
+    <div className="flex flex-col items-center gap-3 px-6 py-4 text-center">
+      <Cupboard />
+      <h2 className="font-display text-2xl">{t("koti.emptyTitle")}</h2>
+      <p className="text-stone-600 dark:text-stone-400">{t("koti.emptyHint")}</p>
+      <AppLink
+        href="/scan"
+        className="mt-1 flex min-h-12 items-center gap-2 rounded-full bg-accent px-6 font-semibold text-accent-foreground"
+      >
+        <ScanIcon width={20} height={20} />
+        {t("nav.scan")}
+      </AppLink>
     </div>
   );
 }
@@ -240,12 +264,12 @@ function QuickAdd({ location, onDone }: { location: Location; onDone: () => void
           aria-label={t("koti.quickAddTo", { location: location.name })}
           enterKeyHint="enter"
           autoComplete="off"
-          className="min-w-0 flex-1 rounded-xl border border-zinc-300 bg-background px-4 py-3 text-base dark:border-zinc-700"
+          className={`${field} min-w-0 flex-1 px-4 py-3`}
         />
         <button
           type="button"
           onClick={onDone}
-          className="min-h-11 rounded-xl bg-foreground px-4 font-semibold text-background"
+          className={`${primaryButton} min-h-11 px-4`}
         >
           {t("koti.quickAddDone")}
         </button>
@@ -258,7 +282,7 @@ function QuickAdd({ location, onDone }: { location: Location; onDone: () => void
 function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationName: string } }) {
   const t = useT();
   return (
-    <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+    <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">
       {t("koti.duplicate", { name: duplicate.name, location: duplicate.locationName })}
     </p>
   );
@@ -280,13 +304,13 @@ function ProductRow({
   const t = useT();
   const outOfStock = product.stock === 0;
   const buttonClass =
-    "flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 text-xl disabled:opacity-30 dark:border-zinc-700";
+    "flex h-11 w-11 items-center justify-center rounded-full border border-stone-300 text-xl disabled:opacity-30 dark:border-stone-700";
 
   return (
     <SwipeToNeedMore productId={product._id}>
       <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
-        <p className={`truncate ${outOfStock ? "text-zinc-400 dark:text-zinc-500" : ""}`}>{product.name}</p>
-        {detail && <p className="truncate text-xs text-zinc-500">{detail}</p>}
+        <p className={`truncate ${outOfStock ? "text-stone-400 dark:text-stone-500" : ""}`}>{product.name}</p>
+        {detail && <p className="truncate text-xs text-stone-500">{detail}</p>}
       </AppLink>
       {product.expiryKind && product.expiryDate && (
         <DateBadge kind={product.expiryKind} date={product.expiryDate} />
@@ -300,7 +324,7 @@ function ProductRow({
       >
         <MinusIcon width={20} height={20} />
       </button>
-      <span className={`w-8 text-center tabular-nums ${outOfStock ? "text-zinc-400" : "font-semibold"}`}>
+      <span className={`w-8 text-center tabular-nums ${outOfStock ? "text-stone-400" : "font-semibold"}`}>
         {product.stock}
       </span>
       <button
@@ -318,8 +342,8 @@ function ProductRow({
 const badgeTones = {
   expired: "bg-red-600 text-white",
   checkIt: "bg-amber-500 text-white",
-  expiringSoon: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
-  none: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  expiringSoon: "bg-amber-100 text-amber-900 dark:bg-amber-400/15 dark:text-amber-200",
+  none: "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
 };
 
 /** The Expiry Date on a Koti row, coloured by what it means today. */
