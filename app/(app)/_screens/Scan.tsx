@@ -1,11 +1,13 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
+import { AnimatePresence } from "motion/react";
 import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
+import { Sheet } from "@/components/Sheet";
 import { useNeedMoreToast } from "@/components/NeedMore";
 import { usePutAwayToast, useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
@@ -158,17 +160,20 @@ function Scanning({
       >
         {t("scan.stop")}
       </button>
-      {unknownCode !== null && (
-        <UnknownBarcode
-          code={unknownCode}
-          mode={mode}
-          onDone={(outcome) => {
-            setUnknownCode(null);
-            scanned(outcome);
-          }}
-          onCancel={() => setUnknownCode(null)}
-        />
-      )}
+      <AnimatePresence>
+        {unknownCode !== null && (
+          <UnknownBarcode
+            key={unknownCode}
+            code={unknownCode}
+            mode={mode}
+            onDone={(outcome) => {
+              setUnknownCode(null);
+              scanned(outcome);
+            }}
+            onCancel={() => setUnknownCode(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -210,8 +215,8 @@ function useScanConfirmation() {
 
 /**
  * An unknown barcode: either a New Product (name typed, Location chosen) or
- * an existing Product (searched). The barcode is linked, then the mode applies.
- * Open Food Facts is asked in the background; its suggestion fills the name
+ * an existing Product (searched), in a sheet over the paused camera. The
+ * barcode is linked, then the mode applies. Open Food Facts is asked in the background; its suggestion fills the name
  * only if the Member hasn't started typing, and never links by itself.
  */
 function UnknownBarcode({
@@ -252,8 +257,7 @@ function UnknownBarcode({
     `min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold ${choice === tab ? "bg-surface shadow-sm" : "text-stone-600 dark:text-stone-400"}`;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 mx-auto flex max-h-[85dvh] max-w-xl flex-col gap-4 overflow-y-auto rounded-t-2xl bg-background px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl">
-      <h2 className="text-lg font-semibold">{t("scan.unknownTitle", { code })}</h2>
+    <Sheet title={t("scan.unknownTitle", { code })} onClose={onCancel}>
       <div className={segments}>
         <button type="button" aria-pressed={choice === "new"} onClick={() => setChoice("new")} className={tabClass("new")}>
           {t("scan.newProduct")}
@@ -286,7 +290,7 @@ function UnknownBarcode({
       >
         {t("common.cancel")}
       </button>
-    </div>
+    </Sheet>
   );
 }
 
