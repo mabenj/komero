@@ -4,6 +4,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useEffect, useState } from "react";
 import type { api } from "@/convex/_generated/api";
 import { useLang, useT } from "@/lib/i18n";
+import { cardList } from "@/lib/styles";
 
 type Activity = FunctionReturnType<typeof api.activities.feed>[number];
 
@@ -17,11 +18,11 @@ export function ActivityList({ activities }: { activities: Activity[] | undefine
   const now = useNow();
   const ago = useTimeAgo();
 
-  if (activities === undefined) return <p className="text-zinc-500">{t("common.loading")}</p>;
-  if (activities.length === 0) return <p className="text-zinc-500">{t("activity.none")}</p>;
+  if (activities === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
+  if (activities.length === 0) return <p className="text-stone-500">{t("activity.none")}</p>;
 
   return (
-    <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+    <ul className={cardList}>
       {activities.map((activity) => (
         <li key={activity._id} className="flex flex-col px-3 py-2">
           <span>
@@ -31,7 +32,7 @@ export function ActivityList({ activities }: { activities: Activity[] | undefine
               fromName: activity.fromName ?? "",
             })}
           </span>
-          <span className="text-sm text-zinc-500">
+          <span className="text-sm text-stone-500">
             {[
               activity.from !== undefined &&
                 activity.to !== undefined &&

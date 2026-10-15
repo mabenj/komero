@@ -6,6 +6,7 @@ import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from "@/components/icons";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useT } from "@/lib/i18n";
+import { cardList, field, primaryButton, secondaryButton } from "@/lib/styles";
 
 type Location = { _id: Id<"locations">; name: string; products: unknown[] };
 
@@ -32,7 +33,7 @@ export function LocationsSettings() {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-lg font-semibold">{t("settings.locations")}</h2>
-      <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+      <ul className={cardList}>
         {locations.map((location, index) => (
           <li key={location._id} className="flex flex-col gap-2 px-2 py-1.5">
             <LocationRow
@@ -77,7 +78,7 @@ function LocationRow({
   const rename = useMutation(api.locations.rename);
   const remove = useMutation(api.locations.remove);
   const iconButton =
-    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-600 disabled:opacity-30 dark:text-zinc-300";
+    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-stone-600 disabled:opacity-30 dark:text-stone-300";
 
   const deleteOrAsk = () => {
     if (location.products.length === 0) void remove({ locationId: location._id });
@@ -101,7 +102,7 @@ function LocationRow({
           if (name === "") event.currentTarget.value = location.name;
           else if (name !== location.name) void rename({ locationId: location._id, name });
         }}
-        className="min-h-11 min-w-0 flex-1 rounded-lg bg-transparent px-2 text-base focus:outline focus:outline-zinc-300 dark:focus:outline-zinc-700"
+        className="min-h-11 min-w-0 flex-1 rounded-lg bg-transparent px-2 text-base"
       />
       <button
         type="button"
@@ -157,7 +158,7 @@ function MoveProductsPrompt({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-zinc-100 p-3 dark:bg-zinc-900">
+    <div className="flex flex-col gap-2 rounded-xl bg-background p-3">
       <p>
         {count === 1
           ? t("locations.moveOne", { name: location.name })
@@ -167,7 +168,7 @@ function MoveProductsPrompt({
         value={moveProductsTo}
         onChange={(event) => setTarget(event.target.value as Id<"locations">)}
         aria-label={t("locations.moveTarget")}
-        className="min-h-11 rounded-lg border border-zinc-300 bg-background px-2 dark:border-zinc-700"
+        className={`${field} px-2`}
       >
         {targets.map((other) => (
           <option key={other._id} value={other._id}>
@@ -179,14 +180,14 @@ function MoveProductsPrompt({
         <button
           type="button"
           onClick={onDone}
-          className="flex-1 rounded-lg border border-zinc-300 py-3 font-semibold dark:border-zinc-700"
+          className={`${secondaryButton} flex-1 py-3`}
         >
           {t("locations.cancel")}
         </button>
         <button
           type="button"
           onClick={() => void moveAndDelete()}
-          className="flex-1 rounded-lg bg-red-600 py-3 font-semibold text-white"
+          className="flex-1 rounded-xl bg-red-600 py-3 font-semibold text-white"
         >
           {t("locations.moveAndDelete")}
         </button>
@@ -221,12 +222,12 @@ function AddLocation() {
         aria-label={t("locations.newName")}
         enterKeyHint="done"
         autoComplete="off"
-        className="min-h-11 min-w-0 flex-1 rounded-lg border border-zinc-300 bg-background px-3 text-base dark:border-zinc-700"
+        className={`${field} min-w-0 flex-1 px-3`}
       />
       <button
         type="submit"
         disabled={name.trim() === ""}
-        className="rounded-lg bg-foreground px-4 font-semibold text-background disabled:opacity-40"
+        className={`${primaryButton} px-4`}
       >
         {t("locations.add")}
       </button>
