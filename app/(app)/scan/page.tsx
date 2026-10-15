@@ -4,6 +4,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
+import { DatePrompt } from "@/components/DatePrompt";
 import { useNeedMore, useNeedMoreToast } from "@/components/NeedMore";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
@@ -21,7 +22,9 @@ const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-backgro
 /**
  * Scan: pick a mode (the last one is preselected), then scan continuously.
  * Each scan shows a confirmation with the Product and its new Stock; an
- * unknown barcode asks which Product it is, then the mode applies.
+ * unknown barcode asks which Product it is, then the mode applies. An Add scan
+ * of a Product with an Expiry Kind then asks for the package's date (Skip is
+ * the big button), with the camera paused until it is answered.
  */
 export default function ScanPage() {
   const [mode, setMode] = useState<ScanMode>(lastScanMode);
@@ -83,14 +86,21 @@ function Scanning({
 }) {
   const t = useT();
   const scan = useMutation(api.barcodes.scan);
+  const dateScan = useMutation(api.barcodes.dateScan);
   const confirm = useScanConfirmation();
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
+  const [dating, setDating] = useState<ScanOutcome | null>(null);
   const [cameraError, setCameraError] = useState(false);
+
+  const scanned = (outcome: ScanOutcome) => {
+    confirm(outcome);
+    if (outcome.asksForDate) setDating((current) => current ?? outcome);
+  };
 
   const onCode = async (code: string) => {
     const result = await scan({ code, mode });
     if (result.unknown) setUnknownCode((current) => current ?? result.code);
-    else confirm(result);
+    else scanned(result);
   };
 
   return (
@@ -110,6 +120,17 @@ function Scanning({
           </button>
         ))}
       </div>
+      {dating && (
+        <DatePrompt
+          key={`${dating.productId}-${dating.to}`}
+          name={dating.name}
+          answerLabel={t("common.save")}
+          onAnswer={(expiryDate) => {
+            setDating(null);
+            if (expiryDate) void dateScan({ productId: dating.productId, expiryDate });
+          }}
+        />
+      )}
       {cameraError ? (
         <p className="rounded-xl bg-amber-100 px-4 py-3 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           {t("scan.cameraError")}
@@ -119,7 +140,7 @@ function Scanning({
           <BarcodeScanner
             onCode={(code) => void onCode(code)}
             onError={() => setCameraError(true)}
-            paused={unknownCode !== null}
+            paused={unknownCode !== null || dating !== null}
           />
           <p className="absolute inset-x-0 bottom-0 bg-black/50 px-4 py-2 text-center text-sm text-white">
             {t("scan.hint")}
@@ -139,7 +160,7 @@ function Scanning({
           mode={mode}
           onDone={(outcome) => {
             setUnknownCode(null);
-            confirm(outcome);
+            scanned(outcome);
           }}
           onCancel={() => setUnknownCode(null)}
         />
