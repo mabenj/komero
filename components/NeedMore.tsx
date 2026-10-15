@@ -9,21 +9,33 @@ import { useT } from "@/lib/i18n";
 
 /** Need More with a toast saying how many are now on the list, which can undo it. */
 export function useNeedMore() {
-  const t = useT();
-  const showUndoToast = useUndoToast();
   const needMore = useMutation(api.shoppingList.needMore);
-  const setQuantity = useMutation(api.shoppingList.setQuantity);
-  const remove = useMutation(api.shoppingList.remove);
+  const showNeedMoreToast = useNeedMoreToast();
 
   return useCallback(
     async (productId: Id<"products">) => {
       const { entryId, name, quantity } = await needMore({ productId });
+      showNeedMoreToast({ entryId, name, quantity });
+    },
+    [needMore, showNeedMoreToast],
+  );
+}
+
+/** The toast after Need More (also from a scan): how many are now on the list, and undo. */
+export function useNeedMoreToast() {
+  const t = useT();
+  const showUndoToast = useUndoToast();
+  const setQuantity = useMutation(api.shoppingList.setQuantity);
+  const remove = useMutation(api.shoppingList.remove);
+
+  return useCallback(
+    ({ entryId, name, quantity }: { entryId: Id<"entries">; name: string; quantity: number }) => {
       showUndoToast(t("lista.onList", { name, quantity }), () => {
         if (quantity === 1) void remove({ entryId });
         else void setQuantity({ entryId, quantity: quantity - 1 });
       });
     },
-    [needMore, setQuantity, remove, showUndoToast, t],
+    [setQuantity, remove, showUndoToast, t],
   );
 }
 
