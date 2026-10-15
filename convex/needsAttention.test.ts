@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { ExpiryKind } from "./stock";
 import { type MemberSession, newKomero, signUp } from "./test.helpers";
 
 async function locationId(member: MemberSession, name: string) {
@@ -27,7 +28,7 @@ async function needsAttention(member: MemberSession, today = TODAY) {
 }
 
 /** Gives a Product an Expiry Kind and Date from its page. */
-const dated = (member: MemberSession, productId: Id<"products">, expiryKind: "bestBefore" | "useBy", expiryDate: string) =>
+const dated = (member: MemberSession, productId: Id<"products">, expiryKind: ExpiryKind, expiryDate: string) =>
   member.mutation(api.products.update, { productId, expiryKind, expiryDate });
 
 describe("Running Low", () => {

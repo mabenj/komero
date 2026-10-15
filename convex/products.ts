@@ -3,32 +3,27 @@ import { type MutationCtx, mutation, query } from "./_generated/server";
 import { recordActivity, relinkActivities } from "./activities";
 import { requireMemberId } from "./members";
 import type { Doc, Id } from "./_generated/dataModel";
+import { createProduct, requireMinimumStock } from "./newProduct";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
 import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingList";
-import { expiryKind } from "./schema";
-import { applyRestock, applyUse, crossedIntoRunningLow, isDate, type StockState } from "./stock";
+import { applyRestock, applyUse, crossedIntoRunningLow, expiryKind, isDate, type StockState } from "./stock";
 
 /**
  * Adds a Product by name to its Home Location. A new Product starts with Stock 1.
- * Both the search/add field and quick-add use this; a name that already exists
- * (in any case) is refused.
+ * Both the search/add field and quick-add use this; the add form's "More" can
+ * also set a Minimum Stock and an Expiry Kind. A name that already exists is
+ * only warned about (`search`), so this adds a second Product with it.
  */
 export const create = mutation({
-  args: { name: v.string(), locationId: v.id("locations") },
-  handler: async (ctx, { name, locationId }) => {
+  args: {
+    name: v.string(),
+    locationId: v.id("locations"),
+    minimumStock: v.optional(v.number()),
+    expiryKind: v.optional(expiryKind),
+  },
+  handler: async (ctx, details) => {
     const memberId = await requireMemberId(ctx);
-    const tidy = tidyName(name);
-    if (tidy === "") throw new ConvexError("NAME_REQUIRED");
-    if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
-    const key = nameKey(tidy);
-    const existing = await ctx.db
-      .query("products")
-      .withIndex("by_nameKey", (q) => q.eq("nameKey", key))
-      .first();
-    if (existing !== null) throw new ConvexError("PRODUCT_EXISTS");
-    const productId = await ctx.db.insert("products", { name: tidy, nameKey: key, locationId, stock: 1 });
-    await recordActivity(ctx, memberId, "create", { _id: productId, name: tidy }, { to: 1 });
-    return productId;
+    return (await createProduct(ctx, memberId, { ...details, stock: 1 }))._id;
   },
 });
 
@@ -92,9 +87,7 @@ export const update = mutation({
       await ctx.db.patch(productId, { locationId });
     }
     if (minimumStock !== undefined) {
-      if (minimumStock !== null && !(Number.isInteger(minimumStock) && minimumStock >= 0)) {
-        throw new ConvexError("MINIMUM_STOCK_INVALID");
-      }
+      if (minimumStock !== null) requireMinimumStock(minimumStock);
       await ctx.db.patch(productId, { minimumStock: minimumStock ?? undefined });
     }
     if (expiryDate != null) {

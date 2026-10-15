@@ -1,11 +1,17 @@
 // The Stock rules, in one place. Pure: mutations read a Product, apply a rule
 // here and write the result back within the same transaction.
+import { type Infer, v } from "convex/values";
+
+/** A Product's Expiry Kind. Absent means none: the Product never asks for a date. */
+export const expiryKind = v.union(v.literal("bestBefore"), v.literal("useBy"));
+export type ExpiryKind = Infer<typeof expiryKind>;
+export const EXPIRY_KINDS: ExpiryKind[] = expiryKind.members.map((member) => member.value);
 
 /**
  * Stock and its Expiry Date ("YYYY-MM-DD"). The date only applies with an
  * Expiry Kind; `expiryDate: undefined` in a result means the date is cleared.
  */
-export type StockState = { stock: number; expiryKind?: "bestBefore" | "useBy"; expiryDate?: string };
+export type StockState = { stock: number; expiryKind?: ExpiryKind; expiryDate?: string };
 
 /**
  * Restock: n packages put away or scanned in, with the date printed on them if

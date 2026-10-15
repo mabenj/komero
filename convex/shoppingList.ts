@@ -3,6 +3,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { type MutationCtx, mutation, query } from "./_generated/server";
 import { recordActivity } from "./activities";
 import { requireMemberId } from "./members";
+import { findOrCreateProduct } from "./newProduct";
 import { nameKey, tidyName } from "./productNames";
 import { applyRestock, isDate } from "./stock";
 
@@ -292,19 +293,7 @@ export const makeProduct = mutation({
     const memberId = await requireMemberId(ctx);
     const entry = await requireEntry(ctx, entryId);
     if (entry.productId !== undefined) throw new ConvexError("NOT_A_ONE_OFF");
-    const tidy = tidyName(name);
-    if (tidy === "") throw new ConvexError("NAME_REQUIRED");
-    if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
-    const key = nameKey(tidy);
-    let product = await ctx.db
-      .query("products")
-      .withIndex("by_nameKey", (q) => q.eq("nameKey", key))
-      .first();
-    if (product === null) {
-      const productId = await ctx.db.insert("products", { name: tidy, nameKey: key, locationId, stock: 0 });
-      product = (await ctx.db.get(productId))!;
-      await recordActivity(ctx, memberId, "create", product, { to: 0 });
-    }
+    const product = await findOrCreateProduct(ctx, memberId, { name, locationId, stock: 0 });
     if (entry.state === "toBuy") {
       await ctx.db.delete(entryId);
       await addToList(ctx, memberId, { product }, entry.quantity);
