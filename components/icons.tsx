@@ -89,3 +89,11 @@ export function SettingsIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m5 12 5 5 9-10" />
+    </Icon>
+  );
+}

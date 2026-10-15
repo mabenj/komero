@@ -4,6 +4,7 @@ import { type MutationCtx, mutation, query } from "./_generated/server";
 import { recordActivity } from "./activities";
 import { requireMemberId } from "./members";
 import { nameKey, tidyName } from "./productNames";
+import { applyRestock } from "./stock";
 
 type ListedEntry = { _id: Id<"entries">; name: string; quantity: number };
 type ProductEntry = ListedEntry & { productId: Id<"products">; stock: number };
@@ -13,34 +14,39 @@ const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompar
 /**
  * Lista: to-buy Product Entries grouped by their Product's Home Location in
  * Location order (empty Locations left out), each with the Product's current
- * Stock; then One-offs, which Lista shows under "Other".
+ * Stock; then One-offs, which Lista shows under "Other"; then the Bag
+ * ("In the bag"), Product Entries and One-offs together.
  */
 export const get = query({
   args: {},
   handler: async (ctx) => {
     await requireMemberId(ctx);
-    const entries = await ctx.db
-      .query("entries")
-      .withIndex("by_state", (q) => q.eq("state", "toBuy"))
-      .collect();
+    const entries = await ctx.db.query("entries").collect();
 
     const byLocation = new Map<Id<"locations">, ProductEntry[]>();
     const oneOffs: ListedEntry[] = [];
+    const bag: (ListedEntry | ProductEntry)[] = [];
     for (const entry of entries) {
       if (entry.productId === undefined) {
-        oneOffs.push({ _id: entry._id, name: entry.name ?? "", quantity: entry.quantity });
+        const oneOff = { _id: entry._id, name: entry.name ?? "", quantity: entry.quantity };
+        (entry.state === "inBag" ? bag : oneOffs).push(oneOff);
         continue;
       }
       const product = await ctx.db.get(entry.productId);
       if (product === null) continue;
-      const group = byLocation.get(product.locationId) ?? [];
-      group.push({
+      const listed = {
         _id: entry._id,
         productId: product._id,
         name: product.name,
         quantity: entry.quantity,
         stock: product.stock,
-      });
+      };
+      if (entry.state === "inBag") {
+        bag.push(listed);
+        continue;
+      }
+      const group = byLocation.get(product.locationId) ?? [];
+      group.push(listed);
       byLocation.set(product.locationId, group);
     }
 
@@ -54,6 +60,7 @@ export const get = query({
           entries: byLocation.get(location._id)!.sort(byName),
         })),
       oneOffs: oneOffs.sort(byName),
+      bag: bag.sort(byName),
     };
   },
 });
@@ -175,6 +182,111 @@ export const restore = mutation({
     });
   },
 });
+
+/** Ticks an Entry off in the shop: it moves to the Bag. Stock is unchanged until it is put away. */
+export const tick = mutation({
+  args: { entryId: v.id("entries") },
+  handler: async (ctx, { entryId }) => {
+    const memberId = await requireMemberId(ctx);
+    const entry = await requireEntry(ctx, entryId);
+    if (entry.state === "inBag") return;
+    await ctx.db.patch(entryId, { state: "inBag" });
+    await recordActivity(ctx, memberId, "tick", await named(ctx, entry), { quantity: entry.quantity });
+  },
+});
+
+/**
+ * Takes an Entry out of the Bag, back onto the list (also the tick undo toast).
+ * If the same thing was put on the list again meanwhile, the quantities add up.
+ */
+export const untick = mutation({
+  args: { entryId: v.id("entries") },
+  handler: async (ctx, { entryId }) => {
+    const memberId = await requireMemberId(ctx);
+    const entry = await requireEntry(ctx, entryId);
+    if (entry.state === "toBuy") return;
+    const what = await named(ctx, entry);
+    await ctx.db.delete(entryId);
+    await addToList(ctx, memberId, "_id" in what ? { product: what } : what, entry.quantity);
+    await recordActivity(ctx, memberId, "untick", what, { quantity: entry.quantity });
+  },
+});
+
+/** Put Away of one Entry from the Bag: Restocks its Product by the Entry's quantity; a One-off just disappears. */
+export const putAway = mutation({
+  args: { entryId: v.id("entries") },
+  handler: async (ctx, { entryId }) => {
+    const memberId = await requireMemberId(ctx);
+    const entry = await requireEntry(ctx, entryId);
+    if (entry.state !== "inBag") throw new ConvexError("ENTRY_NOT_IN_BAG");
+    await putAwayEntry(ctx, memberId, entry);
+  },
+});
+
+/** "Put away all": Put Away of every Entry in the Bag. */
+export const putAwayAll = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const memberId = await requireMemberId(ctx);
+    const bag = await ctx.db
+      .query("entries")
+      .withIndex("by_state", (q) => q.eq("state", "inBag"))
+      .collect();
+    for (const entry of bag) await putAwayEntry(ctx, memberId, entry);
+  },
+});
+
+async function putAwayEntry(ctx: MutationCtx, memberId: Id<"users">, entry: Doc<"entries">) {
+  const what = await named(ctx, entry);
+  await ctx.db.delete(entry._id);
+  if (!("_id" in what)) {
+    await recordActivity(ctx, memberId, "putAway", what, { quantity: entry.quantity });
+    return;
+  }
+  const next = applyRestock(what, entry.quantity);
+  await ctx.db.patch(what._id, next);
+  await recordActivity(ctx, memberId, "putAway", what, { from: what.stock, to: next.stock, quantity: entry.quantity });
+}
+
+/**
+ * Turns a One-off into a Product in the chosen Home Location, Out of Stock (it
+ * is still to be bought), and links the Entry to it. A name that is already a
+ * Product's (in any case) links to that Product instead.
+ */
+export const makeProduct = mutation({
+  args: { entryId: v.id("entries"), name: v.string(), locationId: v.id("locations") },
+  handler: async (ctx, { entryId, name, locationId }) => {
+    const memberId = await requireMemberId(ctx);
+    const entry = await requireEntry(ctx, entryId);
+    if (entry.productId !== undefined) throw new ConvexError("NOT_A_ONE_OFF");
+    const tidy = tidyName(name);
+    if (tidy === "") throw new ConvexError("NAME_REQUIRED");
+    if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
+    const key = nameKey(tidy);
+    let product = await ctx.db
+      .query("products")
+      .withIndex("by_nameKey", (q) => q.eq("nameKey", key))
+      .first();
+    if (product === null) {
+      const productId = await ctx.db.insert("products", { name: tidy, nameKey: key, locationId, stock: 0 });
+      product = (await ctx.db.get(productId))!;
+      await recordActivity(ctx, memberId, "create", product, { to: 0 });
+    }
+    if (entry.state === "toBuy") {
+      await ctx.db.delete(entryId);
+      await addToList(ctx, memberId, { product }, entry.quantity);
+    } else {
+      await ctx.db.patch(entryId, { productId: product._id, name: undefined });
+    }
+    return product._id;
+  },
+});
+
+/** What an Activity about an Entry names: its Product, or the One-off's text. */
+async function named(ctx: MutationCtx, entry: Doc<"entries">) {
+  const product = entry.productId && (await ctx.db.get(entry.productId));
+  return product ?? { name: entry.name ?? "" };
+}
 
 async function requireEntry(ctx: MutationCtx, entryId: Id<"entries">) {
   const entry = await ctx.db.get(entryId);
