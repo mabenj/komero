@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
+import { DatePrompt } from "@/components/DatePrompt";
 import { CheckIcon, MinusIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
 import { useUndoToast } from "@/components/UndoToast";
@@ -10,7 +11,14 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useT } from "@/lib/i18n";
 import { lastLocation, rememberLocation } from "@/lib/lastLocation";
 
-type Entry = { _id: Id<"entries">; name: string; quantity: number; productId?: Id<"products">; stock?: number };
+type Entry = {
+  _id: Id<"entries">;
+  name: string;
+  quantity: number;
+  productId?: Id<"products">;
+  stock?: number;
+  asksForDate?: boolean;
+};
 
 /** The shared Shopping List: to-buy Entries grouped by Location, then One-offs under "Other", then the Bag. */
 export default function ListaPage() {
@@ -117,23 +125,59 @@ function EntryGroup({ title, entries }: { title: string; entries: Entry[] }) {
   );
 }
 
-/** "In the bag": Entries ticked off in the shop, put away one at a time or all at once. */
+/**
+ * "In the bag": Entries ticked off in the shop, put away one at a time or all
+ * at once. "Put away all" first asks for a date for each Product with an Expiry Kind.
+ */
 function Bag({ entries }: { entries: Entry[] }) {
   const t = useT();
   const putAwayAll = useMutation(api.shoppingList.putAwayAll);
+  const [prompts, setPrompts] = useState<{ asking: Entry[]; index: number; dates: Record<string, string> } | null>(
+    null,
+  );
+
+  const start = () => {
+    const asking = entries.filter(
+      (entry, i) => entry.asksForDate && entries.findIndex((e) => e.productId === entry.productId) === i,
+    );
+    if (asking.length === 0) void putAwayAll({});
+    else setPrompts({ asking, index: 0, dates: {} });
+  };
+  const answer = (date: string | undefined) => {
+    if (!prompts) return;
+    const entry = prompts.asking[prompts.index];
+    const dates = date && entry.productId ? { ...prompts.dates, [entry.productId]: date } : prompts.dates;
+    if (prompts.index + 1 < prompts.asking.length) {
+      setPrompts({ ...prompts, index: prompts.index + 1, dates });
+      return;
+    }
+    setPrompts(null);
+    void putAwayAll({ expiryDates: dates });
+  };
 
   return (
     <section className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">{t("lista.bag")}</h2>
-        <button
-          type="button"
-          onClick={() => void putAwayAll()}
-          className="min-h-11 rounded-xl bg-foreground px-4 py-2 font-semibold text-background"
-        >
-          {t("lista.putAwayAll")}
-        </button>
+        {!prompts && (
+          <button
+            type="button"
+            onClick={start}
+            className="min-h-11 rounded-xl bg-foreground px-4 py-2 font-semibold text-background"
+          >
+            {t("lista.putAwayAll")}
+          </button>
+        )}
       </div>
+      {prompts && (
+        <DatePrompt
+          key={prompts.asking[prompts.index]._id}
+          name={prompts.asking[prompts.index].name}
+          step={{ index: prompts.index, count: prompts.asking.length }}
+          onAnswer={answer}
+          onCancel={() => setPrompts(null)}
+        />
+      )}
       <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
         {entries.map((entry) => (
           <EntryRow key={entry._id} entry={entry} inBag />
@@ -154,6 +198,7 @@ const roundButton =
 function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
   const t = useT();
   const [makingProduct, setMakingProduct] = useState(false);
+  const [askingDate, setAskingDate] = useState(false);
   const showUndoToast = useUndoToast();
   const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate((store, args) => {
     const list = store.getQuery(api.shoppingList.get, {});
@@ -228,7 +273,7 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
               type="button"
               className="min-h-11 shrink-0 rounded-xl border border-zinc-300 px-3 font-semibold dark:border-zinc-700"
               aria-label={t("lista.putAwayName", { name: entry.name })}
-              onClick={() => void putAway({ entryId: entry._id })}
+              onClick={() => (entry.asksForDate ? setAskingDate(true) : void putAway({ entryId: entry._id }))}
             >
               {t("lista.putAway")}
             </button>
@@ -267,6 +312,16 @@ function EntryRow({ entry, inBag = false }: { entry: Entry; inBag?: boolean }) {
         )}
       </div>
       {makingProduct && <MakeProduct entry={entry} onDone={() => setMakingProduct(false)} />}
+      {askingDate && (
+        <DatePrompt
+          name={entry.name}
+          onAnswer={(expiryDate) => {
+            setAskingDate(false);
+            void putAway({ entryId: entry._id, expiryDate });
+          }}
+          onCancel={() => setAskingDate(false)}
+        />
+      )}
     </li>
   );
 }

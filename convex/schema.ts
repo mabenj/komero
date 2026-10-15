@@ -5,6 +5,9 @@ import { v } from "convex/values";
 /** A Member's UI language. Finnish is the default. */
 export const language = v.union(v.literal("fi"), v.literal("en"));
 
+/** A Product's Expiry Kind. Absent means none: the Product never asks for a date. */
+export const expiryKind = v.union(v.literal("bestBefore"), v.literal("useBy"));
+
 /**
  * What an Activity records. To record a new kind: add it here, add
  * `activity.<kind>` to lib/i18n/fi.ts and en.ts (typecheck fails until both
@@ -62,6 +65,9 @@ export default defineSchema({
     stock: v.number(),
     // Optional: Stock at or below it means Running Low (see stock.ts).
     minimumStock: v.optional(v.number()),
+    expiryKind: v.optional(expiryKind),
+    // "YYYY-MM-DD", only with an Expiry Kind; the date rules are in stock.ts.
+    expiryDate: v.optional(v.string()),
   })
     .index("by_location", ["locationId", "nameKey"])
     .index("by_nameKey", ["nameKey"]),

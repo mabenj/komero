@@ -12,13 +12,20 @@ import { MinusIcon, PlusIcon } from "@/components/icons";
 import { NeedsAttention } from "@/components/NeedsAttention";
 import { SwipeToNeedMore, useNeedMore } from "@/components/NeedMore";
 import { tidyName } from "@/convex/productNames";
-import { applyRestock, applyUse } from "@/convex/stock";
-import { useT } from "@/lib/i18n";
+import { applyRestock, applyUse, expiryStatus } from "@/convex/stock";
+import { formatDay, localToday } from "@/lib/dates";
+import { useLang, useT } from "@/lib/i18n";
 import { lastLocation, rememberLocation } from "@/lib/lastLocation";
 
 type StockChange = "restock" | "use";
 type Location = { _id: Id<"locations">; name: string };
-type ProductRowData = { _id: Id<"products">; name: string; stock: number };
+type ProductRowData = {
+  _id: Id<"products">;
+  name: string;
+  stock: number;
+  expiryKind?: "bestBefore" | "useBy" | null;
+  expiryDate?: string | null;
+};
 
 export default function KotiPage() {
   const t = useT();
@@ -212,8 +219,8 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
 }
 
 /**
- * A Product with its Stock and inline – / +; swipe it left for Need More.
- * Out of Stock Products stay listed, dimmed.
+ * A Product with its Stock and inline – / +, and its Expiry Date when it has
+ * one; swipe it left for Need More. Out of Stock Products stay listed, dimmed.
  */
 function ProductRow({
   product,
@@ -235,6 +242,9 @@ function ProductRow({
         <p className={`truncate ${outOfStock ? "text-zinc-400 dark:text-zinc-500" : ""}`}>{product.name}</p>
         {detail && <p className="truncate text-xs text-zinc-500">{detail}</p>}
       </Link>
+      {product.expiryKind && product.expiryDate && (
+        <DateBadge kind={product.expiryKind} date={product.expiryDate} />
+      )}
       <button
         type="button"
         className={buttonClass}
@@ -259,6 +269,31 @@ function ProductRow({
   );
 }
 
+const badgeTones = {
+  expired: "bg-red-600 text-white",
+  checkIt: "bg-amber-500 text-white",
+  expiringSoon: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  none: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+};
+
+/** The Expiry Date on a Koti row, coloured by what it means today. */
+function DateBadge({ kind, date }: { kind: "bestBefore" | "useBy"; date: string }) {
+  const t = useT();
+  const lang = useLang();
+  const status = expiryStatus({ stock: 1, expiryKind: kind, expiryDate: date }, localToday());
+  const tone = status === "expired" || status === "checkIt" || status === "expiringSoon" ? status : "none";
+  const label = t(`expiry.${kind}`, { date: formatDay(date, lang) });
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${badgeTones[tone]}`}
+    >
+      {formatDay(date, lang)}
+    </span>
+  );
+}
+
 /**
  * Applies + / – (optimistically, so taps feel instant) and offers to undo it.
  * When the change makes the Product Running Low, the toast says so and offers
@@ -269,7 +304,7 @@ function useStockChange() {
   const showUndoToast = useUndoToast();
   const needMore = useNeedMore();
   const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate(
-    (store, { productId, change }) => setStockLocally(store, productId, (stock) => apply(stock, change)),
+    (store, { productId, change }) => setStockLocally(store, productId, change),
   );
   const undoStockChange = useMutation(api.products.undoStockChange);
 
@@ -291,13 +326,22 @@ function useStockChange() {
   );
 }
 
-function apply(stock: number, change: StockChange) {
-  return (change === "restock" ? applyRestock({ stock }, 1) : applyUse({ stock })).stock;
+/** The same Stock and Expiry Date rules as the server, applied to a row. */
+function apply<P extends ProductRowData>(product: P, change: StockChange): P {
+  const state = {
+    stock: product.stock,
+    expiryKind: product.expiryKind ?? undefined,
+    expiryDate: product.expiryDate ?? undefined,
+  };
+  const next = change === "restock" ? applyRestock(state, 1) : applyUse(state);
+  return "expiryDate" in product
+    ? { ...product, stock: next.stock, expiryDate: next.expiryDate ?? null }
+    : { ...product, stock: next.stock };
 }
 
-function setStockLocally(store: OptimisticLocalStore, productId: Id<"products">, next: (stock: number) => number) {
+function setStockLocally(store: OptimisticLocalStore, productId: Id<"products">, change: StockChange) {
   const update = <P extends ProductRowData>(product: P): P =>
-    product._id === productId ? { ...product, stock: next(product.stock) } : product;
+    product._id === productId ? apply(product, change) : product;
 
   const inventory = store.getQuery(api.inventory.get, {});
   if (inventory) {

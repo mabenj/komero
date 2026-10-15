@@ -9,13 +9,14 @@ import { useNeedMore } from "@/components/NeedMore";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { isDate } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
 
 const fieldClass = "min-h-11 w-full rounded-xl border border-zinc-300 bg-background px-4 py-2 text-base dark:border-zinc-700";
 
 /**
  * Everything about one Product: rename it, move it to another Home Location,
- * set or clear its Minimum Stock, put it on the Shopping List, delete it, and
+ * set or clear its Minimum Stock, Expiry Kind and Expiry Date, put it on the Shopping List, delete it, and
  * see its recent Activity.
  */
 export default function ProductPage({ params }: PageProps<"/koti/[productId]">) {
@@ -122,6 +123,42 @@ export default function ProductPage({ params }: PageProps<"/koti/[productId]">) 
         />
         <span className="text-xs text-zinc-500">{t("product.minimumStockHint")}</span>
       </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-sm text-zinc-500">{t("product.expiryKind")}</span>
+        <select
+          value={product.expiryKind ?? "none"}
+          onChange={(event) => {
+            const value = event.target.value;
+            void update({ productId, expiryKind: value === "bestBefore" || value === "useBy" ? value : null });
+          }}
+          className={fieldClass}
+        >
+          <option value="none">{t("product.expiryKind.none")}</option>
+          <option value="bestBefore">{t("product.expiryKind.bestBefore")}</option>
+          <option value="useBy">{t("product.expiryKind.useBy")}</option>
+        </select>
+      </label>
+      {product.expiryKind && (
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-zinc-500">{t("product.expiryDate")}</span>
+          <input
+            // Remounts when the date changes elsewhere, so the field shows the latest date.
+            key={product.expiryDate ?? "none"}
+            type="date"
+            defaultValue={product.expiryDate ?? ""}
+            // A picked date saves straight away; an emptied field clears the date once it loses focus.
+            onChange={(event) => {
+              const expiryDate = event.target.value;
+              if (isDate(expiryDate) && expiryDate !== product.expiryDate) void update({ productId, expiryDate });
+            }}
+            onBlur={(event) => {
+              if (event.target.value === "" && product.expiryDate) void update({ productId, expiryDate: null });
+            }}
+            className={fieldClass}
+          />
+          <span className="text-xs text-zinc-500">{t("product.expiryDateHint")}</span>
+        </label>
+      )}
       <button
         type="button"
         onClick={() => void needMore(productId)}

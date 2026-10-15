@@ -17,11 +17,18 @@ const use = (member: MemberSession, productId: Id<"products">) =>
 const restock = (member: MemberSession, productId: Id<"products">) =>
   member.mutation(api.products.adjustStock, { productId, change: "restock" });
 
-/** Needs Attention on Koti as text: "Name (Location, Stock n): status". */
-async function needsAttention(member: MemberSession) {
-  const products = await member.query(api.inventory.needsAttention, {});
+/** The Member's date on their phone, which Koti passes to Needs Attention. */
+const TODAY = "2026-10-15";
+
+/** Needs Attention on Koti as text: "Name (Location, Stock n): status", as seen on `today`. */
+async function needsAttention(member: MemberSession, today = TODAY) {
+  const products = await member.query(api.inventory.needsAttention, { today });
   return products.map((p) => `${p.name} (${p.locationName}, Stock ${p.stock}): ${p.attention}`);
 }
+
+/** Gives a Product an Expiry Kind and Date from its page. */
+const dated = (member: MemberSession, productId: Id<"products">, expiryKind: "bestBefore" | "useBy", expiryDate: string) =>
+  member.mutation(api.products.update, { productId, expiryKind, expiryDate });
 
 describe("Running Low", () => {
   test("without a Minimum Stock, Maito is Running Low only once it is Out of Stock", async () => {
@@ -123,6 +130,94 @@ describe("Running Low", () => {
   });
 });
 
+describe("Expiry in Needs Attention", () => {
+  test("Maito is Expired the day after its Use By date, not on the day itself", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await restock(anna, maito);
+    await dated(anna, maito, "useBy", "2026-10-15");
+
+    expect(await needsAttention(anna, "2026-10-16")).toEqual(["Maito (Jääkaappi, Stock 2): expired"]);
+  });
+
+  test("Jugurtti past its Best Before date says Check it rather than Expired", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const jugurtti = await product(anna, "Jugurtti", "Jääkaappi");
+    await restock(anna, jugurtti);
+    await dated(anna, jugurtti, "bestBefore", "2026-10-15");
+
+    expect(await needsAttention(anna, "2026-10-16")).toEqual(["Jugurtti (Jääkaappi, Stock 2): checkIt"]);
+  });
+
+  test("Maito is Expiring soon from 3 days before its date up to the day itself", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await restock(anna, maito);
+    await dated(anna, maito, "useBy", "2026-10-20");
+
+    expect(await needsAttention(anna, "2026-10-16")).toEqual([]);
+    for (const today of ["2026-10-17", "2026-10-19", "2026-10-20"]) {
+      expect(await needsAttention(anna, today)).toEqual(["Maito (Jääkaappi, Stock 2): expiringSoon"]);
+    }
+    expect(await needsAttention(anna, "2026-10-21")).toEqual(["Maito (Jääkaappi, Stock 2): expired"]);
+  });
+
+  test("3 days counts across a month's end", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await restock(anna, maito);
+    await dated(anna, maito, "useBy", "2026-11-02");
+
+    expect(await needsAttention(anna, "2026-10-29")).toEqual([]);
+    expect(await needsAttention(anna, "2026-10-30")).toEqual(["Maito (Jääkaappi, Stock 2): expiringSoon"]);
+  });
+
+  test("Needs Attention puts Expired first, then Check it, then Expiring soon, then Running Low", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const tiskiaine = await product(anna, "Tiskiaine", "Siivouskomero");
+    await use(anna, tiskiaine);
+    const appelsiinimehu = await product(anna, "Appelsiinimehu", "Jääkaappi");
+    await dated(anna, appelsiinimehu, "useBy", "2026-10-17");
+    const jugurtti = await product(anna, "Jugurtti", "Jääkaappi");
+    await dated(anna, jugurtti, "bestBefore", "2026-10-10");
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await dated(anna, maito, "useBy", "2026-10-14");
+    const kerma = await product(anna, "Kerma", "Jääkaappi");
+    await dated(anna, kerma, "useBy", "2026-12-01");
+    const kinkku = await product(anna, "Kinkku", "Jääkaappi");
+    await restock(anna, kinkku);
+    await dated(anna, kinkku, "useBy", "2026-10-15");
+
+    expect(await needsAttention(anna, "2026-10-15")).toEqual([
+      "Maito (Jääkaappi, Stock 1): expired",
+      "Jugurtti (Jääkaappi, Stock 1): checkIt",
+      "Appelsiinimehu (Jääkaappi, Stock 1): expiringSoon",
+      "Kinkku (Jääkaappi, Stock 2): expiringSoon",
+      "Tiskiaine (Siivouskomero, Stock 0): runningLow",
+    ]);
+  });
+
+  test("a Running Low Product that is also expiring shows only its more urgent status", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await anna.mutation(api.products.update, { productId: maito, minimumStock: 1 });
+    await dated(anna, maito, "useBy", "2026-10-16");
+
+    expect(await needsAttention(anna, "2026-10-15")).toEqual(["Maito (Jääkaappi, Stock 1): expiringSoon"]);
+  });
+
+  test("a Product without an Expiry Kind never needs attention for a date", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Jääkaappi");
+    await restock(anna, maito);
+    await dated(anna, maito, "useBy", "2026-10-15");
+
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: null });
+
+    expect(await needsAttention(anna, "2026-10-30")).toEqual([]);
+  });
+});
+
 describe("Needs Attention", () => {
   test("Ben sees every Running Low Product from all Locations by name, and Need More puts one on the list", async () => {
     const t = newKomero();
@@ -142,7 +237,7 @@ describe("Needs Attention", () => {
       "Tiskiaine (Siivouskomero, Stock 0): runningLow",
     ]);
 
-    const [, maitoInAttention] = await ben.query(api.inventory.needsAttention, {});
+    const [, maitoInAttention] = await ben.query(api.inventory.needsAttention, { today: TODAY });
     await ben.mutation(api.shoppingList.needMore, { productId: maitoInAttention._id });
 
     const list = await anna.query(api.shoppingList.get, {});
@@ -153,6 +248,6 @@ describe("Needs Attention", () => {
     const t = newKomero();
     await signUp(t, "anna@example.com");
 
-    await expect(t.query(api.inventory.needsAttention, {})).rejects.toThrow(/NOT_SIGNED_IN/);
+    await expect(t.query(api.inventory.needsAttention, { today: TODAY })).rejects.toThrow(/NOT_SIGNED_IN/);
   });
 });

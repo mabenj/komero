@@ -218,7 +218,7 @@ describe("Stock", () => {
 });
 
 describe("Product page", () => {
-  test("opening a Product shows its name, Home Location, Stock and Minimum Stock", async () => {
+  test("opening a Product shows its name, Home Location, Stock, Minimum Stock and Expiry Kind and Date", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const jaakaappi = await locationId(anna, "Jääkaappi");
     const maito = await anna.mutation(api.products.create, { name: "Maito", locationId: jaakaappi });
@@ -229,6 +229,8 @@ describe("Product page", () => {
       name: "Maito",
       stock: 2,
       minimumStock: null,
+      expiryKind: null,
+      expiryDate: null,
       locationId: jaakaappi,
       locationName: "Jääkaappi",
     });

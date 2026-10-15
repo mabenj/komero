@@ -5,7 +5,8 @@ import { requireMemberId } from "./members";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isLikelySame, nameKey, tidyName } from "./productNames";
 import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingList";
-import { applyRestock, applyUse, crossedIntoRunningLow, type StockState } from "./stock";
+import { expiryKind } from "./schema";
+import { applyRestock, applyUse, crossedIntoRunningLow, isDate, type StockState } from "./stock";
 
 /**
  * Adds a Product by name to its Home Location. A new Product starts with Stock 1.
@@ -44,6 +45,8 @@ export const get = query({
       name: product.name,
       stock: product.stock,
       minimumStock: product.minimumStock ?? null,
+      expiryKind: product.expiryKind ?? null,
+      expiryDate: product.expiryDate ?? null,
       locationId: product.locationId,
       locationName: location?.name ?? "",
     };
@@ -65,17 +68,20 @@ export const rename = mutation({
 
 /**
  * Changes a Product's details from its page. Fields left out stay as they are;
- * a `minimumStock` of null clears it.
+ * null clears one. Clearing the Expiry Kind clears the Expiry Date too, and only
+ * a Product with an Expiry Kind can have a date.
  */
 export const update = mutation({
   args: {
     productId: v.id("products"),
     locationId: v.optional(v.id("locations")),
     minimumStock: v.optional(v.union(v.number(), v.null())),
+    expiryKind: v.optional(v.union(expiryKind, v.null())),
+    expiryDate: v.optional(v.union(v.string(), v.null())),
   },
-  handler: async (ctx, { productId, locationId, minimumStock }) => {
+  handler: async (ctx, { productId, locationId, minimumStock, expiryKind, expiryDate }) => {
     await requireMemberId(ctx);
-    await requireProduct(ctx, productId);
+    const product = await requireProduct(ctx, productId);
     if (locationId !== undefined) {
       if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
       await ctx.db.patch(productId, { locationId });
@@ -86,6 +92,13 @@ export const update = mutation({
       }
       await ctx.db.patch(productId, { minimumStock: minimumStock ?? undefined });
     }
+    if (expiryDate != null) {
+      if (!isDate(expiryDate)) throw new ConvexError("EXPIRY_DATE_INVALID");
+      if (!(expiryKind ?? product.expiryKind)) throw new ConvexError("EXPIRY_KIND_REQUIRED");
+    }
+    if (expiryKind === null) await ctx.db.patch(productId, { expiryKind: undefined, expiryDate: undefined });
+    else if (expiryKind !== undefined) await ctx.db.patch(productId, { expiryKind });
+    if (expiryDate !== undefined) await ctx.db.patch(productId, { expiryDate: expiryDate ?? undefined });
   },
 });
 
@@ -96,6 +109,8 @@ const deletedProduct = {
   locationId: v.id("locations"),
   stock: v.number(),
   minimumStock: v.optional(v.number()),
+  expiryKind: v.optional(expiryKind),
+  expiryDate: v.optional(v.string()),
   entries: removedEntries,
 };
 
@@ -105,11 +120,11 @@ export const remove = mutation({
   handler: async (ctx, { productId }) => {
     const memberId = await requireMemberId(ctx);
     const product = await requireProduct(ctx, productId);
-    const { name, locationId, stock, minimumStock } = product;
+    const { name, locationId, stock, minimumStock, expiryKind, expiryDate } = product;
     const entries = await removeEntriesOf(ctx, productId);
     await ctx.db.delete(productId);
     await recordActivity(ctx, memberId, "delete", product);
-    return { productId, name, locationId, stock, minimumStock, entries };
+    return { productId, name, locationId, stock, minimumStock, expiryKind, expiryDate, entries };
   },
 });
 
@@ -120,7 +135,10 @@ export const remove = mutation({
  */
 export const restore = mutation({
   args: deletedProduct,
-  handler: async (ctx, { productId: deletedId, name, locationId, stock, minimumStock, entries }) => {
+  handler: async (
+    ctx,
+    { productId: deletedId, name, locationId, stock, minimumStock, expiryKind, expiryDate, entries },
+  ) => {
     const memberId = await requireMemberId(ctx);
     const home =
       (await ctx.db.get(locationId)) ??
@@ -132,6 +150,8 @@ export const restore = mutation({
       locationId: home._id,
       stock,
       minimumStock,
+      expiryKind,
+      expiryDate,
     });
     await relinkActivities(ctx, deletedId, productId);
     await restoreEntriesOf(ctx, productId, entries);
@@ -229,7 +249,8 @@ export const undoStockChange = mutation({
     const memberId = await requireMemberId(ctx);
     const product = await ctx.db.get(productId);
     if (product === null) throw new ConvexError("PRODUCT_NOT_FOUND");
-    let next: StockState = { stock: product.stock };
+    const { stock, expiryKind, expiryDate } = product;
+    let next: StockState = { stock, expiryKind, expiryDate };
     if (to < from) next = applyRestock(next, from - to);
     for (let i = 0; i < to - from; i++) next = applyUse(next);
     await ctx.db.patch(productId, next);
