@@ -5,20 +5,24 @@ import { isDate } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
 
 /**
- * Asks for the date printed on a Product's package when it is put away. Dates
- * are always optional, so Skip is the big button.
+ * Asks for the date printed on a Product's package when it is put away or
+ * scanned in. Dates are always optional, so Skip is the big button.
  */
 export function DatePrompt({
   name,
   step,
+  answerLabel,
   onAnswer,
   onCancel,
 }: {
   name: string;
   /** Where "Put away all" is, when it asks about several Products in a row. */
   step?: { index: number; count: number };
+  /** The button that gives the date; "Put away" when not given. */
+  answerLabel?: string;
   onAnswer: (date: string | undefined) => void;
-  onCancel: () => void;
+  /** Without it there is no Cancel, only Skip (a scan has already Restocked). */
+  onCancel?: () => void;
 }) {
   const t = useT();
   const [date, setDate] = useState("");
@@ -59,12 +63,14 @@ export function DatePrompt({
           disabled={!isDate(date)}
           className="min-h-14 flex-1 rounded-xl border border-zinc-300 text-lg font-semibold disabled:opacity-30 dark:border-zinc-700"
         >
-          {t("lista.putAway")}
+          {answerLabel ?? t("lista.putAway")}
         </button>
       </div>
-      <button type="button" onClick={onCancel} className="min-h-11 text-zinc-500">
-        {t("common.cancel")}
-      </button>
+      {onCancel && (
+        <button type="button" onClick={onCancel} className="min-h-11 text-zinc-500">
+          {t("common.cancel")}
+        </button>
+      )}
     </form>
   );
 }
