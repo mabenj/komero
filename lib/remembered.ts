@@ -1,7 +1,7 @@
-// Per-device conveniences: the app reopens on the last used tab, scanning starts
+// Per-device conveniences: the app reopens on the last used tab but Scan, scanning starts
 // in the last used mode, and new Products default to the last used Location.
 // Browser storage is fine for these, and any failure just falls back to the default.
-import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
+import { SCAN_MODES, type ScanMode } from "../convex/scanModes";
 
 /** A value remembered on this device under `key`; `valid` rejects stale or foreign values. */
 function remembered<T extends string>(key: string, valid: (stored: string) => stored is T) {
@@ -30,9 +30,12 @@ const oneOf =
 export const TABS = ["koti", "scan", "lista"] as const;
 export type Tab = (typeof TABS)[number];
 
-const tab = remembered("komero.lastTab", oneOf(TABS));
-export const rememberTab = tab.set;
-export const lastTab = (): Tab => tab.get() ?? "koti";
+// Never Scan, so that opening the app doesn't start the camera.
+const tab = remembered("komero.lastTab", oneOf(["koti", "lista"] as const));
+export const rememberTab = (current: Tab) => {
+  if (current !== "scan") tab.set(current);
+};
+export const lastTab = () => tab.get() ?? "koti";
 
 const scanMode = remembered("komero.lastScanMode", oneOf(SCAN_MODES));
 export const rememberScanMode = scanMode.set;

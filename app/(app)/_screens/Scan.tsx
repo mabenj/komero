@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useDragControls, useReducedMotion } from "moti
 import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { navigate } from "@/components/AppLink";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { CategorySelect } from "@/components/CategorySelect";
 import { DatePrompt } from "@/components/DatePrompt";
@@ -29,80 +30,26 @@ type Suggestion = FunctionReturnType<typeof api.barcodes.lookup>;
 
 
 /**
- * Scan: pick a mode (the last one is preselected), then scan continuously.
- * Each scan shows a confirmation with the Product and its new Stock; an
- * unknown barcode opens a card over the paused camera, whose one button sends
- * it all (see `UnknownBarcodeCard`). An Add scan of a known Product with an
- * Expiry Kind then asks for the package's date (Skip is the big button), with
- * the camera paused until it is answered.
+ * Scan: the camera starts at once, in the last used mode, and scans
+ * continuously. Each scan shows a confirmation with the Product and its new
+ * Stock; an unknown barcode opens a card over the paused camera, whose one
+ * button sends it all (see `UnknownBarcodeCard`). An Add scan of a known
+ * Product with an Expiry Kind then asks for the package's date (Skip is the
+ * big button), with the camera paused until it is answered.
  */
 export default function ScanScreen() {
-  const [mode, setMode] = useState<ScanMode>(lastScanMode);
-  const [scanning, setScanning] = useState(false);
-
-  useEffect(() => prepareScanner(), []);
-
-  const choose = (next: ScanMode) => {
-    setMode(next);
-    rememberScanMode(next);
-  };
-
-  if (!scanning) {
-    return (
-      <ModePicker
-        mode={mode}
-        onPick={(picked) => {
-          choose(picked);
-          setScanning(true);
-        }}
-      />
-    );
-  }
-  return <Scanning mode={mode} onModeChange={choose} onStop={() => setScanning(false)} />;
-}
-
-function ModePicker({ mode, onPick }: { mode: ScanMode; onPick: (mode: ScanMode) => void }) {
-  const t = useT();
-  return (
-    <div className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">{t("scan.chooseMode")}</h2>
-      {SCAN_MODES.map((option) => (
-        <button
-          key={option}
-          type="button"
-          onClick={() => onPick(option)}
-          className={`flex flex-col items-start gap-0.5 rounded-2xl px-5 py-4 text-left ${
-            option === mode ? "bg-accent text-accent-foreground" : card
-          }`}
-        >
-          <span className="text-xl font-semibold">{t(`scan.mode.${option}`)}</span>
-          <span className={`text-sm ${option === mode ? "opacity-80" : "text-stone-500"}`}>
-            {t(`scan.mode.${option}Hint`)}
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Scanning({
-  mode,
-  onModeChange,
-  onStop,
-}: {
-  mode: ScanMode;
-  onModeChange: (mode: ScanMode) => void;
-  onStop: () => void;
-}) {
   const t = useT();
   const scan = useMutation(api.barcodes.scan);
   const dateScan = useMutation(api.barcodes.dateScan);
   const showConfirmation = useScanConfirmation();
+  const [mode, setMode] = useState<ScanMode>(lastScanMode);
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [awaitingDate, setAwaitingDate] = useState<ScanOutcome | null>(null);
   const [cameraError, setCameraError] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [reads, setReads] = useState(0);
+
+  useEffect(() => prepareScanner(), []);
 
   const scanned = (outcome: ScanOutcome) => {
     showConfirmation(outcome);
@@ -126,8 +73,11 @@ function Scanning({
             key={option}
             type="button"
             aria-pressed={option === mode}
-            onClick={() => onModeChange(option)}
-            className={`min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold ${
+            onClick={() => {
+              setMode(option);
+              rememberScanMode(option);
+            }}
+            className={`min-h-11 flex-1 rounded-lg px-2 py-1.5 text-sm leading-tight font-semibold ${
               option === mode ? "bg-accent text-accent-foreground shadow-sm" : "text-stone-600 dark:text-stone-400"
             }`}
           >
@@ -189,7 +139,7 @@ function Scanning({
       )}
       <button
         type="button"
-        onClick={onStop}
+        onClick={() => navigate("/koti")}
         className={`${secondaryButton} min-h-11 py-3`}
       >
         {t("scan.stop")}
