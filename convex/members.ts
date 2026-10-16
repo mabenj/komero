@@ -1,8 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
-import { internalMutation, mutation, query } from "./_generated/server";
-import { feedName } from "./activities";
+import { mutation, query } from "./_generated/server";
 import { requiredName } from "./locations";
 import { language } from "./schema";
 
@@ -32,7 +31,7 @@ export const list = query({
   handler: async (ctx) => {
     await requireMemberId(ctx);
     const members = await ctx.db.query("users").collect();
-    return members.map((member) => ({ _id: member._id, name: member.name ?? "", email: member.email ?? "" }));
+    return members.map((member) => ({ _id: member._id, name: member.name, email: member.email ?? "" }));
   },
 });
 
@@ -62,19 +61,5 @@ export const setLanguage = mutation({
   handler: async (ctx, args) => {
     const memberId = await requireMemberId(ctx);
     await ctx.db.patch(memberId, { language: args.language });
-  },
-});
-
-/**
- * Run once: names the Members who joined before Names existed the way the feed
- * already calls them, after the start of their email. Run it with
- * `npx convex run members:backfillNames`, then make `users.name` required.
- */
-export const backfillNames = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    for await (const member of ctx.db.query("users")) {
-      if (member.name === undefined) await ctx.db.patch(member._id, { name: feedName(member) });
-    }
   },
 });

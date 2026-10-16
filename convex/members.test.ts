@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { api, internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import { newKomero, signIn, signUp } from "./test.helpers";
 
 describe("Members", () => {
@@ -94,17 +94,6 @@ describe("Members", () => {
     await expect(t.mutation(api.members.rename, { memberId: annaId, name: "Hacker" })).rejects.toThrow(
       /NOT_SIGNED_IN/,
     );
-  });
-
-  test("the backfill names Members who joined before Names existed after the start of their email", async () => {
-    const t = newKomero();
-    const ville = await signUp(t, "ville@example.com", undefined, "Isi");
-    // The backfill is internal and its Member predates Names, so this test writes and runs both directly.
-    await t.run((ctx) => ctx.db.insert("users", { email: "anna.k@example.com" }));
-
-    await t.mutation(internal.members.backfillNames, {});
-
-    expect((await ville.query(api.members.list, {})).map((m) => m.name)).toEqual(["Isi", "Anna.k"]);
   });
 
   test("a new Member speaks Finnish until they choose otherwise", async () => {

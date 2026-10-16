@@ -97,7 +97,7 @@ export const purgeOld = internalMutation({
 async function withMemberNames(ctx: QueryCtx, activities: Doc<"activities">[]) {
   const names = new Map<Id<"users">, string>();
   for (const { memberId } of activities) {
-    if (!names.has(memberId)) names.set(memberId, feedName(await ctx.db.get(memberId)));
+    if (!names.has(memberId)) names.set(memberId, (await ctx.db.get(memberId))?.name ?? "?");
   }
   return activities.map(({ _id, _creationTime, memberId, ...rest }) => ({
     _id,
@@ -105,14 +105,4 @@ async function withMemberNames(ctx: QueryCtx, activities: Doc<"activities">[]) {
     memberName: names.get(memberId)!,
     ...rest,
   }));
-}
-
-/**
- * How the feed names a Member: their Name, or for a Member from before Names,
- * the start of their email, capitalised ("Anna" for anna@example.com).
- */
-export function feedName(member: Doc<"users"> | null) {
-  if (member?.name !== undefined) return member.name;
-  const start = member?.email?.split("@")[0] ?? "?";
-  return start.charAt(0).toUpperCase() + start.slice(1);
 }

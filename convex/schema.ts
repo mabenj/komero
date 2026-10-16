@@ -34,7 +34,7 @@ export default defineSchema({
   // Members. Convex Auth requires the table to be called `users`; it is
   // overridden here to add Member fields, keeping the auth fields and indexes.
   users: defineTable({
-    name: v.optional(v.string()),
+    name: v.string(),
     image: v.optional(v.string()),
     email: v.optional(v.string()),
     emailVerificationTime: v.optional(v.number()),
