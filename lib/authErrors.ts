@@ -4,6 +4,7 @@ import type { MessageKey } from "@/lib/i18n";
 export function authErrorKey(error: unknown): MessageKey {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("INVITE_INVALID")) return "auth.inviteRequired";
+  if (message.includes("NAME_REQUIRED")) return "auth.nameRequired";
   if (message.includes("Invalid password")) return "auth.passwordTooShort";
   if (/Account .* already exists/.test(message)) return "auth.accountExists";
   if (message.includes("InvalidSecret") || message.includes("InvalidAccountId")) {

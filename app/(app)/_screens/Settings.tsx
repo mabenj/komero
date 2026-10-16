@@ -8,6 +8,7 @@ import { ActivityList } from "@/components/ActivityList";
 import { AppLink } from "@/components/AppLink";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { CategoriesSettings, LocationsSettings } from "@/components/LocationsSettings";
+import { NameInput } from "@/components/NameInput";
 import { api } from "@/convex/_generated/api";
 import { useT } from "@/lib/i18n";
 import { cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
@@ -49,15 +50,24 @@ function Members() {
   const t = useT();
   const members = useQuery(api.members.list);
   const me = useQuery(api.members.me);
+  const rename = useMutation(api.members.rename);
 
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-lg font-semibold">{t("settings.members")}</h2>
       <ul className={cardList}>
         {members?.map((member) => (
-          <li key={member._id} className="px-3 py-3">
-            {member.email}
-            {member._id === me?._id && <span className="ml-1 text-stone-500">{t("settings.you")}</span>}
+          <li key={member._id} className="px-1 py-1">
+            <div className="flex items-center gap-1">
+              <NameInput
+                name={member.name}
+                label={t("members.rename", { name: member.name })}
+                maxLength={30}
+                onRename={(name) => void rename({ memberId: member._id, name })}
+              />
+              {member._id === me?._id && <span className="pr-2 text-stone-500">{t("settings.you")}</span>}
+            </div>
+            <p className="px-2 pb-1 text-sm text-stone-500">{member.email}</p>
           </li>
         ))}
       </ul>

@@ -18,10 +18,16 @@ export type MemberSession = ReturnType<Komero["withIdentity"]>;
 
 /**
  * Signs up through the real Password flow, carrying an Invite token when given;
- * returns a session as the new Member.
+ * returns a session as the new Member. The Name defaults to the start of the
+ * email, capitalised ("Anna" for anna@example.com).
  */
-export async function signUp(t: Komero, email: string, inviteToken?: string): Promise<MemberSession> {
-  return authenticate(t, { email, password: PASSWORD, flow: "signUp", ...(inviteToken && { inviteToken }) });
+export async function signUp(
+  t: Komero,
+  email: string,
+  inviteToken?: string,
+  name = email.charAt(0).toUpperCase() + email.slice(1, email.indexOf("@")),
+): Promise<MemberSession> {
+  return authenticate(t, { email, name, password: PASSWORD, flow: "signUp", ...(inviteToken && { inviteToken }) });
 }
 
 /** Signs in an existing Member; returns a session as that Member. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { newKomero, signIn, signUp } from "./test.helpers";
 
 describe("Members", () => {
@@ -29,6 +29,82 @@ describe("Members", () => {
     const anna = await signIn(t, "anna@example.com");
 
     expect(await anna.query(api.members.me, {})).toMatchObject({ email: "anna@example.com" });
+  });
+
+  test("a new Member goes by the Name they gave at sign-up, tidied", async () => {
+    const t = newKomero();
+    const anna = await signUp(t, "anna@example.com", undefined, "  Anna   Virtanen ");
+
+    expect(await anna.query(api.members.list, {})).toEqual([
+      expect.objectContaining({ name: "Anna Virtanen", email: "anna@example.com" }),
+    ]);
+  });
+
+  test("sign-up without a Name is rejected and leaves no account behind", async () => {
+    const t = newKomero();
+
+    await expect(signUp(t, "anna@example.com", undefined, "   ")).rejects.toThrow(/NAME_REQUIRED/);
+    await expect(signIn(t, "anna@example.com")).rejects.toThrow(/InvalidAccountId/);
+  });
+
+  test("a Name can be 30 characters but no longer", async () => {
+    const t = newKomero();
+    await expect(signUp(t, "anna@example.com", undefined, "A".repeat(31))).rejects.toThrow(/NAME_TOO_LONG/);
+
+    const anna = await signUp(t, "anna@example.com", undefined, "A".repeat(30));
+    expect(await anna.query(api.members.list, {})).toEqual([expect.objectContaining({ name: "A".repeat(30) })]);
+  });
+
+  test("any Member can change another Member's Name, and everyone sees it", async () => {
+    const t = newKomero();
+    const anna = await signUp(t, "anna@example.com");
+    const ben = await signUp(t, "ben@example.com", await anna.mutation(api.invites.create, {}));
+    const benId = (await ben.query(api.members.me, {}))!._id;
+
+    await anna.mutation(api.members.rename, { memberId: benId, name: " Iskä " });
+
+    expect((await ben.query(api.members.list, {})).map((m) => m.name)).toEqual(["Anna", "Iskä"]);
+  });
+
+  test("a Name can't be changed to nothing", async () => {
+    const t = newKomero();
+    const anna = await signUp(t, "anna@example.com");
+    const annaId = (await anna.query(api.members.me, {}))!._id;
+
+    await expect(anna.mutation(api.members.rename, { memberId: annaId, name: " " })).rejects.toThrow(/NAME_REQUIRED/);
+    expect((await anna.query(api.members.list, {})).map((m) => m.name)).toEqual(["Anna"]);
+  });
+
+  test("a Name can't be changed to more than 30 characters", async () => {
+    const t = newKomero();
+    const anna = await signUp(t, "anna@example.com");
+    const annaId = (await anna.query(api.members.me, {}))!._id;
+
+    await expect(anna.mutation(api.members.rename, { memberId: annaId, name: "A".repeat(31) })).rejects.toThrow(
+      /NAME_TOO_LONG/,
+    );
+    expect((await anna.query(api.members.list, {})).map((m) => m.name)).toEqual(["Anna"]);
+  });
+
+  test("a visitor who isn't signed in can't change a Name", async () => {
+    const t = newKomero();
+    const anna = await signUp(t, "anna@example.com");
+    const annaId = (await anna.query(api.members.me, {}))!._id;
+
+    await expect(t.mutation(api.members.rename, { memberId: annaId, name: "Hacker" })).rejects.toThrow(
+      /NOT_SIGNED_IN/,
+    );
+  });
+
+  test("the backfill names Members who joined before Names existed after the start of their email", async () => {
+    const t = newKomero();
+    const ville = await signUp(t, "ville@example.com", undefined, "Isi");
+    // The backfill is internal and its Member predates Names, so this test writes and runs both directly.
+    await t.run((ctx) => ctx.db.insert("users", { email: "anna.k@example.com" }));
+
+    await t.mutation(internal.members.backfillNames, {});
+
+    expect((await ville.query(api.members.list, {})).map((m) => m.name)).toEqual(["Isi", "Anna.k"]);
   });
 
   test("a new Member speaks Finnish until they choose otherwise", async () => {

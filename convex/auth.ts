@@ -1,6 +1,7 @@
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 import { redeemInvite } from "./invites";
+import { requiredMemberName } from "./members";
 import type { MutationCtx } from "./_generated/server";
 import { seedDefaultCategories } from "./categories";
 import { seedDefaultLocations } from "./locations";
@@ -14,6 +15,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       profile(params) {
         return {
           email: String(params.email).trim().toLowerCase(),
+          ...(typeof params.name === "string" && { name: params.name }),
           ...(typeof params.inviteToken === "string" && { inviteToken: params.inviteToken }),
         };
       },
@@ -27,10 +29,10 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
     async createOrUpdateUser(genericCtx, args) {
       if (args.existingUserId) return args.existingUserId;
       const ctx = genericCtx as unknown as MutationCtx;
-      const { email, inviteToken } = args.profile as { email: string; inviteToken?: string };
+      const { email, name, inviteToken } = args.profile as { email: string; name?: string; inviteToken?: string };
 
       const isFirstMember = (await ctx.db.query("users").first()) === null;
-      const memberId = await ctx.db.insert("users", { email, language: "fi" });
+      const memberId = await ctx.db.insert("users", { email, name: requiredMemberName(name ?? ""), language: "fi" });
       if (isFirstMember) {
         await seedDefaultLocations(ctx);
         await seedDefaultCategories(ctx);
