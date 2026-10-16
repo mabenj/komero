@@ -30,7 +30,7 @@ type Hidden = { x?: number | string; y?: number | string; opacity?: number; scal
 
 /**
  * Props for something that comes in from `hidden` and leaves the same way,
- * e.g. `{ x: "100%" }` for a page sliding in from the right. Under reduced
+ * e.g. `{ y: "100%" }` for a sheet sliding up from the bottom. Under reduced
  * motion it cross-fades instead.
  */
 export function useEnterExit(hidden: Hidden) {
@@ -69,13 +69,14 @@ export function Reveal({ children, className }: { children: ReactNode; className
 /**
  * Something that folds open under its heading and shut again, growing from no
  * height so whatever is below moves along with it. It clips only while it moves,
- * so card shadows show once it's open. Render it inside `AnimatePresence`;
- * under reduced motion it cross-fades.
+ * so card shadows show once it's open, and only top and bottom, so a table
+ * running edge to edge past the page's gutter is never cut at the sides. Render
+ * it inside `AnimatePresence`; under reduced motion it cross-fades.
  */
 export function Fold({ children, id }: { children: ReactNode; id?: string }) {
   const reduced = useReducedMotion();
-  const shut = reduced ? { opacity: 0 } : { height: 0, opacity: 0, overflow: "hidden" };
-  const open = reduced ? { opacity: 1 } : { height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } };
+  const shut = reduced ? { opacity: 0 } : { height: 0, opacity: 0, overflowY: "clip" };
+  const open = reduced ? { opacity: 1 } : { height: "auto", opacity: 1, transitionEnd: { overflowY: "visible" } };
   return (
     <motion.div id={id} initial={shut} animate={open} exit={shut} transition={reduced ? crossFade : settle}>
       {children}

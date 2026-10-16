@@ -107,6 +107,17 @@
   }
 }
 
+/* A Product just added lights up once in its Location's table. */
+@keyframes just-added {
+  from {
+    background-color: color-mix(in oklab, var(--accent) 22%, var(--surface));
+  }
+}
+
+.just-added {
+  animation: just-added 1.6s ease-out;
+}
+
 /* The cupboard's doors swing open once; already open under reduced motion. */
 @keyframes cupboard-door {
   from {

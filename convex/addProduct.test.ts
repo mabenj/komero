@@ -14,8 +14,8 @@ async function productsIn(member: MemberSession, locationName: string) {
     .products.map(({ name, stock }) => ({ name, stock }));
 }
 
-describe("Quick-add", () => {
-  test("filling the fridge on day one: each name entered in Jääkaappi becomes a Product there with Stock 1", async () => {
+describe("Adding Products", () => {
+  test("filling the fridge on day one: each Product added to Jääkaappi lands there with Stock 1", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const jaakaappi = await locationId(anna, "Jääkaappi");
 
@@ -32,7 +32,7 @@ describe("Quick-add", () => {
     expect(await productsIn(anna, "Pakastin")).toEqual([]);
   });
 
-  test("a name that already exists, in any case, is only warned about: entering it anyway adds a second Product", async () => {
+  test("a name that already exists, in any case, is only warned about: adding it anyway adds a second Product", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const jaakaappi = await locationId(anna, "Jääkaappi");
     await anna.mutation(api.products.create, { name: "Maito", locationId: jaakaappi });

@@ -10,21 +10,23 @@ import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingLis
 import { applyRestock, applyUndo, applyUse, crossedIntoRunningLow, expiryKind, isDate, stockChange } from "./stock";
 
 /**
- * Adds a Product by name to its Location. A new Product starts with Stock 1.
- * Both the search/add field and quick-add use this; the add form's "More" can
- * also set a Minimum Stock and an Expiry Kind. A name that already exists is
- * only warned about (`search`), so this adds a second Product with it.
+ * Adds a Product from Koti's add sheet to its Location, with Stock 1 unless
+ * given. A name that already exists is only warned about (`search`), so this
+ * adds a second Product with it.
  */
 export const create = mutation({
   args: {
     name: v.string(),
     locationId: v.id("locations"),
+    categoryId: v.optional(v.id("categories")),
+    stock: v.optional(v.number()),
     minimumStock: v.optional(v.number()),
     expiryKind: v.optional(expiryKind),
+    expiryDate: v.optional(v.string()),
   },
-  handler: async (ctx, details) => {
+  handler: async (ctx, { stock = 1, ...details }) => {
     const memberId = await requireMemberId(ctx);
-    return (await createProduct(ctx, memberId, { ...details, stock: 1 }))._id;
+    return (await createProduct(ctx, memberId, { ...details, stock }))._id;
   },
 });
 

@@ -2,20 +2,19 @@
 
 import { motion, useIsPresent } from "motion/react";
 import { type ReactNode, useLayoutEffect, useRef } from "react";
-import { useEnterExit } from "@/components/motion";
+import { crossFade } from "@/components/motion";
 
 /**
- * A screen (a Product page) that slides in from the right over a
- * `CoveredScreen`, and back out to the right. Render it inside
+ * A screen (a Product page) that opens over a `CoveredScreen`: it fades in
+ * rising a little, quickly, and fades back out in place. Render it inside
  * `AnimatePresence`. While it leaves, it is pinned where it was on screen, so
  * the screen returned to can take its place, and its scroll position,
  * underneath it.
  */
-export function SlideOver({ children }: { children: ReactNode }) {
+export function TopScreen({ children }: { children: ReactNode }) {
   const screen = useRef<HTMLDivElement>(null);
   const isPresent = useIsPresent();
   const top = useRef(0);
-  const slide = useEnterExit({ x: "100%" });
 
   useLayoutEffect(() => {
     if (!isPresent) return;
@@ -30,7 +29,7 @@ export function SlideOver({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     const element = screen.current;
     if (isPresent || !element) return;
-    // Layout values, not the on-screen box, which includes the slide.
+    // Layout values, not the on-screen box, which includes the rise.
     const pinned = {
       position: "fixed",
       top: `${top.current}px`,
@@ -48,25 +47,33 @@ export function SlideOver({ children }: { children: ReactNode }) {
   }, [isPresent]);
 
   return (
-    // Positioned, so it stays over the `CoveredScreen` once the slide's transform is gone.
-    <motion.div ref={screen} {...slide} className="relative -mx-4 -mt-4 bg-background px-4 pt-4">
+    // Positioned, so it stays over the `CoveredScreen` once the rise's transform is gone.
+    <motion.div
+      ref={screen}
+      // Under reduced motion `MotionProvider` drops the rise, leaving the fade.
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={crossFade}
+      className="relative -mx-4 -mt-4 bg-background px-4 pt-4"
+    >
       {children}
     </motion.div>
   );
 }
 
 /**
- * The screen a `SlideOver` opened from, rendered before it. It stays mounted
+ * The screen a `TopScreen` opened from, rendered before it. It stays mounted
  * while `covered`, so it keeps its state (such as Koti's search) and the
- * SlideOver slides in and back out over it. While covered, it is fixed where
- * it was on screen, so the SlideOver has the page's scroll to itself, inert,
- * and hidden once the SlideOver has had time to slide in. Uncovered, it
- * returns to the page at once, for the screen's scroll position to be restored.
+ * TopScreen fades in and back out over it. While covered, it is fixed where
+ * it was on screen, so the TopScreen has the page's scroll to itself, inert,
+ * and hidden once the TopScreen has faded in. Uncovered, it returns to the
+ * page at once, for the screen's scroll position to be restored.
  */
 export function CoveredScreen({ covered, children }: { covered: boolean; children: ReactNode }) {
   const screen = useRef<HTMLDivElement>(null);
 
-  // Before the page scrolls for the SlideOver (see `useScrollRestore`), which runs after this.
+  // Before the page scrolls for the TopScreen (see `useScrollRestore`), which runs after this.
   useLayoutEffect(() => {
     const element = screen.current;
     if (!covered || !element) return;
@@ -82,7 +89,8 @@ export function CoveredScreen({ covered, children }: { covered: boolean; childre
     <div
       ref={screen}
       inert={covered}
-      className={covered ? "invisible transition-[visibility] delay-1000 duration-0" : undefined}
+      // Hidden just after the TopScreen's `crossFade` (0.15s) has finished.
+      className={covered ? "invisible transition-[visibility] delay-300 duration-0" : undefined}
     >
       {children}
     </div>

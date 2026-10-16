@@ -1,8 +1,9 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { AppLink, navigate } from "@/components/AppLink";
+import { CategorySelect } from "@/components/CategorySelect";
 import { Combobox, type ComboboxOption, useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
@@ -12,7 +13,7 @@ import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ChevronDownIcon, ScanIcon } from "@/components/icons";
-import { Fold, Reveal, settle, useLayoutMotion } from "@/components/motion";
+import { Fold, settle, useLayoutMotion } from "@/components/motion";
 import { NeedsAttention, statusText } from "@/components/NeedsAttention";
 import { SwipeToNeedMore } from "@/components/NeedMore";
 import { NumberStepper } from "@/components/NumberStepper";
@@ -57,8 +58,10 @@ export default function KotiScreen() {
   const inventory = useQuery(api.inventory.get);
   const locationInView = useLocationInView(inventory !== undefined);
   const changeStock = useStockChange();
-  const [quickAddLocation, setQuickAddLocation] = useState<Id<"locations"> | null>(null);
-  const [folded, toggleFolded] = useFoldedLocations();
+  const [searchText, setSearchText] = useState("");
+  const [adding, setAdding] = useState<{ name: string; locationId: Id<"locations"> } | null>(null);
+  const justAdded = useJustAdded();
+  const [folded, toggleFolded, unfold] = useFoldedLocations();
   // One sort for every Location; it starts by name each time Koti opens.
   const [sort, setSort] = useState<Sort>({ column: "name", direction: "asc" });
   const sortBy = (column: SortColumn) =>
@@ -75,7 +78,13 @@ export default function KotiScreen() {
   return (
     <LayoutGroup>
       <div className="flex flex-col gap-6">
-        <SearchAdd locations={inventory} locationInView={locationInView} />
+        <SearchAdd
+          text={searchText}
+          onTextChange={setSearchText}
+          locations={inventory}
+          locationInView={locationInView}
+          onAdd={(name, locationId) => setAdding({ name, locationId })}
+        />
         {empty ? <EmptyKoti /> : <NeedsAttention />}
         {inventory.map((location) => (
           <motion.section
@@ -85,7 +94,7 @@ export default function KotiScreen() {
             className="flex flex-col"
           >
             <div className="flex items-center gap-2 px-1">
-              {/* The heading fills the row up to Quick add, so a tap anywhere beside it folds. */}
+              {/* The heading fills the row up to Add, so a tap anywhere beside it folds. */}
               <h2 className="flex-1">
                 <button
                   type="button"
@@ -110,30 +119,16 @@ export default function KotiScreen() {
                   </span>
                 </button>
               </h2>
-              {quickAddLocation !== location._id && (
-                <button
-                  type="button"
-                  // Opening synchronously inside the tap lets the field take focus, so phones show the keyboard.
-                  // A folded Location opens too, so the Products being added show up.
-                  onClick={() =>
-                    flushSync(() => {
-                      setQuickAddLocation(location._id);
-                      if (folded.has(location._id)) toggleFolded(location._id);
-                    })
-                  }
-                  className="min-h-11 rounded-full px-3 text-sm font-medium text-stone-600 dark:text-stone-400"
-                >
-                  {t("koti.quickAdd")}
-                </button>
-              )}
+              <button
+                type="button"
+                // Opening synchronously inside the tap lets the sheet focus Name, so phones show the keyboard.
+                onClick={() => flushSync(() => setAdding({ name: "", locationId: location._id }))}
+                aria-label={t("koti.addHereLabel", { location: location.name })}
+                className="min-h-11 rounded-full px-3 text-sm font-medium text-stone-600 dark:text-stone-400"
+              >
+                {t("koti.addHere")}
+              </button>
             </div>
-            <AnimatePresence initial={false}>
-              {quickAddLocation === location._id && (
-                <Reveal key="quickAdd" className="pt-1.5">
-                  <QuickAdd location={location} onDone={() => setQuickAddLocation(null)} />
-                </Reveal>
-              )}
-            </AnimatePresence>
             <AnimatePresence initial={false}>
               {folded.has(location._id) ? (
                 location.products.length > 0 && (
@@ -153,6 +148,7 @@ export default function KotiScreen() {
                         sort={sort}
                         onSort={sortBy}
                         onChangeStock={changeStock}
+                        justAdded={justAdded.id}
                       />
                     ) : (
                       !empty && (
@@ -166,6 +162,27 @@ export default function KotiScreen() {
           </motion.section>
         ))}
       </div>
+      <AnimatePresence>
+        {adding && (
+          <AddSheet
+            key="add"
+            initialName={adding.name}
+            locations={inventory}
+            initialLocationId={adding.locationId}
+            onClose={() => setAdding(null)}
+            onSubmitted={() => {
+              // A name came with the sheet only from the search field, which clears for the next search.
+              if (adding.name !== "") setSearchText("");
+              setAdding(null);
+            }}
+            onCreated={(productId, locationId) => {
+              unfold(locationId);
+              justAdded.set(productId);
+            }}
+            onFailed={(name) => setSearchText((current) => current || name)}
+          />
+        )}
+      </AnimatePresence>
     </LayoutGroup>
   );
 }
@@ -184,15 +201,19 @@ function LowCount({ products }: { products: ProductRowData[] }) {
 
 /** The search/add field: matching Products to open as you type, or "+ Add" for a new one. */
 function SearchAdd({
+  text,
+  onTextChange: setText,
   locations,
   locationInView,
+  onAdd,
 }: {
+  text: string;
+  onTextChange: (text: string) => void;
   locations: (Location & { products: ProductRowData[] })[];
   locationInView: Id<"locations"> | null;
+  onAdd: (name: string, locationId: Id<"locations">) => void;
 }) {
   const t = useT();
-  const [text, setText] = useState("");
-  const [adding, setAdding] = useState<string | null>(null);
   const result = useProductSearch(text);
   const name = tidyName(text);
   const matches = result?.matches ?? [];
@@ -218,60 +239,56 @@ function SearchAdd({
       label: t("koti.add", { name }),
       detail: duplicate && t("koti.similar", { name: duplicate.name, location: duplicate.locationName }),
       add: true,
-      onPick: () => setAdding(name),
+      onPick: () => onAdd(name, locationId),
     });
   }
 
-  return (
-    <>
-      <Combobox value={text} onChange={setText} label={t("koti.search")} options={options} />
-      <AnimatePresence>
-        {adding !== null && locationId && (
-          <AddSheet
-            key="add"
-            initialName={adding}
-            locations={locations}
-            initialLocationId={locationId}
-            onClose={() => setAdding(null)}
-            onAdded={() => {
-              setText("");
-              setAdding(null);
-            }}
-            onFailed={(name) => setText((current) => current || name)}
-          />
-        )}
-      </AnimatePresence>
-    </>
-  );
+  return <Combobox value={text} onChange={setText} label={t("koti.search")} options={options} />;
 }
 
-/** "Add a Product": the typed name, its Location, Expiry Kind and Minimum Stock. */
+const isPackages = (n: number) => Number.isInteger(n) && n >= 0;
+
+/**
+ * "Add a Product": its name, Location, Category, Stock (1 unless changed),
+ * Minimum Stock, Expiry Kind, and an Expiry Date once it has a kind and Stock.
+ */
 function AddSheet({
   initialName,
   locations,
   initialLocationId,
   onClose,
-  onAdded,
+  onSubmitted,
+  onCreated,
   onFailed,
 }: {
   initialName: string;
   locations: Location[];
   initialLocationId: Id<"locations">;
   onClose: () => void;
-  onAdded: () => void;
+  onSubmitted: () => void;
+  onCreated: (productId: Id<"products">, locationId: Id<"locations">) => void;
   onFailed: (name: string) => void;
 }) {
   const t = useT();
   const [name, setName] = useState(initialName);
   const [locationId, setLocationId] = useState(initialLocationId);
-  const [expiryKind, setExpiryKind] = useState<ExpiryKind | null>(null);
+  const [categoryId, setCategoryId] = useState<Id<"categories"> | null>(null);
+  const [stockText, setStockText] = useState("1");
   const [minimumStockText, setMinimumStockText] = useState("");
+  const [expiryKind, setExpiryKind] = useState<ExpiryKind | null>(null);
+  const [expiryDate, setExpiryDate] = useState("");
   const duplicate = useProductSearch(name)?.duplicate;
   const createProduct = useMutation(api.products.create);
 
+  const stock = Number(stockText);
   const minimumStock = minimumStockText.trim() === "" ? undefined : Number(minimumStockText);
   const valid =
-    tidyName(name) !== "" && (minimumStock === undefined || (Number.isInteger(minimumStock) && minimumStock >= 0));
+    tidyName(name) !== "" &&
+    stockText.trim() !== "" &&
+    isPackages(stock) &&
+    (minimumStock === undefined || isPackages(minimumStock));
+  // An Out of Stock Product has no Expiry Date, so the date shows only with Stock.
+  const showsExpiryDate = expiryKind !== null && stock > 0;
 
   // A name that already exists can still be added, next to its warning.
   // The sheet closes at once; the name comes back in the search field if adding fails.
@@ -279,10 +296,16 @@ function AddSheet({
     if (!valid) return;
     const tidy = tidyName(name);
     rememberLocation(locationId);
-    onAdded();
-    createProduct({ name: tidy, locationId, minimumStock, expiryKind: expiryKind ?? undefined }).catch(() =>
-      onFailed(tidy),
-    );
+    onSubmitted();
+    createProduct({
+      name: tidy,
+      locationId,
+      categoryId: categoryId ?? undefined,
+      stock,
+      minimumStock,
+      expiryKind: expiryKind ?? undefined,
+      expiryDate: showsExpiryDate && expiryDate ? expiryDate : undefined,
+    }).then((productId) => onCreated(productId, locationId), () => onFailed(tidy));
   };
 
   return (
@@ -305,26 +328,40 @@ function AddSheet({
           />
         </label>
         {duplicate && <DuplicateWarning duplicate={duplicate} />}
-        <label className="flex flex-col gap-1">
-          <span className="text-stone-500">{t("koti.addTo")}</span>
-          <select
-            value={locationId}
-            onChange={(event) => setLocationId(event.target.value as Id<"locations">)}
-            className={sheetField}
-          >
-            {locations.map((location) => (
-              <option key={location._id} value={location._id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <div className="flex gap-2">
-          <label className="flex flex-1 flex-col gap-1">
-            <span className="text-stone-500">{t("product.expiryKind")}</span>
-            <ExpiryKindSelect value={expiryKind} onChange={setExpiryKind} className={sheetField} />
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-stone-500">{t("koti.addTo")}</span>
+            <select
+              value={locationId}
+              onChange={(event) => setLocationId(event.target.value as Id<"locations">)}
+              className={sheetField}
+            >
+              {locations.map((location) => (
+                <option key={location._id} value={location._id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
           </label>
-          <label className="flex flex-1 flex-col gap-1">
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-stone-500">{t("product.category")}</span>
+            <CategorySelect value={categoryId} onChange={setCategoryId} className={sheetField} />
+          </label>
+        </div>
+        <div className="flex gap-2">
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-stone-500">{t("product.stock")}</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              value={stockText}
+              onChange={(event) => setStockText(event.target.value)}
+              className={sheetField}
+            />
+          </label>
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-stone-500">{t("product.minimumStock")}</span>
             <input
               type="number"
@@ -337,6 +374,23 @@ function AddSheet({
               className={sheetField}
             />
           </label>
+        </div>
+        <div className="flex gap-2">
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-stone-500">{t("product.expiryKind")}</span>
+            <ExpiryKindSelect value={expiryKind} onChange={setExpiryKind} className={sheetField} />
+          </label>
+          {showsExpiryDate && (
+            <label className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="text-stone-500">{t("product.expiryDate")}</span>
+              <input
+                type="date"
+                value={expiryDate}
+                onChange={(event) => setExpiryDate(event.target.value)}
+                className={sheetField}
+              />
+            </label>
+          )}
         </div>
         <button type="submit" disabled={!valid} className={`${primaryButton} mt-1 min-h-12 px-4`}>
           {t("koti.addButton")}
@@ -359,68 +413,6 @@ function EmptyKoti() {
         {t("nav.scan")}
       </AppLink>
     </CupboardNote>
-  );
-}
-
-/**
- * Quick-add for filling a Location on day one: the field keeps focus, and each
- * Enter adds the typed name as a Product here with Stock 1.
- */
-function QuickAdd({ location, onDone }: { location: Location; onDone: () => void }) {
-  const t = useT();
-  const [text, setText] = useState("");
-  const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
-  const createProduct = useMutation(api.products.create);
-
-  // Names being added right now, so a fast second Enter on the same text adds nothing.
-  const adding = useRef(new Set<string>());
-
-  // An existing name is only warned about while typing; Enter adds it anyway.
-  const add = () => {
-    const name = tidyName(text);
-    if (name === "" || adding.current.has(name)) return;
-    adding.current.add(name);
-    setText("");
-    rememberLocation(location._id);
-    createProduct({ name, locationId: location._id })
-      .catch(() => setText((current) => current || name))
-      .finally(() => adding.current.delete(name));
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              add();
-            } else if (event.key === "Escape") onDone();
-          }}
-          autoFocus
-          placeholder={t("koti.quickAddPlaceholder")}
-          aria-label={t("koti.quickAddTo", { location: location.name })}
-          enterKeyHint="enter"
-          autoComplete="off"
-          className={`${field} min-w-0 flex-1 px-4 py-3`}
-        />
-        <button
-          type="button"
-          // A name still in the field is added too, so Done works without Enter.
-          onClick={() => {
-            add();
-            onDone();
-          }}
-          className={`${primaryButton} min-h-11 px-4`}
-        >
-          {t("koti.quickAddDone")}
-        </button>
-      </div>
-      {result?.duplicate && <DuplicateWarning duplicate={result.duplicate} />}
-    </div>
   );
 }
 
@@ -453,12 +445,14 @@ function ProductTable({
   sort,
   onSort,
   onChangeStock,
+  justAdded,
 }: {
   label: string;
   products: ProductRowData[];
   sort: Sort;
   onSort: (column: SortColumn) => void;
   onChangeStock: (product: ProductRowData, change: StockChange) => void;
+  justAdded: Id<"products"> | null;
 }) {
   const t = useT();
   const lang = useLang();
@@ -487,7 +481,12 @@ function ProductTable({
         })}
       </div>
       {sortProducts(products, sort.column, sort.direction, lang).map((product) => (
-        <ProductRow key={product._id} product={product} onChangeStock={onChangeStock} />
+        <ProductRow
+          key={product._id}
+          product={product}
+          onChangeStock={onChangeStock}
+          justAdded={product._id === justAdded}
+        />
       ))}
     </div>
   );
@@ -498,18 +497,32 @@ const dimmedName = "text-stone-400 dark:text-stone-500";
 /**
  * A Product in its Location's table: its name, how far off its Expiry Date is,
  * and its Stock as a number that opens – / +; swipe it left for Need More.
- * Out of Stock Products stay listed, dimmed.
+ * Out of Stock Products stay listed, dimmed. A Product just added scrolls into
+ * view and flashes.
  */
 function ProductRow({
   product,
   onChangeStock,
+  justAdded,
 }: {
   product: ProductRowData;
   onChangeStock: (product: ProductRowData, change: StockChange) => void;
+  justAdded: boolean;
 }) {
+  const nameCell = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
+  useEffect(() => {
+    if (justAdded) nameCell.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+  }, [justAdded, reduced]);
+
   return (
-    <SwipeToNeedMore product={product} role="row" className={`${tableRow} min-h-9 text-sm`}>
-      <div role="cell" className={cellWidths.name}>
+    <SwipeToNeedMore
+      product={product}
+      role="row"
+      className={`${tableRow} min-h-9 text-sm ${justAdded ? "just-added" : ""}`}
+    >
+      {/* Clear of the top bar and the bottom tab bar when scrolled into view. */}
+      <div ref={nameCell} role="cell" className={`${cellWidths.name} scroll-mt-20 scroll-mb-28`}>
         <AppLink
           href={`/koti/${product._id}`}
           className={`-my-1 flex min-h-11 items-center ${product.stock === 0 ? dimmedName : ""}`}
@@ -604,18 +617,33 @@ function useStockChange() {
   );
 }
 
-/** The Locations folded shut on Koti, remembered on this device, and a toggle for one. */
+/** The Product just added from the add sheet, for its row to flash; it lets go once the flash is over. */
+function useJustAdded() {
+  const [id, set] = useState<Id<"products"> | null>(null);
+  useEffect(() => {
+    if (id === null) return;
+    // Longer than `.just-added` in globals.css, so the flash plays out.
+    const timer = setTimeout(() => set(null), 2000);
+    return () => clearTimeout(timer);
+  }, [id]);
+  return { id, set };
+}
+
+/** The Locations folded shut on Koti, remembered on this device, a toggle for one, and opening one. */
 function useFoldedLocations() {
   const [folded, setFolded] = useState(() => new Set(foldedLocations()));
-  const toggle = useCallback((id: Id<"locations">) => {
+  const change = useCallback((id: Id<"locations">, shut: (isShut: boolean) => boolean) => {
     setFolded((current) => {
       const next = new Set(current);
-      if (!next.delete(id)) next.add(id);
+      if (shut(next.has(id))) next.add(id);
+      else next.delete(id);
       rememberFoldedLocations([...next]);
       return next;
     });
   }, []);
-  return [folded, toggle] as const;
+  const toggle = useCallback((id: Id<"locations">) => change(id, (isShut) => !isShut), [change]);
+  const unfold = useCallback((id: Id<"locations">) => change(id, () => false), [change]);
+  return [folded, toggle, unfold] as const;
 }
 
 /**

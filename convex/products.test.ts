@@ -42,7 +42,7 @@ describe("Products", () => {
     expect((await productsIn(anna, "Kaappi")).map((p) => p.name)).toEqual(["Ananas", "Kahvi", "riisi", "Öljy"]);
   });
 
-  test("the optional details under More (Expiry Kind, Minimum Stock) are saved with a new Product", async () => {
+  test("the optional details (Expiry Kind, Minimum Stock) are saved with a new Product", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
 
     const wc = await anna.mutation(api.products.create, {
@@ -79,6 +79,59 @@ describe("Products", () => {
       }),
     ).rejects.toThrow(/MINIMUM_STOCK_INVALID/);
     expect(await productsIn(anna, "Kylpyhuone")).toEqual([]);
+  });
+
+  test("a new Product can start with a Category, a Stock other than 1, and an Expiry Date", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const jääkaappi = await locationId(anna, "Jääkaappi");
+
+    const maito = await anna.mutation(api.products.create, {
+      name: "Maito",
+      locationId: jääkaappi,
+      categoryId: await categoryId(anna, "Maitotuotteet"),
+      stock: 3,
+      expiryKind: "useBy",
+      expiryDate: "2026-10-20",
+    });
+    const kerma = await anna.mutation(api.products.create, { name: "Kerma", locationId: jääkaappi, stock: 0 });
+
+    expect(await anna.query(api.products.get, { productId: maito })).toMatchObject({
+      categoryName: "Maitotuotteet",
+      stock: 3,
+      expiryKind: "useBy",
+      expiryDate: "2026-10-20",
+    });
+    expect(await anna.query(api.products.get, { productId: kerma })).toMatchObject({ stock: 0 });
+  });
+
+  test("a new Product Out of Stock has no Expiry Date", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+
+    const maito = await anna.mutation(api.products.create, {
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+      stock: 0,
+      expiryKind: "useBy",
+      expiryDate: "2026-10-20",
+    });
+
+    expect(await anna.query(api.products.get, { productId: maito })).toMatchObject({ stock: 0, expiryDate: null });
+  });
+
+  test("a new Product's Stock must be a whole number of packages, and its Expiry Date needs an Expiry Kind", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const kaappi = await locationId(anna, "Kaappi");
+
+    await expect(anna.mutation(api.products.create, { name: "Kahvi", locationId: kaappi, stock: -1 })).rejects.toThrow(
+      /STOCK_INVALID/,
+    );
+    await expect(
+      anna.mutation(api.products.create, { name: "Kahvi", locationId: kaappi, expiryDate: "2026-10-20" }),
+    ).rejects.toThrow(/EXPIRY_KIND_REQUIRED/);
+    await expect(
+      anna.mutation(api.products.create, { name: "Kahvi", locationId: kaappi, expiryKind: "bestBefore", expiryDate: "huomenna" }),
+    ).rejects.toThrow(/EXPIRY_DATE_INVALID/);
+    expect(await productsIn(anna, "Kaappi")).toEqual([]);
   });
 
   test("a Product needs a name", async () => {

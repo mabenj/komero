@@ -4,7 +4,7 @@ import { AnimatePresence } from "motion/react";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect } from "react";
 import { navigate } from "@/components/AppLink";
-import { CoveredScreen, SlideOver } from "@/components/SlideOver";
+import { CoveredScreen, TopScreen } from "@/components/TopScreen";
 import type { Id } from "@/convex/_generated/dataModel";
 import { lastTab } from "@/lib/remembered";
 import { scrollFor } from "@/lib/screenHistory";
@@ -19,9 +19,9 @@ import SettingsScreen from "../_screens/Settings";
  * The whole signed-in app is this one route, which picks the screen from the
  * URL on the client. Moving between screens (see `AppLink`) never asks the
  * server for a route, so it keeps working while offline. A Product page
- * (/koti/<id>) is opened from Koti and slides in over it; Koti stays mounted
+ * (/koti/<id>) is opened from Koti and fades in over it; Koti stays mounted
  * underneath, so Back returns to it as it was left, search results and all.
- * The Tapahtumat screen (/settings/tapahtumat) slides in over Settings the same way.
+ * The Tapahtumat screen (/settings/tapahtumat) opens over Settings the same way.
  */
 export default function AppScreens() {
   const pathname = usePathname();
@@ -45,15 +45,15 @@ export default function AppScreens() {
     if (!known) navigate(pathname === "/" ? `/${lastTab()}` : "/koti", { replace: true });
   }, [known, pathname]);
 
-  const slideOver =
+  const topScreen =
     productId !== null ? <ProductScreen productId={productId} />
     : isActivities ? <ActivitiesScreen />
     : null;
 
   return (
     <>
-      <CoveredScreen covered={slideOver !== null}>{screen}</CoveredScreen>
-      <AnimatePresence initial={false}>{slideOver && <SlideOver key={pathname}>{slideOver}</SlideOver>}</AnimatePresence>
+      <CoveredScreen covered={topScreen !== null}>{screen}</CoveredScreen>
+      <AnimatePresence initial={false}>{topScreen && <TopScreen key={pathname}>{topScreen}</TopScreen>}</AnimatePresence>
     </>
   );
 }

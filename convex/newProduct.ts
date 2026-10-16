@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { recordActivity } from "./activities";
 import { requireCategory } from "./categories";
 import { nameKey, tidyName } from "./productNames";
-import type { ExpiryKind } from "./stock";
+import { type ExpiryKind, isDate } from "./stock";
 
 type NewProduct = {
   name: string;
@@ -13,22 +13,29 @@ type NewProduct = {
   stock: number;
   minimumStock?: number;
   expiryKind?: ExpiryKind;
+  expiryDate?: string;
 };
 
 /**
  * Adds a Product and records it as an Activity. Names are not unique: a
- * duplicate is only warned about while typing (see `products.search`).
+ * duplicate is only warned about while typing (see `products.search`). An Out
+ * of Stock Product has no Expiry Date, so one given with Stock 0 is dropped.
  */
 export async function createProduct(
   ctx: MutationCtx,
   memberId: Id<"users">,
-  { name, locationId, categoryId, stock, minimumStock, expiryKind }: NewProduct,
+  { name, locationId, categoryId, stock, minimumStock, expiryKind, expiryDate }: NewProduct,
 ) {
   const tidy = tidyName(name);
   if (tidy === "") throw new ConvexError("NAME_REQUIRED");
   if ((await ctx.db.get(locationId)) === null) throw new ConvexError("LOCATION_NOT_FOUND");
   if (categoryId !== undefined) await requireCategory(ctx, categoryId);
+  if (!(Number.isInteger(stock) && stock >= 0)) throw new ConvexError("STOCK_INVALID");
   if (minimumStock !== undefined) requireMinimumStock(minimumStock);
+  if (expiryDate !== undefined) {
+    if (!isDate(expiryDate)) throw new ConvexError("EXPIRY_DATE_INVALID");
+    if (!expiryKind) throw new ConvexError("EXPIRY_KIND_REQUIRED");
+  }
   const productId = await ctx.db.insert("products", {
     name: tidy,
     nameKey: nameKey(tidy),
@@ -37,6 +44,7 @@ export async function createProduct(
     stock,
     minimumStock,
     expiryKind,
+    expiryDate: stock > 0 ? expiryDate : undefined,
   });
   const product = (await ctx.db.get(productId))!;
   await recordActivity(ctx, memberId, "create", product, { to: stock });
