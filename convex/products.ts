@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError, type Infer, v } from "convex/values";
 import { type MutationCtx, mutation, query } from "./_generated/server";
 import { recordActivity, relinkActivities } from "./activities";
 import { requireCategory } from "./categories";
@@ -133,30 +133,34 @@ export const remove = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, { productId }) => {
     const memberId = await requireMemberId(ctx);
-    const product = await requireProduct(ctx, productId);
-    const { name, locationId, categoryId, stock, minimumStock, expiryKind, expiryDate } = product;
-    const entries = await removeEntriesOf(ctx, productId);
-    const barcodes = await ctx.db
-      .query("barcodes")
-      .withIndex("by_product", (q) => q.eq("productId", productId))
-      .collect();
-    for (const barcode of barcodes) await ctx.db.delete(barcode._id);
-    await ctx.db.delete(productId);
-    await recordActivity(ctx, memberId, "delete", product);
-    return {
-      productId,
-      name,
-      locationId,
-      categoryId,
-      stock,
-      minimumStock,
-      expiryKind,
-      expiryDate,
-      entries,
-      barcodes: barcodes.map((barcode) => barcode.code),
-    };
+    return await deleteProduct(ctx, memberId, await requireProduct(ctx, productId));
   },
 });
+
+/** Deletes a Product with its Barcodes and Entries, and records it. Returns what `restore` needs. */
+export async function deleteProduct(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">) {
+  const { _id: productId, name, locationId, categoryId, stock, minimumStock, expiryKind, expiryDate } = product;
+  const entries = await removeEntriesOf(ctx, productId);
+  const barcodes = await ctx.db
+    .query("barcodes")
+    .withIndex("by_product", (q) => q.eq("productId", productId))
+    .collect();
+  for (const barcode of barcodes) await ctx.db.delete(barcode._id);
+  await ctx.db.delete(productId);
+  await recordActivity(ctx, memberId, "delete", product);
+  return {
+    productId,
+    name,
+    locationId,
+    categoryId,
+    stock,
+    minimumStock,
+    expiryKind,
+    expiryDate,
+    entries,
+    barcodes: barcodes.map((barcode) => barcode.code),
+  };
+}
 
 /**
  * The delete undo toast: puts the Product back as it was, with its Barcodes
@@ -254,6 +258,7 @@ export const search = query({
         _id: product._id,
         name: product.name,
         stock: product.stock,
+        expiryKind: product.expiryKind ?? null,
         locationName: await locationName(product),
       })),
     );
@@ -283,17 +288,20 @@ export const adjustStock = mutation({
 });
 
 /**
- * Restocks 1 or Uses 1 and records it. Koti's + / – and scanning both use it.
- * Returns the Stock before and after and the Expiry Date before (for undo),
- * and whether this change made the Product Running Low.
+ * Restocks `n` (with the packages' date, if given) or Uses 1, and records it.
+ * Koti's + / – and scanning both use it. Returns the Stock before and after
+ * and the Expiry Date before (for undo), and whether this change made the
+ * Product Running Low.
  */
 export async function changeStock(
   ctx: MutationCtx,
   memberId: Id<"users">,
   product: Doc<"products">,
   change: "restock" | "use",
+  n = 1,
+  expiryDate?: string,
 ) {
-  const next = change === "restock" ? applyRestock(product, 1) : applyUse(product);
+  const next = change === "restock" ? applyRestock(product, n, expiryDate) : applyUse(product);
   await ctx.db.patch(product._id, next);
   await recordStockChange(ctx, memberId, change, product, next.stock);
   return {
@@ -314,10 +322,19 @@ export const undoStockChange = mutation({
   args: { productId: v.id("products"), ...stockChange.fields },
   handler: async (ctx, { productId, ...undone }) => {
     const memberId = await requireMemberId(ctx);
-    const product = await requireProduct(ctx, productId);
-    const next = applyUndo(product, undone);
-    await ctx.db.patch(productId, next);
-    await recordStockChange(ctx, memberId, "undoStockChange", product, next.stock);
-    return { crossedIntoRunningLow: crossedIntoRunningLow(product, { ...product, ...next }) };
+    return await undoStockChangeOf(ctx, memberId, await requireProduct(ctx, productId), undone);
   },
 });
+
+/** Reverses a Stock change and records it (see `undoStockChange`). */
+export async function undoStockChangeOf(
+  ctx: MutationCtx,
+  memberId: Id<"users">,
+  product: Doc<"products">,
+  undone: Infer<typeof stockChange>,
+) {
+  const next = applyUndo(product, undone);
+  await ctx.db.patch(product._id, next);
+  await recordStockChange(ctx, memberId, "undoStockChange", product, next.stock);
+  return { crossedIntoRunningLow: crossedIntoRunningLow(product, { ...product, ...next }) };
+}

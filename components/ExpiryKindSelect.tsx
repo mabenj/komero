@@ -8,16 +8,19 @@ export function ExpiryKindSelect({
   value,
   onChange,
   className,
+  "aria-label": label,
 }: {
   value: ExpiryKind | null;
   onChange: (kind: ExpiryKind | null) => void;
   className?: string;
+  "aria-label"?: string;
 }) {
   const t = useT();
   return (
     <select
       value={value ?? "none"}
       onChange={(event) => onChange(EXPIRY_KINDS.find((kind) => kind === event.target.value) ?? null)}
+      aria-label={label}
       className={className}
     >
       <option value="none">{t("product.expiryKind.none")}</option>

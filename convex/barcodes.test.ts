@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import type { FunctionReturnType } from "convex/server";
 import type { Id } from "./_generated/dataModel";
 import { type MemberSession, newKomero, signUp } from "./test.helpers";
 
@@ -54,6 +55,41 @@ describe("Scanning an unknown barcode", () => {
     expect(await stockOf(anna, "Maito")).toBe(2);
   });
 
+  test("New Product sent ×3 with a date in Add mode: Stock 3 with that Expiry Date, and the next scan Restocks +1", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+
+    const sent = await anna.mutation(api.barcodes.linkNew, {
+      code: MAITO_VALIO,
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+      expiryKind: "bestBefore",
+      mode: "add",
+      quantity: 3,
+      expiryDate: "2026-10-25",
+    });
+
+    expect(sent).toMatchObject({ created: true, code: MAITO_VALIO, action: "restock", from: 0, to: 3 });
+    expect(await anna.query(api.products.get, { productId: sent.productId })).toMatchObject({
+      stock: 3,
+      expiryDate: "2026-10-25",
+    });
+    expect(await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" })).toMatchObject({ from: 3, to: 4 });
+  });
+
+  test("Need more ×3 on an unknown barcode: an Out of Stock Product with an Entry of 3; Use ignores the quantity", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const kaappi = await locationId(anna, "Kaappi");
+
+    const unknown = { locationId: kaappi, quantity: 3 };
+    await anna.mutation(api.barcodes.linkNew, { ...unknown, code: MAITO_VALIO, name: "Tonnikala", mode: "needMore" });
+    await anna.mutation(api.barcodes.linkNew, { ...unknown, code: MAITO_ARLA, name: "Kahvi", mode: "use", expiryDate: "2026-10-25" });
+
+    const list = await anna.query(api.shoppingList.get, {});
+    expect(list.other.map((entry) => `${entry.name} ×${entry.quantity}`)).toEqual(["Tonnikala ×3"]);
+    expect(await stockOf(anna, "Tonnikala")).toBe(0);
+    expect(await stockOf(anna, "Kahvi")).toBe(0);
+  });
+
   test("New Product in Need more mode, in the chosen Category: Out of Stock and on the list under that Category", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const siivous = (await anna.query(api.categories.list, {})).find((c) => c.name === "Siivous ja koti")!._id;
@@ -74,7 +110,7 @@ describe("Scanning an unknown barcode", () => {
     expect(await stockOf(anna, "Tiskiaine")).toBe(0);
   });
 
-  test("typing the name of an existing Product, in any case, links the barcode to it instead of adding another", async () => {
+  test("typing the name of an existing Product, in any case, sent ×2 adds the barcode and 2 packages to it, in its own Location", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const maito = await anna.mutation(api.products.create, {
       name: "Maito",
@@ -86,11 +122,15 @@ describe("Scanning an unknown barcode", () => {
       name: "maito",
       locationId: await locationId(anna, "Kaappi"),
       mode: "add",
+      quantity: 2,
     });
 
-    expect(linked).toMatchObject({ productId: maito, from: 1, to: 2 });
+    expect(linked).toMatchObject({ productId: maito, created: false, from: 1, to: 3 });
     const inventory = await anna.query(api.inventory.get, {});
-    expect(inventory.flatMap((location) => location.products).map((product) => product.name)).toEqual(["Maito"]);
+    expect(inventory.flatMap((location) => location.products.map((product) => [location.name, product.name]))).toEqual([
+      ["Jääkaappi", "Maito"],
+    ]);
+    expect(await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "use" })).toMatchObject({ productId: maito });
   });
 
   test("a visitor who isn't signed in can't scan", async () => {
@@ -117,36 +157,7 @@ async function bag(member: MemberSession) {
 }
 
 describe("Add mode", () => {
-  test("a scan Puts Away one package from the Bag first, and only Restocks once the Bag has none", async () => {
-    const anna = await signUp(newKomero(), "anna@example.com");
-    const maito = await maitoWithBarcode(anna);
-    await anna.mutation(api.shoppingList.needMore, { productId: maito });
-    await anna.mutation(api.shoppingList.needMore, { productId: maito });
-    const [entry] = (await anna.query(api.shoppingList.get, {})).other;
-    await anna.mutation(api.shoppingList.tick, { entryId: entry._id });
-    expect(await bag(anna)).toEqual(["Maito ×2"]);
-
-    const first = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
-    expect(first).toMatchObject({ action: "putAway", from: 1, to: 2 });
-    expect(await bag(anna)).toEqual(["Maito ×1"]);
-
-    const second = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
-    expect(second).toMatchObject({ action: "putAway", from: 2, to: 3 });
-    expect(await bag(anna)).toEqual([]);
-
-    const third = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
-    expect(third).toMatchObject({ action: "restock", from: 3, to: 4 });
-    expect(await stockOf(anna, "Maito")).toBe(4);
-
-    const activities = await anna.query(api.activities.forProduct, { productId: maito });
-    expect(activities.slice(0, 3).map(({ kind, from, to, quantity }) => ({ kind, from, to, quantity }))).toEqual([
-      { kind: "restock", from: 3, to: 4, quantity: undefined },
-      { kind: "putAway", from: 2, to: 3, quantity: 1 },
-      { kind: "putAway", from: 1, to: 2, quantity: 1 },
-    ]);
-  });
-
-  test("undoing a scan that took Maito from the Bag puts it back in the Bag and takes the package off Stock", async () => {
+  test("a scan Restocks +1 even while Maito is in the Bag, and the Bag Entry stays", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const maito = await maitoWithBarcode(anna);
     await anna.mutation(api.shoppingList.needMore, { productId: maito });
@@ -155,11 +166,9 @@ describe("Add mode", () => {
     await anna.mutation(api.shoppingList.tick, { entryId: entry._id });
 
     const scanned = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
-    if (scanned.unknown || scanned.action !== "putAway") throw new Error("expected a Put Away from the Bag");
-    await anna.mutation(api.shoppingList.undoPutAway, { putAway: scanned.putAway });
 
+    expect(scanned).toMatchObject({ action: "restock", from: 1, to: 2 });
     expect(await bag(anna)).toEqual(["Maito ×2"]);
-    expect(await stockOf(anna, "Maito")).toBe(1);
   });
 
   test("a scan tells the Product's Expiry Kind, so the date prompt shows only for Products with one", async () => {
@@ -201,23 +210,6 @@ describe("The date prompt on Add scans", () => {
     await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
     await anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-10-20" });
     expect(await expiryOf(anna, maito)).toEqual({ stock: 3, date: "2026-10-20" });
-  });
-
-  test("a scan that Puts Away Maito from the Bag asks too, and Maito's old date is gone once it was used up", async () => {
-    const anna = await signUp(newKomero(), "anna@example.com");
-    const maito = await maitoWithBarcode(anna);
-    await anna.mutation(api.products.update, { productId: maito, expiryKind: "bestBefore", expiryDate: "2026-10-18" });
-    await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "use" });
-    await anna.mutation(api.shoppingList.needMore, { productId: maito });
-    const [entry] = (await anna.query(api.shoppingList.get, {})).other;
-    await anna.mutation(api.shoppingList.tick, { entryId: entry._id });
-
-    const scanned = await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" });
-    expect(scanned).toMatchObject({ action: "putAway", from: 0, to: 1, asksForDate: true });
-    await anna.mutation(api.barcodes.dateScan, { productId: maito, expiryDate: "2026-10-28" });
-
-    expect(await expiryOf(anna, maito)).toEqual({ stock: 1, date: "2026-10-28" });
-    expect(await bag(anna)).toEqual([]);
   });
 
   test("Products with no Expiry Kind never ask, and Use and Need more scans never ask", async () => {
@@ -302,6 +294,37 @@ describe("Linking Barcodes", () => {
     });
     const page = await anna.query(api.products.get, { productId: maito });
     expect(page!.barcodes.map((barcode) => barcode.code).sort()).toEqual([MAITO_ARLA, MAITO_VALIO].sort());
+  });
+
+  test("Arla's milk picked as the existing Maito and sent ×2 with a date: linked, Restocked and dated", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "useBy", expiryDate: "2026-10-30" });
+
+    const sent = await anna.mutation(api.barcodes.link, {
+      code: MAITO_ARLA,
+      productId: maito,
+      mode: "add",
+      quantity: 2,
+      expiryDate: "2026-10-22",
+    });
+
+    expect(sent).toMatchObject({ created: false, code: MAITO_ARLA, action: "restock", from: 1, to: 3 });
+    expect(await anna.query(api.products.get, { productId: maito })).toMatchObject({ stock: 3, expiryDate: "2026-10-22" });
+    expect(await anna.mutation(api.barcodes.scan, { code: MAITO_ARLA, mode: "use" })).toMatchObject({ productId: maito });
+  });
+
+  test("a send's date that isn't a calendar day is ignored, and a quantity below 1 is refused", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "useBy" });
+
+    await anna.mutation(api.barcodes.link, { code: MAITO_ARLA, productId: maito, mode: "add", expiryDate: "2026-02-30" });
+    expect(await anna.query(api.products.get, { productId: maito })).toMatchObject({ stock: 2, expiryDate: null });
+
+    await expect(
+      anna.mutation(api.barcodes.link, { code: "4001234567890", productId: maito, mode: "add", quantity: 0 }),
+    ).rejects.toThrow(/QUANTITY_INVALID/);
   });
 
   test("a Barcode already on Maito can't also be linked to Kerma, and Maito keeps it", async () => {
@@ -397,5 +420,92 @@ describe("Linking Barcodes", () => {
     expect(await anna.mutation(api.barcodes.scan, { code: "0036000291452", mode: "add" })).toMatchObject({
       productId: maito,
     });
+  });
+});
+
+describe("Undoing a send", () => {
+  test("undoing a send that created Maito deletes Maito and its Barcode, and the barcode scans as unknown again", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const sent = await anna.mutation(api.barcodes.linkNew, {
+      code: MAITO_VALIO,
+      name: "Maito",
+      locationId: await locationId(anna, "Jääkaappi"),
+      mode: "needMore",
+      quantity: 2,
+    });
+
+    await anna.mutation(api.barcodes.undoSend, { ...sendRecord(sent), added: 2 });
+
+    expect(await stockOf(anna, "Maito")).toBeUndefined();
+    expect((await anna.query(api.shoppingList.get, {})).other).toEqual([]);
+    expect(await anna.mutation(api.barcodes.scan, { code: MAITO_VALIO, mode: "add" })).toMatchObject({ unknown: true });
+    expect((await anna.query(api.activities.forProduct, { productId: sent.productId })).map((a) => a.kind)).toContain(
+      "delete",
+    );
+  });
+
+  test("undoing a send to the existing Maito unlinks the Barcode and puts Stock and the Expiry Date back; Maito stays", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    await anna.mutation(api.products.update, { productId: maito, expiryKind: "useBy", expiryDate: "2026-10-30" });
+    const sent = await anna.mutation(api.barcodes.link, {
+      code: MAITO_ARLA,
+      productId: maito,
+      mode: "add",
+      quantity: 2,
+      expiryDate: "2026-10-22",
+    });
+
+    await anna.mutation(api.barcodes.undoSend, { ...sendRecord(sent!), added: 2 });
+
+    expect(await anna.query(api.products.get, { productId: maito })).toMatchObject({
+      stock: 1,
+      expiryDate: "2026-10-30",
+      barcodes: [{ code: MAITO_VALIO }],
+    });
+    expect(await anna.mutation(api.barcodes.scan, { code: MAITO_ARLA, mode: "add" })).toMatchObject({ unknown: true });
+    expect((await anna.query(api.activities.forProduct, { productId: maito }))[0]).toMatchObject({
+      kind: "undoStockChange",
+      from: 3,
+      to: 1,
+    });
+  });
+
+  test("undoing a Need more ×3 send to the existing Maito takes the 3 back off its Entry", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    const sent = await anna.mutation(api.barcodes.link, { code: MAITO_ARLA, productId: maito, mode: "needMore", quantity: 3 });
+
+    await anna.mutation(api.barcodes.undoSend, { ...sendRecord(sent!), added: 3 });
+
+    const list = await anna.query(api.shoppingList.get, {});
+    expect(list.other.map((entry) => `${entry.name} ×${entry.quantity}`)).toEqual(["Maito ×1"]);
+    expect(await stockOf(anna, "Maito")).toBe(1);
+  });
+});
+
+/** What the card passes back to `undoSend`, from a send's result. */
+function sendRecord(sent: FunctionReturnType<typeof api.barcodes.linkNew>) {
+  const { code, productId, created, from, to, expiryDateBefore } = sent;
+  return { code, productId, created, from, to, expiryDateBefore, entryId: "entryId" in sent ? sent.entryId : undefined };
+}
+
+describe("The card's name match", () => {
+  test("a name typed in any case finds Maito and its Location; an unknown name finds nothing", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await maitoWithBarcode(anna);
+
+    expect(await anna.query(api.barcodes.productNamed, { name: "  MAITO " })).toEqual({
+      _id: maito,
+      name: "Maito",
+      locationName: "Jääkaappi",
+      expiryKind: null,
+    });
+    expect(await anna.query(api.barcodes.productNamed, { name: "Kerma" })).toBeNull();
+  });
+
+  test("a visitor who isn't signed in is refused", async () => {
+    await expect(newKomero().query(api.barcodes.productNamed, { name: "Maito" })).rejects.toThrow(/NOT_SIGNED_IN/);
   });
 });

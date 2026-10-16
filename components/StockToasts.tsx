@@ -53,7 +53,7 @@ export function useUndoStockChange() {
 }
 
 /**
- * A toast after Put Away (one Entry, the whole Bag, or a scan) whose undo puts
+ * A toast after Put Away (one Entry or the whole Bag) whose undo puts
  * it all back in the Bag. Shown at the tap, its undo waits for what the server
  * put away; if Put Away fails, the toast goes away.
  */

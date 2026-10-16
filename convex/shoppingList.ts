@@ -106,9 +106,9 @@ export const addOneOff = mutation({
   },
 });
 
-/** Need More of a Product. Returns the Entry and its new quantity, for the undo toast. */
-export async function needMoreOf(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">) {
-  const added = await addToList(ctx, memberId, { product }, 1);
+/** Need More of a Product, `quantity` at once. Returns the Entry and its new quantity, for the undo toast. */
+export async function needMoreOf(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">, quantity = 1) {
+  const added = await addToList(ctx, memberId, { product }, quantity);
   await recordActivity(ctx, memberId, "needMore", product, { quantity: added.quantity });
   return added;
 }
@@ -148,6 +148,23 @@ async function addToList(
   return { entryId: existing._id, name, quantity: total };
 }
 
+/** Takes `quantity` back off an Entry, removing it at 0 (as `remove` does). Nothing happens if it is gone. */
+export async function takeOffList(ctx: MutationCtx, memberId: Id<"users">, entryId: Id<"entries">, quantity: number) {
+  const entry = await ctx.db.get(entryId);
+  if (entry === null) return;
+  if (entry.quantity > quantity) return await ctx.db.patch(entryId, { quantity: entry.quantity - quantity });
+  await deleteEntry(ctx, memberId, entry);
+}
+
+/** Deletes an Entry and records it. Returns the name it had on the list. */
+async function deleteEntry(ctx: MutationCtx, memberId: Id<"users">, entry: Doc<"entries">) {
+  const product = entry.productId && (await ctx.db.get(entry.productId));
+  const name = product ? product.name : (entry.name ?? "");
+  await ctx.db.delete(entry._id);
+  await recordActivity(ctx, memberId, "removeEntry", product ?? { name }, { quantity: entry.quantity });
+  return name;
+}
+
 /** The Entry's quantity stepper. The quantity stays at least 1; removing an Entry is `remove`. */
 export const setQuantity = mutation({
   args: { entryId: v.id("entries"), quantity: v.number() },
@@ -164,10 +181,7 @@ export const remove = mutation({
   handler: async (ctx, { entryId }) => {
     const memberId = await requireMemberId(ctx);
     const entry = await requireEntry(ctx, entryId);
-    const product = entry.productId && (await ctx.db.get(entry.productId));
-    const name = product ? product.name : (entry.name ?? "");
-    await ctx.db.delete(entryId);
-    await recordActivity(ctx, memberId, "removeEntry", product ?? { name }, { quantity: entry.quantity });
+    const name = await deleteEntry(ctx, memberId, entry);
     return { productId: entry.productId, name, quantity: entry.quantity };
   },
 });
@@ -302,28 +316,10 @@ async function restockFromBag(
 }
 
 /**
- * Put Away of one package of a Product from the Bag (a scan in Add mode): its
- * Entry's quantity goes down by 1, and the Entry leaves the Bag at 0. Returns
- * the Stock before and after and what `undoPutAway` needs, or null when the
- * Bag has none of the Product.
- */
-export async function putAwayOneFromBag(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">) {
-  const entry = await ctx.db
-    .query("entries")
-    .withIndex("by_product", (q) => q.eq("productId", product._id).eq("state", "inBag"))
-    .first();
-  if (entry === null) return null;
-  if (entry.quantity > 1) await ctx.db.patch(entry._id, { quantity: entry.quantity - 1 });
-  else await ctx.db.delete(entry._id);
-  const putAway = await restockFromBag(ctx, memberId, product, 1);
-  return { from: putAway.from, to: putAway.to, expiryDateBefore: putAway.expiryDateBefore, putAway: [putAway] };
-}
-
-/**
- * The undo toast after Put Away, "Put away all" or an Add scan that took a
- * package from the Bag: each Entry goes back into the Bag (joining an Entry
- * there for the same thing), and each Product's Stock and Expiry Date go back
- * as they were (see `applyUndo`). A Product deleted since is skipped.
+ * The undo toast after Put Away or "Put away all": each Entry goes back into
+ * the Bag (joining an Entry there for the same thing), and each Product's
+ * Stock and Expiry Date go back as they were (see `applyUndo`). A Product
+ * deleted since is skipped.
  */
 export const undoPutAway = mutation({
   args: { putAway: v.array(putAwayRecord) },

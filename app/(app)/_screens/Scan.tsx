@@ -1,17 +1,19 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useDragControls, useReducedMotion } from "motion/react";
 import type { FunctionReturnType } from "convex/server";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { CategorySelect } from "@/components/CategorySelect";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { crossFade, Reveal } from "@/components/motion";
-import { Sheet } from "@/components/Sheet";
+import { MinusIcon, PlusIcon } from "@/components/icons";
+import { crossFade, Reveal, useEnterExit } from "@/components/motion";
+import { stepButton } from "@/components/NumberStepper";
 import { useNeedMoreToast } from "@/components/NeedMore";
-import { usePutAwayToast, useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
+import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -19,21 +21,20 @@ import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
 import type { ExpiryKind } from "@/convex/stock";
 import { haptic } from "@/lib/haptics";
 import { useT } from "@/lib/i18n";
-import { card, field, primaryButton, secondaryButton } from "@/lib/styles";
+import { card, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
 import { lastLocation, lastScanMode, rememberLocation, rememberScanMode } from "@/lib/remembered";
 
 type ScanOutcome = Exclude<FunctionReturnType<typeof api.barcodes.scan>, { unknown: true }>;
 type Suggestion = FunctionReturnType<typeof api.barcodes.lookup>;
 
-const fieldClass = `${field} w-full px-4 py-2`;
-const segments = "flex rounded-xl bg-stone-200/60 p-1 dark:bg-stone-800";
 
 /**
  * Scan: pick a mode (the last one is preselected), then scan continuously.
  * Each scan shows a confirmation with the Product and its new Stock; an
- * unknown barcode asks which Product it is, then the mode applies. An Add scan
- * of a Product with an Expiry Kind then asks for the package's date (Skip is
- * the big button), with the camera paused until it is answered.
+ * unknown barcode opens a card over the paused camera, whose one button sends
+ * it all (see `UnknownBarcodeCard`). An Add scan of a known Product with an
+ * Expiry Kind then asks for the package's date (Skip is the big button), with
+ * the camera paused until it is answered.
  */
 export default function ScanScreen() {
   const [mode, setMode] = useState<ScanMode>(lastScanMode);
@@ -119,7 +120,7 @@ function Scanning({
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="group" aria-label={t("scan.mode")} className={segments}>
+      <div role="group" aria-label={t("scan.mode")} className="flex rounded-xl bg-stone-200/60 p-1 dark:bg-stone-800">
         {SCAN_MODES.map((option) => (
           <button
             key={option}
@@ -170,6 +171,20 @@ function Scanning({
             {t("scan.hint")}
           </p>
           {reads > 0 && <ReadFlash key={reads} />}
+          <AnimatePresence>
+            {unknownCode !== null && (
+              <UnknownBarcodeCard
+                key={unknownCode}
+                code={unknownCode}
+                mode={mode}
+                onSent={(outcome, undo) => {
+                  setUnknownCode(null);
+                  showConfirmation(outcome, undo);
+                }}
+                onSkip={() => setUnknownCode(null)}
+              />
+            )}
+          </AnimatePresence>
         </div>
       )}
       <button
@@ -179,20 +194,6 @@ function Scanning({
       >
         {t("scan.stop")}
       </button>
-      <AnimatePresence>
-        {unknownCode !== null && (
-          <UnknownBarcode
-            key={unknownCode}
-            code={unknownCode}
-            mode={mode}
-            onDone={(outcome) => {
-              setUnknownCode(null);
-              scanned(outcome);
-            }}
-            onCancel={() => setUnknownCode(null)}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -216,213 +217,300 @@ function ReadFlash() {
 }
 
 /**
- * The confirmation after each scan: the Product and its new Stock, with undo.
- * A Use that makes the Product Running Low gets Koti's "running low" toast
- * with "Add to list" instead. Undoing a Put Away from the Bag puts it back in the Bag.
+ * The confirmation after each scan or send: the Product and its new Stock,
+ * with undo. A Use that makes the Product Running Low gets Koti's "running
+ * low" toast with "Add to list" instead. A send brings its own undo, which
+ * takes the whole send back.
  */
 function useScanConfirmation() {
   const t = useT();
   const showUndoToast = useUndoToast();
   const showNeedMoreToast = useNeedMoreToast();
   const showRunningLow = useRunningLowToast();
-  const showPutAway = usePutAwayToast();
   const undoStockChange = useUndoStockChange();
 
   return useCallback(
-    (outcome: ScanOutcome) => {
+    (outcome: ScanOutcome, undoSend?: () => void) => {
       const { name, from, to } = outcome;
       const product = { _id: outcome.productId, name };
-      const undo = undoStockChange(product, outcome);
+      const undo = undoSend ?? undoStockChange(product, outcome);
       switch (outcome.action) {
         case "restock":
-          return showUndoToast(t("scan.restocked", { name, stock: to }), undo);
-        case "putAway":
-          return showPutAway(t("scan.putAway", { name, stock: to }), outcome.putAway);
+          return showUndoToast(t("scan.restocked", { name, count: to - from, stock: to }), undo);
         case "use":
-          if (from === to) return showUndoToast(t("scan.alreadyOut", { name }));
+          if (from === to) return showUndoToast(t("scan.alreadyOut", { name }), undoSend);
           if (!outcome.crossedIntoRunningLow) return showUndoToast(t("scan.used", { name, stock: to }), undo);
           return showRunningLow(product, undo);
         case "needMore":
+          if (undoSend) return showUndoToast(t("lista.onList", { name, quantity: outcome.quantity }), undoSend);
           return showNeedMoreToast(outcome, outcome);
       }
     },
-    [showUndoToast, showNeedMoreToast, showRunningLow, showPutAway, undoStockChange, t],
+    [showUndoToast, showNeedMoreToast, showRunningLow, undoStockChange, t],
   );
 }
 
+type Existing = { _id: Id<"products">; name: string; expiryKind: ExpiryKind | null };
+
+const chip =
+  "min-h-11 max-w-full truncate rounded-full border border-stone-300 bg-surface px-3 text-sm disabled:opacity-40 dark:border-stone-700";
+
 /**
- * An unknown barcode: either a New Product (name typed, Location chosen, and
- * a Category if the Member wants) or an existing Product (searched), in a
- * sheet over the paused camera. The barcode is linked, then the mode applies. Open Food Facts is asked in the
- * background; its suggestion fills the name only if the Member hasn't started
- * typing, and never links by itself.
+ * An unknown barcode: a compact card over the paused camera, so each item
+ * takes one stop and one press. Open Food Facts is asked at once; its name
+ * shows large (tap it to edit), and with no suggestion the name field opens
+ * for typing. Location starts as the last one used, Category as none, and
+ * Expiry Kind as Open Food Facts' guess; each is a chip to tap. A name that is
+ * already a Product's says so and greys the chips out, since the barcode then
+ * joins that Product; "It's an existing Product" searches for one instead.
+ * The stepper (Add, Need more) and the date (Add, with an Expiry Kind) apply
+ * either way. The button sends it all; Skip, or a swipe down on the grabber,
+ * saves nothing.
  */
-function UnknownBarcode({
+function UnknownBarcodeCard({
   code,
   mode,
-  onDone,
-  onCancel,
+  onSent,
+  onSkip,
 }: {
   code: string;
   mode: ScanMode;
-  onDone: (outcome: ScanOutcome) => void;
-  onCancel: () => void;
+  onSent: (outcome: ScanOutcome, undo: () => void) => void;
+  onSkip: () => void;
 }) {
   const t = useT();
-  const [choice, setChoice] = useState<"new" | "existing">("new");
-  const [failed, setFailed] = useState(false);
   const linkNew = useMutation(api.barcodes.linkNew);
   const link = useMutation(api.barcodes.link);
+  const undoSend = useMutation(api.barcodes.undoSend);
+  const showRunningLow = useRunningLowToast();
   const lookup = useAction(api.barcodes.lookup);
+  const inventory = useQuery(api.inventory.get);
+  const cardMotion = useEnterExit({ y: "100%" });
+  const drag = useDragControls();
+  const nameField = useRef<HTMLInputElement>(null);
+
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [choice, setChoice] = useState<"new" | "existing">("new");
+  const [typedName, setTypedName] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Existing | null>(null);
+  const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
+  // Unlike the Location, never remembered: the last Category is usually wrong for the next Product.
+  const [categoryId, setCategoryId] = useState<Id<"categories"> | null>(null);
+  const [pickedExpiryKind, setPickedExpiryKind] = useState<ExpiryKind | null | undefined>(undefined);
+  const [quantity, setQuantity] = useState(1);
+  const [date, setDate] = useState("");
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let current = true;
     lookup({ code })
-      .then((found) => current && setSuggestion(found))
-      .catch(() => {});
+      .catch(() => ({ name: null, expiryKind: null }))
+      .then((found) => current && setSuggestion(found));
     return () => {
       current = false;
     };
   }, [code, lookup]);
 
-  const finish = (linking: Promise<ScanOutcome | null>) => {
-    setFailed(false);
-    linking.then((outcome) => outcome && onDone(outcome)).catch(() => setFailed(true));
-  };
-
-  const tabClass = (tab: "new" | "existing") =>
-    `min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold ${choice === tab ? "bg-surface shadow-sm" : "text-stone-600 dark:text-stone-400"}`;
-
-  return (
-    <Sheet title={t("scan.unknownTitle", { code })} onClose={onCancel}>
-      <div className={segments}>
-        <button type="button" aria-pressed={choice === "new"} onClick={() => setChoice("new")} className={tabClass("new")}>
-          {t("scan.newProduct")}
-        </button>
-        <button
-          type="button"
-          aria-pressed={choice === "existing"}
-          onClick={() => setChoice("existing")}
-          className={tabClass("existing")}
-        >
-          {t("scan.existingProduct")}
-        </button>
-      </div>
-      {choice === "new" ? (
-        <NewProductForm
-          suggestion={suggestion}
-          onSubmit={(name, locationId, categoryId, expiryKind) => {
-            rememberLocation(locationId);
-            finish(linkNew({ code, name, locationId, categoryId, mode, expiryKind }));
-          }}
-        />
-      ) : (
-        <ExistingProductSearch onPick={(productId) => finish(link({ code, productId, mode }))} />
-      )}
-      {failed && <p className="text-sm text-amber-700 dark:text-amber-400">{t("scan.linkFailed")}</p>}
-      <button
-        type="button"
-        onClick={onCancel}
-        className={`${secondaryButton} min-h-11 py-3`}
-      >
-        {t("common.cancel")}
-      </button>
-    </Sheet>
-  );
-}
-
-function NewProductForm({
-  suggestion,
-  onSubmit,
-}: {
-  suggestion: Suggestion | null;
-  onSubmit: (
-    name: string,
-    locationId: Id<"locations">,
-    categoryId: Id<"categories"> | null,
-    expiryKind: ExpiryKind | null,
-  ) => void;
-}) {
-  const t = useT();
-  const inventory = useQuery(api.inventory.get);
-  const nameField = useRef<HTMLInputElement>(null);
-  const [typedName, setTypedName] = useState<string | null>(null);
-  const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
-  // Unlike the Location, never remembered: the last Category is usually wrong for the next Product.
-  const [categoryId, setCategoryId] = useState<Id<"categories"> | null>(null);
-  const [pickedExpiryKind, setPickedExpiryKind] = useState<ExpiryKind | null | undefined>(undefined);
   const name = typedName ?? suggestion?.name ?? "";
-  const suggested = typedName === null && name !== "";
-  const expiryKind = pickedExpiryKind === undefined ? (suggestion?.expiryKind ?? null) : pickedExpiryKind;
+  const editing = typedName !== null || suggestion?.name === null;
+  const match = useQuery(api.barcodes.productNamed, choice === "new" && name.trim() ? { name } : "skip");
   const remembered = inventory?.find((location) => location._id === lastLocation())?._id;
   const locationId = pickedLocation ?? remembered ?? inventory?.[0]?._id;
+  const chosenExpiryKind = pickedExpiryKind === undefined ? (suggestion?.expiryKind ?? null) : pickedExpiryKind;
+  const existing = choice === "existing" ? picked : match;
+  const expiryKind = existing ? existing.expiryKind : chosenExpiryKind;
+  const showsDate = mode === "add" && expiryKind !== null;
+  const ready = choice === "existing" ? picked !== null : name.trim() !== "" && locationId !== undefined;
 
-  // A suggested name is selected, so typing replaces it ("Eila laktoositon…" → "Maito").
-  useEffect(() => {
-    if (suggested && document.activeElement === nameField.current) nameField.current?.select();
-  }, [suggested]);
+  const startEditing = () => {
+    flushSync(() => setTypedName(name));
+    nameField.current?.select();
+  };
 
-  const submit = () => {
-    if (name.trim() !== "" && locationId) onSubmit(name, locationId, categoryId, expiryKind);
+  const send = () => {
+    if (!ready || sending) return;
+    const packages = { mode, quantity, expiryDate: date || undefined };
+    const sent =
+      choice === "existing"
+        ? link({ code, productId: picked!._id, ...packages })
+        : linkNew({ code, name, locationId: locationId!, categoryId, expiryKind: chosenExpiryKind, ...packages });
+    if (choice === "new") rememberLocation(locationId!);
+    setSending(true);
+    setFailed(false);
+    sent
+      .then((outcome) => {
+        if (!outcome) return;
+        const { productId, created, from, to, expiryDateBefore } = outcome;
+        const entryId = outcome.action === "needMore" ? outcome.entryId : undefined;
+        onSent(outcome, async () => {
+          const undone = await undoSend({
+            code: outcome.code,
+            productId,
+            created,
+            from,
+            to,
+            expiryDateBefore,
+            entryId,
+            added: quantity,
+          });
+          if (undone.crossedIntoRunningLow) showRunningLow({ _id: productId, name: outcome.name });
+        });
+      })
+      .catch(() => {
+        setSending(false);
+        setFailed(true);
+      });
   };
 
   return (
-    <form
-      className="flex flex-col gap-3"
+    <motion.form
+      {...cardMotion}
+      drag="y"
+      dragControls={drag}
+      dragListener={false}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0, bottom: 0.8 }}
+      onDragEnd={(_, { offset, velocity }) => {
+        if (offset.y > 80 || velocity.y > 500) onSkip();
+      }}
+      aria-label={t("scan.unknownTitle", { code })}
       onSubmit={(event) => {
         event.preventDefault();
-        submit();
+        send();
       }}
+      className={`${card} absolute inset-x-2 bottom-2 flex max-h-[calc(100%-1rem)] flex-col gap-3 overflow-y-auto px-4 pb-4`}
     >
-      <div className="flex flex-col gap-1">
-        <input
-          ref={nameField}
-          value={name}
-          onChange={(event) => setTypedName(event.target.value)}
-          placeholder={t("scan.productName")}
-          aria-label={t("scan.productName")}
-          autoFocus
-          autoComplete="off"
-          enterKeyHint="done"
-          className={fieldClass}
-        />
-        {suggested && <span className="text-xs text-stone-500">{t("scan.suggestedName")}</span>}
-      </div>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-stone-500">{t("product.homeLocation")}</span>
-        <select
-          value={locationId ?? ""}
-          onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
-          className={fieldClass}
-        >
-          {inventory?.map((location) => (
-            <option key={location._id} value={location._id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-stone-500">{t("product.category")}</span>
-        <CategorySelect value={categoryId} onChange={setCategoryId} className={fieldClass} />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-stone-500">{t("product.expiryKind")}</span>
-        <ExpiryKindSelect value={expiryKind} onChange={setPickedExpiryKind} className={fieldClass} />
-      </label>
-      <button
-        type="submit"
-        disabled={name.trim() === "" || !locationId}
-        className={`${primaryButton} min-h-11 py-3 text-lg`}
+      <div
+        aria-hidden="true"
+        onPointerDown={(event) => drag.start(event)}
+        className="-mx-4 flex shrink-0 touch-none justify-center pt-2 pb-1"
       >
+        <span className="h-1.5 w-10 rounded-full bg-stone-300 dark:bg-stone-600" />
+      </div>
+      {choice === "existing" ? (
+        <ExistingProductSearch picked={picked?._id ?? null} onPick={setPicked} />
+      ) : (
+        <>
+          {editing ? (
+            <input
+              ref={nameField}
+              value={name}
+              onChange={(event) => setTypedName(event.target.value)}
+              placeholder={t("scan.productName")}
+              aria-label={t("scan.productName")}
+              autoFocus
+              autoComplete="off"
+              enterKeyHint="done"
+              className={`${field} w-full px-3 py-1 font-display text-2xl`}
+            />
+          ) : suggestion === null ? (
+            <button
+              type="button"
+              onClick={startEditing}
+              aria-label={t("scan.lookingUp")}
+              className="flex min-h-11 items-center"
+            >
+              <span className="h-7 w-2/3 animate-pulse rounded-lg bg-stone-200 dark:bg-stone-800" />
+            </button>
+          ) : (
+            <button type="button" onClick={startEditing} className="flex min-h-11 flex-col items-start text-left">
+              <span className="font-display text-2xl leading-tight">{name}</span>
+              <span className="text-xs text-stone-500">{t("scan.suggestedName")}</span>
+            </button>
+          )}
+          {match && (
+            <p className="text-sm text-ink-accent">
+              {t("scan.alreadyHome", { name: match.name, location: match.locationName })}
+            </p>
+          )}
+          <fieldset disabled={!!match} className="flex flex-wrap gap-2">
+            <select
+              value={locationId ?? ""}
+              onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
+              aria-label={t("product.homeLocation")}
+              className={chip}
+            >
+              {inventory?.map((location) => (
+                <option key={location._id} value={location._id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+            <CategorySelect
+              value={categoryId}
+              onChange={setCategoryId}
+              aria-label={t("product.category")}
+              className={chip}
+            />
+            <ExpiryKindSelect
+              value={chosenExpiryKind}
+              onChange={setPickedExpiryKind}
+              aria-label={t("product.expiryKind")}
+              className={chip}
+            />
+          </fieldset>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={() => setChoice(choice === "new" ? "existing" : "new")}
+        className={`${textLink} min-h-11 self-start text-sm`}
+      >
+        {choice === "new" ? t("scan.existingProduct") : t("scan.newProduct")}
+      </button>
+      {mode !== "use" && (
+        <div className="flex items-center gap-2">
+          <span className="flex-1 text-sm text-stone-500">{t("scan.packages")}</span>
+          <button
+            type="button"
+            className={stepButton}
+            disabled={quantity <= 1}
+            aria-label={t("scan.fewer")}
+            onClick={() => setQuantity(quantity - 1)}
+          >
+            <MinusIcon width={18} height={18} />
+          </button>
+          <span className="min-w-7 text-center font-display text-lg tabular-nums">{quantity}</span>
+          <button
+            type="button"
+            className={stepButton}
+            aria-label={t("scan.more")}
+            onClick={() => setQuantity(quantity + 1)}
+          >
+            <PlusIcon width={18} height={18} />
+          </button>
+        </div>
+      )}
+      {showsDate && (
+        <label className="flex items-center gap-2">
+          <span className="flex-1 text-sm text-stone-500">{t("product.expiryDate")}</span>
+          <input
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+            className={`${field} px-3 py-1`}
+          />
+        </label>
+      )}
+      {failed && <p className="text-sm text-amber-700 dark:text-amber-400">{t("scan.linkFailed")}</p>}
+      <button type="submit" disabled={!ready || sending} className={`${primaryButton} min-h-14 text-lg`}>
         {t("common.save")}
       </button>
-    </form>
+      <button type="button" onClick={onSkip} className="min-h-11 text-stone-500">
+        {t("scan.skip")}
+      </button>
+    </motion.form>
   );
 }
 
-function ExistingProductSearch({ onPick }: { onPick: (productId: Id<"products">) => void }) {
+function ExistingProductSearch({
+  picked,
+  onPick,
+}: {
+  picked: Id<"products"> | null;
+  onPick: (product: Existing) => void;
+}) {
   const t = useT();
   const [text, setText] = useState("");
   const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
@@ -438,7 +526,7 @@ function ExistingProductSearch({ onPick }: { onPick: (productId: Id<"products">)
         autoFocus
         autoComplete="off"
         enterKeyHint="search"
-        className={fieldClass}
+        className={`${field} w-full px-4 py-2`}
       />
       {result && result.matches.length === 0 && <p className="text-sm text-stone-500">{t("scan.noMatches")}</p>}
       <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
@@ -446,8 +534,11 @@ function ExistingProductSearch({ onPick }: { onPick: (productId: Id<"products">)
           <li key={product._id}>
             <button
               type="button"
-              onClick={() => onPick(product._id)}
-              className="flex min-h-11 w-full flex-col items-start py-2 text-left"
+              aria-pressed={product._id === picked}
+              onClick={() => onPick(product)}
+              className={`flex min-h-11 w-full flex-col items-start rounded-lg px-2 py-2 text-left ${
+                product._id === picked ? "bg-accent/15" : ""
+              }`}
             >
               <span>{product.name}</span>
               <span className="text-xs text-stone-500">{product.locationName}</span>

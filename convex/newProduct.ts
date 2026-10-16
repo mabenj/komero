@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { recordActivity } from "./activities";
 import { requireCategory } from "./categories";
 import { nameKey, tidyName } from "./productNames";
@@ -49,11 +49,15 @@ export async function createProduct(
  * existing one rather than making a second.
  */
 export async function findOrCreateProduct(ctx: MutationCtx, memberId: Id<"users">, product: NewProduct) {
-  const existing = await ctx.db
+  return (await findProductNamed(ctx, product.name)) ?? (await createProduct(ctx, memberId, product));
+}
+
+/** The Product already called `name` (in any case), or null. */
+export function findProductNamed(ctx: QueryCtx, name: string) {
+  return ctx.db
     .query("products")
-    .withIndex("by_nameKey", (q) => q.eq("nameKey", nameKey(product.name)))
+    .withIndex("by_nameKey", (q) => q.eq("nameKey", nameKey(name)))
     .first();
-  return existing ?? (await createProduct(ctx, memberId, product));
 }
 
 /** A Minimum Stock is a whole number of packages, 0 or more. */

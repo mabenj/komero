@@ -9,7 +9,7 @@ import { undoOnceDone } from "@/lib/undoOnceDone";
 /** A button shown next to Undo, such as "Add to list" on the Running Low toast. */
 export type ToastAction = { label: string; run: () => void };
 type Toast = { id: number; message: string; undo?: () => void; action?: ToastAction };
-/** Without `undo`, the toast is a plain confirmation (e.g. a scan that Put Away from the Bag). */
+/** Without `undo`, the toast is a plain confirmation (e.g. a Use scan of something already Out of Stock). */
 type ShowUndoToast = (message: string, undo?: () => void, action?: ToastAction) => ShownToast;
 /** A toast that was shown, which can be closed or replaced as long as no newer toast has taken its place. */
 export type ShownToast = { close: () => void; replace: ShowUndoToast };
