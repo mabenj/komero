@@ -48,11 +48,6 @@ export function useLayoutMotion() {
   return useReducedMotion() ? undefined : ("position" as const);
 }
 
-/** Props for a list row, such as a Koti search result, that slides in when it appears and back out when it leaves. */
-export function useRowMotion() {
-  return { layout: useLayoutMotion(), ...useEnterExit({ x: -24, opacity: 0 }) };
-}
-
 /** Props for a section of a list that fades in and out, and slides to its new place. */
 export function useSectionMotion() {
   return { layout: useLayoutMotion(), ...useEnterExit({ opacity: 0 }) };

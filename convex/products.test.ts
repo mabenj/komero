@@ -91,7 +91,7 @@ describe("Products", () => {
 });
 
 describe("Search", () => {
-  test("typing a prefix in any case finds matching Products with their Location", async () => {
+  test("typing part of a name in any case finds Products containing it, those starting with it first, with their Location", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const jaakaappi = await locationId(anna, "Jääkaappi");
     await anna.mutation(api.products.create, { name: "Maito", locationId: jaakaappi });
@@ -104,6 +104,7 @@ describe("Search", () => {
     expect(result.matches.map(({ name, locationName, stock }) => ({ name, locationName, stock }))).toEqual([
       { name: "Maito", locationName: "Jääkaappi", stock: 1 },
       { name: "Maitorahka", locationName: "Jääkaappi", stock: 1 },
+      { name: "Kevytmaito", locationName: "Jääkaappi", stock: 1 },
     ]);
     expect(result.canAdd).toBe(true);
   });

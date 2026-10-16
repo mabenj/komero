@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { CategorySelect } from "@/components/CategorySelect";
+import { Combobox, type ComboboxOption, useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
@@ -12,7 +13,7 @@ import { NumberStepper, stepButton } from "@/components/NumberStepper";
 import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { nameKey } from "@/convex/productNames";
+import { nameKey, tidyName } from "@/convex/productNames";
 import { useT } from "@/lib/i18n";
 import {
   entriesIn,
@@ -80,7 +81,7 @@ export default function ListaScreen() {
   const showAllPutAway = allPutAway && bagIsEmpty;
   return (
     <div className="flex flex-col gap-6">
-      <AddToList />
+      <AddToList list={list} />
       {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
       {nothingToBuy && bagIsEmpty && <ListNote allPutAway={showAllPutAway} />}
       {titled(list, t("lista.other")).map((group) => (
@@ -108,73 +109,50 @@ function ListNote({ allPutAway }: { allPutAway: boolean }) {
 }
 
 /**
- * The search/add field: Products matching the text, tapped for Need More, or
- * Enter / "+ Add" for a One-off (which links itself if it names a Product).
+ * The search/add field: Products matching the text, picked for Need More, or
+ * "+ Add" for a One-off (which links itself if it names a Product). The field
+ * keeps focus after a pick, so the next thing can be typed at once.
  */
-function AddToList() {
+function AddToList({ list }: { list: Groups }) {
   const t = useT();
   const [text, setText] = useState("");
-  const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
+  const result = useProductSearch(text);
   const addOneOff = useMutation(api.shoppingList.addOneOff);
   const needMore = useNeedMore();
-
-  const add = () => {
-    const name = text.trim();
-    if (name === "") return;
-    setText("");
-    addOneOff({ name }).catch(() => setText((current) => current || name));
-  };
-  const pick = (product: { _id: Id<"products">; name: string }) => {
-    setText("");
-    needMore(product);
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      <input
-        type="search"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") add();
-        }}
-        placeholder={t("lista.search")}
-        aria-label={t("lista.search")}
-        enterKeyHint="done"
-        autoComplete="off"
-        className={`${field} w-full px-4 py-3`}
-      />
-      {result && (
-        <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
-          {result.matches.map((product) => (
-            <li key={product._id}>
-              <button
-                type="button"
-                onClick={() => pick(product)}
-                className="flex min-h-11 w-full items-center justify-between gap-3 py-1 text-left text-sm"
-              >
-                <span className="truncate">{product.name}</span>
-                <span className="shrink-0 text-xs text-stone-500">
-                  {t("lista.stock", { stock: product.stock })}
-                </span>
-              </button>
-            </li>
-          ))}
-          {result.canAdd && (
-            <li>
-              <button
-                type="button"
-                onClick={add}
-                className={`${primaryButton} mt-1 min-h-11 w-full truncate px-4 py-2 text-left`}
-              >
-                {t("lista.addOneOff", { name: result.name })}
-              </button>
-            </li>
-          )}
-        </ul>
-      )}
-    </div>
+  const name = tidyName(text);
+  const matches = result?.matches ?? [];
+  const onList = new Map(
+    entriesIn(list).flatMap((entry) => ("productId" in entry && entry.productId ? [[entry.productId, entry.quantity]] : [])),
   );
+
+  const options: ComboboxOption[] = matches.map((product) => {
+    const quantity = onList.get(product._id);
+    return {
+      key: product._id,
+      label: product.name,
+      detail: [t("lista.stock", { stock: product.stock }), quantity && t("lista.onListCount", { quantity })]
+        .filter(Boolean)
+        .join(" · "),
+      onPick: () => {
+        setText("");
+        needMore(product);
+      },
+    };
+  });
+  // From the matches, not the answer's own `canAdd`, which may still be for the text before.
+  if (name !== "" && !matches.some((product) => nameKey(product.name) === nameKey(name))) {
+    options.push({
+      key: "add",
+      label: t("lista.addOneOff", { name }),
+      add: true,
+      onPick: () => {
+        setText("");
+        addOneOff({ name }).catch(() => setText((current) => current || name));
+      },
+    });
+  }
+
+  return <Combobox value={text} onChange={setText} label={t("lista.search")} options={options} keepFocus />;
 }
 
 /** A Category's Entries (or Other's), on the list or inside the Bag. */

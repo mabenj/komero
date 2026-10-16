@@ -235,9 +235,9 @@ async function requireProduct(ctx: MutationCtx, productId: Id<"products">) {
 const MAX_MATCHES = 8;
 
 /**
- * The search/add field: Products whose name starts with the text (any case),
- * whether the typed name can be added as a new Product, and a likely duplicate
- * to warn about.
+ * The search/add field: Products whose name contains the text (any case), those
+ * starting with it first; whether the typed name can be added as a new Product;
+ * and a likely duplicate to warn about.
  */
 export const search = query({
   args: { text: v.string() },
@@ -249,10 +249,13 @@ export const search = query({
 
     const locationName = async (product: Doc<"products">) => (await ctx.db.get(product.locationId))?.name ?? "";
 
-    const products = await ctx.db
-      .query("products")
-      .withIndex("by_nameKey", (q) => q.gte("nameKey", key).lt("nameKey", key + "￿"))
-      .take(MAX_MATCHES);
+    // A household has hundreds of Products at most, so matches and near-duplicates are found by a full scan.
+    const all = await ctx.db.query("products").collect();
+    const startsFirst = (product: Doc<"products">) => (product.nameKey.startsWith(key) ? 0 : 1);
+    const products = all
+      .filter((product) => product.nameKey.includes(key))
+      .sort((a, b) => startsFirst(a) - startsFirst(b) || a.nameKey.localeCompare(b.nameKey))
+      .slice(0, MAX_MATCHES);
     const matches = await Promise.all(
       products.map(async (product) => ({
         _id: product._id,
@@ -263,8 +266,6 @@ export const search = query({
       })),
     );
 
-    // A household has hundreds of Products at most, so near-duplicates are found by a full scan.
-    const all = await ctx.db.query("products").collect();
     const same = all.find((product) => product.nameKey === key);
     const close = same ?? all.find((product) => isLikelySame(product.nameKey, key));
     const duplicate = close ? { name: close.name, locationName: await locationName(close) } : null;

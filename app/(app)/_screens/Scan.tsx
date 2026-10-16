@@ -8,6 +8,7 @@ import { flushSync } from "react-dom";
 import { navigate } from "@/components/AppLink";
 import BarcodeScanner, { prepareScanner } from "@/components/BarcodeScanner";
 import { CategorySelect } from "@/components/CategorySelect";
+import { Combobox, type ComboboxOption, useProductSearch } from "@/components/Combobox";
 import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { MinusIcon, PlusIcon } from "@/components/icons";
@@ -339,7 +340,7 @@ function UnknownBarcodeCard({
         <span className="h-1.5 w-10 rounded-full bg-stone-300 dark:bg-stone-600" />
       </div>
       {choice === "existing" ? (
-        <ExistingProductSearch picked={picked?._id ?? null} onPick={setPicked} />
+        <ExistingProductSearch onPick={setPicked} />
       ) : (
         <>
           {editing ? (
@@ -454,48 +455,34 @@ function UnknownBarcodeCard({
   );
 }
 
-function ExistingProductSearch({
-  picked,
-  onPick,
-}: {
-  picked: Id<"products"> | null;
-  onPick: (product: Existing) => void;
-}) {
+/** Picks the Product an unknown barcode belongs to; the field then shows its name, and typing again unpicks it. */
+function ExistingProductSearch({ onPick }: { onPick: (product: Existing | null) => void }) {
   const t = useT();
   const [text, setText] = useState("");
-  const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
+  const result = useProductSearch(text);
+
+  const options: ComboboxOption[] = (result?.matches ?? []).map((product) => ({
+    key: product._id,
+    label: product.name,
+    detail: product.locationName,
+    onPick: () => {
+      setText(product.name);
+      onPick(product);
+    },
+  }));
 
   return (
-    <div className="flex flex-col gap-2">
-      <input
-        type="search"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        placeholder={t("scan.searchProduct")}
-        aria-label={t("scan.searchProduct")}
-        autoFocus
-        autoComplete="off"
-        enterKeyHint="search"
-        className={`${field} w-full px-4 py-2`}
-      />
-      {result && result.matches.length === 0 && <p className="text-sm text-stone-500">{t("scan.noMatches")}</p>}
-      <ul className="flex flex-col divide-y divide-stone-200 dark:divide-stone-800">
-        {result?.matches.map((product) => (
-          <li key={product._id}>
-            <button
-              type="button"
-              aria-pressed={product._id === picked}
-              onClick={() => onPick(product)}
-              className={`flex min-h-11 w-full flex-col items-start rounded-lg px-2 py-2 text-left ${
-                product._id === picked ? "bg-accent/15" : ""
-              }`}
-            >
-              <span>{product.name}</span>
-              <span className="text-xs text-stone-500">{product.locationName}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <Combobox
+      value={text}
+      onChange={(value) => {
+        setText(value);
+        onPick(null);
+      }}
+      label={t("scan.searchProduct")}
+      options={options}
+      empty={result && t("scan.noMatches")}
+      autoFocus
+      inline
+    />
   );
 }

@@ -106,3 +106,20 @@ export function TagIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function SearchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </Icon>
+  );
+}
+
+export function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </Icon>
+  );
+}

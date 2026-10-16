@@ -2,21 +2,23 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
-import { AppLink } from "@/components/AppLink";
+import { AppLink, navigate } from "@/components/AppLink";
+import { Combobox, type ComboboxOption, useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ChevronDownIcon, ScanIcon } from "@/components/icons";
-import { Fold, Reveal, settle, useLayoutMotion, useRowMotion } from "@/components/motion";
+import { Fold, Reveal, settle, useLayoutMotion } from "@/components/motion";
 import { NeedsAttention, statusText } from "@/components/NeedsAttention";
 import { SwipeToNeedMore } from "@/components/NeedMore";
 import { NumberStepper } from "@/components/NumberStepper";
+import { Sheet } from "@/components/Sheet";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
-import { tidyName } from "@/convex/productNames";
+import { nameKey, tidyName } from "@/convex/productNames";
 import {
   applyRestock,
   applyUse,
@@ -34,8 +36,7 @@ import { cardList, field, primaryButton } from "@/lib/styles";
 
 type StockChange = "restock" | "use";
 
-const noMore = { expiryKind: null, minimumStock: "" };
-const moreFieldClass = `${field} w-full px-3`;
+const sheetField = `${field} w-full px-3`;
 type Location = { _id: Id<"locations">; name: string };
 type Sort = { column: SortColumn; direction: SortDirection };
 type ProductRowData = {
@@ -74,7 +75,7 @@ export default function KotiScreen() {
   return (
     <LayoutGroup>
       <div className="flex flex-col gap-6">
-        <SearchAdd locations={inventory} locationInView={locationInView} onChangeStock={changeStock} />
+        <SearchAdd locations={inventory} locationInView={locationInView} />
         {empty ? <EmptyKoti /> : <NeedsAttention />}
         {inventory.map((location) => (
           <motion.section
@@ -181,163 +182,167 @@ function LowCount({ products }: { products: ProductRowData[] }) {
   );
 }
 
-/** The search/add field: matching Products as you type, or "+ Add" for a new one. */
+/** The search/add field: matching Products to open as you type, or "+ Add" for a new one. */
 function SearchAdd({
   locations,
   locationInView,
-  onChangeStock,
 }: {
   locations: (Location & { products: ProductRowData[] })[];
   locationInView: Id<"locations"> | null;
-  onChangeStock: (product: ProductRowData, change: StockChange) => void;
 }) {
   const t = useT();
   const [text, setText] = useState("");
-  const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
-  const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
-  const createProduct = useMutation(api.products.create);
-  const rowMotion = useRowMotion();
-  // Search results don't carry Expiry Dates or Minimum Stock; the inventory does.
-  const inventoryById = new Map(locations.flatMap((location) => location.products.map((product) => [product._id, product])));
+  const [adding, setAdding] = useState<string | null>(null);
+  const result = useProductSearch(text);
+  const name = tidyName(text);
+  const matches = result?.matches ?? [];
+  // From the matches, not the answer's own `canAdd`, which may still be for the text before.
+  const exists = matches.some((match) => nameKey(match.name) === nameKey(name));
 
   const remembered = locations.find((location) => location._id === lastLocation())?._id;
-  const locationId = pickedLocation ?? locationInView ?? remembered ?? locations[0]?._id;
+  const locationId = locationInView ?? remembered ?? locations[0]?._id;
 
-  const [more, setMore] = useState<{ expiryKind: ExpiryKind | null; minimumStock: string }>(noMore);
-  const minimumStock = more.minimumStock.trim() === "" ? undefined : Number(more.minimumStock);
-  const minimumStockValid = minimumStock === undefined || (Number.isInteger(minimumStock) && minimumStock >= 0);
+  const options: ComboboxOption[] = matches.map((match) => ({
+    key: match._id,
+    label: match.name,
+    detail: `${match.locationName} · ${t("lista.stock", { stock: match.stock })}`,
+    onPick: () => {
+      setText("");
+      navigate(`/koti/${match._id}`);
+    },
+  }));
+  if (name !== "" && !exists && locationId) {
+    const duplicate = result?.duplicate;
+    options.push({
+      key: "add",
+      label: t("koti.add", { name }),
+      detail: duplicate && t("koti.similar", { name: duplicate.name, location: duplicate.locationName }),
+      add: true,
+      onPick: () => setAdding(name),
+    });
+  }
 
-  // A name that already exists can still be added with the button, next to its
-  // warning; Enter, typed while searching for it, doesn't add a second one.
-  // The field clears at once, ready for the next name; the typed one comes back if adding fails.
-  const add = ({ fromEnter = false } = {}) => {
-    if (!result?.name || !locationId || !minimumStockValid || (fromEnter && !result.canAdd)) return;
-    const typed = text;
-    setText("");
-    setPickedLocation(null);
-    setMore(noMore);
+  return (
+    <>
+      <Combobox value={text} onChange={setText} label={t("koti.search")} options={options} />
+      <AnimatePresence>
+        {adding !== null && locationId && (
+          <AddSheet
+            key="add"
+            initialName={adding}
+            locations={locations}
+            initialLocationId={locationId}
+            onClose={() => setAdding(null)}
+            onAdded={() => {
+              setText("");
+              setAdding(null);
+            }}
+            onFailed={(name) => setText((current) => current || name)}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+/** "Add a Product": the typed name, its Location, Expiry Kind and Minimum Stock. */
+function AddSheet({
+  initialName,
+  locations,
+  initialLocationId,
+  onClose,
+  onAdded,
+  onFailed,
+}: {
+  initialName: string;
+  locations: Location[];
+  initialLocationId: Id<"locations">;
+  onClose: () => void;
+  onAdded: () => void;
+  onFailed: (name: string) => void;
+}) {
+  const t = useT();
+  const [name, setName] = useState(initialName);
+  const [locationId, setLocationId] = useState(initialLocationId);
+  const [expiryKind, setExpiryKind] = useState<ExpiryKind | null>(null);
+  const [minimumStockText, setMinimumStockText] = useState("");
+  const duplicate = useProductSearch(name)?.duplicate;
+  const createProduct = useMutation(api.products.create);
+
+  const minimumStock = minimumStockText.trim() === "" ? undefined : Number(minimumStockText);
+  const valid =
+    tidyName(name) !== "" && (minimumStock === undefined || (Number.isInteger(minimumStock) && minimumStock >= 0));
+
+  // A name that already exists can still be added, next to its warning.
+  // The sheet closes at once; the name comes back in the search field if adding fails.
+  const add = () => {
+    if (!valid) return;
+    const tidy = tidyName(name);
     rememberLocation(locationId);
-    createProduct({ name: result.name, locationId, minimumStock, expiryKind: more.expiryKind ?? undefined }).catch(
-      () => setText((current) => current || typed),
+    onAdded();
+    createProduct({ name: tidy, locationId, minimumStock, expiryKind: expiryKind ?? undefined }).catch(() =>
+      onFailed(tidy),
     );
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <input
-        type="search"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") add({ fromEnter: true });
+    <Sheet title={t("koti.addTitle")} onClose={onClose}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          add();
         }}
-        placeholder={t("koti.search")}
-        aria-label={t("koti.search")}
-        enterKeyHint="done"
-        autoComplete="off"
-        className={`${field} w-full px-4 py-3`}
-      />
-      {result && (
-        <div className="flex flex-col gap-2">
-          {result.duplicate && <DuplicateWarning duplicate={result.duplicate} />}
-          {result.matches.length > 0 && (
-            <ul className={`${cardList} flex flex-col overflow-hidden`}>
-              <AnimatePresence initial={false}>
-                {result.matches.map((match) => (
-                  <motion.li key={match._id} {...rowMotion}>
-                    <MatchRow
-                      product={inventoryById.get(match._id) ?? match}
-                      locationName={match.locationName}
-                      onChangeStock={onChangeStock}
-                    />
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-            </ul>
-          )}
-          {result.name && locationId && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => add()}
-                  disabled={!minimumStockValid}
-                  className={`${primaryButton} min-h-11 flex-1 truncate px-4 py-2 text-left`}
-                >
-                  {t("koti.add", { name: result.name })}
-                </button>
-                <select
-                  value={locationId}
-                  onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
-                  aria-label={t("koti.addTo")}
-                  className={`${field} px-2`}
-                >
-                  {locations.map((location) => (
-                    <option key={location._id} value={location._id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <Disclosure summary={t("koti.more")}>
-                <div className="flex gap-2">
-                  <label className="flex flex-1 flex-col gap-1">
-                    <span className="text-stone-500">{t("product.expiryKind")}</span>
-                    <ExpiryKindSelect
-                      value={more.expiryKind}
-                      onChange={(expiryKind) => setMore({ ...more, expiryKind })}
-                      className={moreFieldClass}
-                    />
-                  </label>
-                  <label className="flex flex-1 flex-col gap-1">
-                    <span className="text-stone-500">{t("product.minimumStock")}</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      step={1}
-                      value={more.minimumStock}
-                      onChange={(event) => setMore({ ...more, minimumStock: event.target.value })}
-                      placeholder={t("product.minimumStockNone")}
-                      className={moreFieldClass}
-                    />
-                  </label>
-                </div>
-              </Disclosure>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** A part that opens under its summary; its content moves with the same spring as its chevron. */
-function Disclosure({ summary, children }: { summary: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const contentId = useId();
-  return (
-    <div className="flex flex-col text-sm">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={contentId}
-        onClick={() => setOpen(!open)}
-        className="flex min-h-11 items-center gap-1 self-start text-stone-600 dark:text-stone-400"
+        className="flex flex-col gap-3 text-sm"
       >
-        {summary}
-        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={settle} className="flex">
-          <ChevronDownIcon width={18} height={18} />
-        </motion.span>
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <Reveal key="content">
-            <div id={contentId}>{children}</div>
-          </Reveal>
-        )}
-      </AnimatePresence>
-    </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-stone-500">{t("product.name")}</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            enterKeyHint="done"
+            autoComplete="off"
+            className={sheetField}
+          />
+        </label>
+        {duplicate && <DuplicateWarning duplicate={duplicate} />}
+        <label className="flex flex-col gap-1">
+          <span className="text-stone-500">{t("koti.addTo")}</span>
+          <select
+            value={locationId}
+            onChange={(event) => setLocationId(event.target.value as Id<"locations">)}
+            className={sheetField}
+          >
+            {locations.map((location) => (
+              <option key={location._id} value={location._id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex gap-2">
+          <label className="flex flex-1 flex-col gap-1">
+            <span className="text-stone-500">{t("product.expiryKind")}</span>
+            <ExpiryKindSelect value={expiryKind} onChange={setExpiryKind} className={sheetField} />
+          </label>
+          <label className="flex flex-1 flex-col gap-1">
+            <span className="text-stone-500">{t("product.minimumStock")}</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              value={minimumStockText}
+              onChange={(event) => setMinimumStockText(event.target.value)}
+              placeholder={t("product.minimumStockNone")}
+              className={sheetField}
+            />
+          </label>
+        </div>
+        <button type="submit" disabled={!valid} className={`${primaryButton} mt-1 min-h-12 px-4`}>
+          {t("koti.addButton")}
+        </button>
+      </form>
+    </Sheet>
   );
 }
 
@@ -518,30 +523,6 @@ function ProductRow({
       <div role="cell" className={cellWidths.stock}>
         <StockStepper product={product} onChangeStock={onChangeStock} />
       </div>
-    </SwipeToNeedMore>
-  );
-}
-
-/** A Product found by Koti's search: its name, its Location and Expiry Date under it, and its Stock. */
-function MatchRow({
-  product,
-  locationName,
-  onChangeStock,
-}: {
-  product: ProductRowData;
-  locationName: string;
-  onChangeStock: (product: ProductRowData, change: StockChange) => void;
-}) {
-  return (
-    <SwipeToNeedMore product={product} className="flex min-h-11 items-center gap-3 px-4 py-1 text-sm">
-      <AppLink href={`/koti/${product._id}`} className="min-h-11 min-w-0 flex-1 content-center">
-        <p className={`truncate ${product.stock === 0 ? dimmedName : ""}`}>{product.name}</p>
-        <p className="flex gap-2 text-xs">
-          <span className="truncate text-stone-500">{locationName}</span>
-          <ExpiryDate product={product} />
-        </p>
-      </AppLink>
-      <StockStepper product={product} onChangeStock={onChangeStock} />
     </SwipeToNeedMore>
   );
 }
