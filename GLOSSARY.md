@@ -8,6 +8,10 @@ Komero tracks what a household has at home and what it needs to buy. Every Membe
 A person with a Komero account. All Members see and change the same data.
 _Avoid_: User, account, household member
 
+**Name**:
+What Komero calls a Member everywhere, e.g. in Activities. It is given when the Member joins, and any Member can change anyone's Name. Two Members may have the same Name.
+_Avoid_: Display name, username, nickname
+
 **Invite**:
 A one-time link a Member sends to someone so they can create their own account and become a Member.
 

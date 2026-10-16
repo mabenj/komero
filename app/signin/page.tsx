@@ -50,6 +50,12 @@ export default function SignInPage() {
         {isFirstRun && <p className="text-stone-600 dark:text-stone-400">{t("auth.firstRunHint")}</p>}
       </div>
       <form onSubmit={submit} className="flex flex-col gap-4">
+        {isFirstRun && (
+          <label className="flex flex-col gap-1">
+            <span className="text-sm font-medium">{t("auth.name")}</span>
+            <input name="name" autoComplete="given-name" maxLength={30} required className={`${field} px-3 py-3`} />
+          </label>
+        )}
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium">{t("auth.email")}</span>
           <input

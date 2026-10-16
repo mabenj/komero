@@ -56,6 +56,15 @@ describe("Activity feed", () => {
     ]);
   });
 
+  test("after Anna is renamed, her earlier Activities show her new Name exactly as written", async () => {
+    const [anna, ben] = await annaAndBen();
+    await anna.mutation(api.products.create, { name: "Maito", locationId: await locationId(anna, "Jääkaappi") });
+
+    await ben.mutation(api.members.rename, { memberId: (await anna.query(api.members.me, {}))!._id, name: "äiti" });
+
+    expect((await feed(ben)).map((a) => a.memberName)).toEqual(["äiti"]);
+  });
+
   test("a – at 0 changes nothing and records nothing; the undo toast records its Stock change", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
     const maito = await anna.mutation(api.products.create, {

@@ -11,10 +11,21 @@ describe("Invites", () => {
     const ben = await signUp(t, "ben@example.com", token);
 
     expect(await ben.query(api.members.me, {})).toMatchObject({ email: "ben@example.com" });
-    expect((await anna.query(api.members.list, {})).map((m) => m.email)).toEqual([
-      "anna@example.com",
-      "ben@example.com",
+    expect((await anna.query(api.members.list, {})).map((m) => [m.name, m.email])).toEqual([
+      ["Anna", "anna@example.com"],
+      ["Ben", "ben@example.com"],
     ]);
+  });
+
+  test("sign-up with an Invite but no Name is rejected, and the Invite still works", async () => {
+    const t = newKomero();
+    const anna = await signUp(t, "anna@example.com");
+    const token = await anna.mutation(api.invites.create, {});
+
+    await expect(signUp(t, "ben@example.com", token, "")).rejects.toThrow(/NAME_REQUIRED/);
+    await signUp(t, "ben@example.com", token);
+
+    expect((await anna.query(api.members.list, {})).map((m) => m.name)).toEqual(["Anna", "Ben"]);
   });
 
   test("an Invite works only once: a second person can't sign up with it", async () => {
