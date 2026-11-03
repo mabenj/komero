@@ -14,7 +14,7 @@ export type ComboboxOption = {
   /** A Product's name, with the typed part in bold, or for `add`, what adding does. */
   label: string;
   detail?: ReactNode;
-  /** An option that adds what was typed, in lake blue and always last. */
+  /** An option that adds what was typed, in carrot and always last. */
   add?: boolean;
   onPick: () => void;
 };
@@ -147,7 +147,7 @@ export function Combobox({
         role="listbox"
         aria-label={label}
         hidden={!shown}
-        className={`mt-1.5 rounded-2xl border border-stone-200 bg-surface py-1 dark:border-stone-700 ${
+        className={`mt-1.5 rounded-lg border border-stone-200 bg-surface py-1 dark:border-stone-700 ${
           inline ? "" : "absolute inset-x-0 top-full max-h-80 overflow-y-auto shadow-xl shadow-black/10"
         }`}
       >

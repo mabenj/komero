@@ -55,3 +55,10 @@ export const foldedLocations = (): string[] => folded.get()?.split(",") ?? [];
 const bag = remembered("komero.bagFolded", oneOf(["folded", "open"] as const));
 export const rememberBagFolded = (folded: boolean) => bag.set(folded ? "folded" : "open");
 export const bagFolded = () => bag.get() === "folded";
+
+// ⚙ Theme on this device; System follows the device's light or dark setting.
+export const THEMES = ["system", "light", "dark"] as const;
+export type Theme = (typeof THEMES)[number];
+const theme = remembered("komero.theme", oneOf(THEMES));
+export const rememberTheme = theme.set;
+export const chosenTheme = (): Theme => theme.get() ?? "system";

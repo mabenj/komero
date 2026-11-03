@@ -7,6 +7,7 @@ import { useState } from "react";
 import { ActivityList } from "@/components/ActivityList";
 import { AppLink } from "@/components/AppLink";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { ThemePicker } from "@/components/ThemePicker";
 import { CategoriesSettings, LocationsSettings } from "@/components/LocationsSettings";
 import { NameInput } from "@/components/NameInput";
 import { api } from "@/convex/_generated/api";
@@ -31,6 +32,7 @@ export default function SettingsScreen() {
       <Members />
       <InviteLink />
       <LanguagePicker />
+      <ThemePicker />
       <div className="flex flex-col gap-3">
         {me && <p className="text-stone-600 dark:text-stone-400">{t("settings.signedInAs", { email: me.email })}</p>}
         <button

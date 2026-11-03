@@ -163,6 +163,10 @@ export const fi = {
   // Language names are written in their own language in both dictionaries.
   "settings.language.fi": "Suomi",
   "settings.language.en": "English",
+  "settings.theme": "Teema",
+  "settings.theme.system": "Järjestelmä",
+  "settings.theme.light": "Vaalea",
+  "settings.theme.dark": "Tumma",
   "settings.locations": "Säilytyspaikat",
   "locations.newName": "Uusi säilytyspaikka, esim. Kellari",
   "locations.add": "Lisää",

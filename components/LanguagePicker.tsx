@@ -26,10 +26,8 @@ export function LanguagePicker() {
             lang={lang}
             aria-pressed={current === lang}
             onClick={() => setLanguage({ language: lang })}
-            className={`flex-1 rounded-xl border py-3 text-lg ${
-              current === lang
-                ? "border-accent bg-accent font-semibold text-accent-foreground"
-                : "border-stone-300 bg-surface dark:border-stone-700"
+            className={`flex-1 rounded-md py-3 text-lg ${
+              current === lang ? "bg-accent font-semibold text-accent-foreground" : "bg-stone-200 dark:bg-stone-700"
             }`}
           >
             {t(`settings.language.${lang}`)}

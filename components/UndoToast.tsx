@@ -111,8 +111,8 @@ function UndoToast({ toast, onClose }: { toast: Toast | null; onClose: () => voi
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
           }}
-          className="fixed inset-x-0 z-5 mx-auto flex min-h-13 max-w-md items-center overflow-hidden rounded-2xl bg-ink px-4 py-1 text-ink-foreground shadow-xl shadow-black/20"
-          style={{ width: "calc(100% - 2rem)", bottom: "calc(6.5rem + env(safe-area-inset-bottom))" }}
+          className="fixed inset-x-0 z-5 mx-auto flex min-h-13 max-w-md items-center overflow-hidden rounded-lg bg-ink px-4 py-1 text-ink-foreground shadow-xl shadow-black/20"
+          style={{ width: "calc(100% - 2rem)", bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }}
         >
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div key={toast.id} {...contentMotion} className="flex w-full items-center justify-between gap-4">

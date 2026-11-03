@@ -29,7 +29,7 @@ export function NameInput({
         if (typed === "") event.currentTarget.value = name;
         else if (typed !== name) onRename(typed);
       }}
-      className="min-h-11 min-w-0 flex-1 rounded-lg bg-transparent px-2 text-base"
+      className="min-h-11 min-w-0 flex-1 rounded-sm bg-transparent px-2 text-base"
     />
   );
 }

@@ -68,7 +68,7 @@ export default function ScanScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="group" aria-label={t("scan.mode")} className="flex rounded-xl bg-stone-200/60 p-1 dark:bg-stone-800">
+      <div role="group" aria-label={t("scan.mode")} className="flex rounded-md bg-stone-200/60 p-1 dark:bg-stone-800">
         {SCAN_MODES.map((option) => (
           <button
             key={option}
@@ -78,8 +78,8 @@ export default function ScanScreen() {
               setMode(option);
               rememberScanMode(option);
             }}
-            className={`min-h-11 flex-1 rounded-lg px-2 py-1.5 text-sm leading-tight font-semibold ${
-              option === mode ? "bg-accent text-accent-foreground shadow-sm" : "text-stone-600 dark:text-stone-400"
+            className={`min-h-11 flex-1 rounded-sm px-2 py-1.5 text-sm leading-tight font-semibold ${
+              option === mode ? "bg-accent text-accent-foreground" : "text-stone-600 dark:text-stone-400"
             }`}
           >
             {t(`scan.mode.${option}`)}
@@ -102,11 +102,11 @@ export default function ScanScreen() {
         )}
       </AnimatePresence>
       {cameraError ? (
-        <p className="rounded-xl bg-amber-100 px-4 py-3 text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">
+        <p className="rounded-md bg-amber-100 px-4 py-3 text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">
           {t("scan.cameraError")}
         </p>
       ) : (
-        <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-black">
+        <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-black">
           <BarcodeScanner
             onCode={(code) => void onCode(code)}
             onError={() => setCameraError(true)}
@@ -150,7 +150,7 @@ export default function ScanScreen() {
 }
 
 /**
- * A lake-blue glow around the viewfinder that closes in and fades, the moment
+ * A carrot glow around the viewfinder that closes in and fades, the moment
  * a barcode is read; key it by the read so each one flashes. Under reduced
  * motion it only fades, briefly.
  */
@@ -159,7 +159,7 @@ function ReadFlash() {
   return (
     <motion.div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 rounded-2xl bg-accent/20 ring-4 ring-accent ring-inset"
+      className="pointer-events-none absolute inset-0 rounded-lg bg-accent/20 ring-4 ring-accent ring-inset"
       initial={reduced ? { opacity: 1 } : { opacity: 1, scale: 1.04 }}
       animate={reduced ? { opacity: 0 } : { opacity: 0, scale: 1 }}
       transition={reduced ? crossFade : { duration: 0.5, ease: "easeOut" }}
@@ -362,7 +362,7 @@ function UnknownBarcodeCard({
               aria-label={t("scan.lookingUp")}
               className="flex min-h-11 items-center"
             >
-              <span className="h-7 w-2/3 animate-pulse rounded-lg bg-stone-200 dark:bg-stone-800" />
+              <span className="h-7 w-2/3 animate-pulse rounded-sm bg-stone-200 dark:bg-stone-800" />
             </button>
           ) : (
             <button type="button" onClick={startEditing} className="flex min-h-11 flex-col items-start text-left">
