@@ -69,7 +69,7 @@ export function Reveal({ children, className }: { children: ReactNode; className
 /**
  * Something that folds open under its heading and shut again, growing from no
  * height so whatever is below moves along with it. It clips only while it moves,
- * so card shadows show once it's open, and only top and bottom, so a table
+ * so a dropdown inside it shows once it's open, and only top and bottom, so a table
  * running edge to edge past the page's gutter is never cut at the sides. Render
  * it inside `AnimatePresence`; under reduced motion it cross-fades.
  */

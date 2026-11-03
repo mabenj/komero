@@ -419,7 +419,7 @@ function EmptyKoti() {
 function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationName: string } }) {
   const t = useT();
   return (
-    <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">
+    <p className="rounded-sm bg-amber-100 px-3 py-2 text-sm text-amber-900 dark:bg-amber-400/15 dark:text-amber-200">
       {t("koti.duplicate", { name: duplicate.name, location: duplicate.locationName })}
     </p>
   );

@@ -200,7 +200,7 @@ function MoveProductsPrompt({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl bg-background p-3">
+    <div className="flex flex-col gap-2 rounded-md bg-background p-3">
       <p>
         {count === 1
           ? t("locations.moveOne", { name: location.name })
@@ -229,7 +229,7 @@ function MoveProductsPrompt({
         <button
           type="button"
           onClick={() => void moveAndDelete()}
-          className="flex-1 rounded-xl bg-red-600 py-3 font-semibold text-white"
+          className="flex-1 rounded-md bg-red-600 py-3 font-semibold text-white"
         >
           {t("locations.moveAndDelete")}
         </button>

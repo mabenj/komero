@@ -1,16 +1,58 @@
 @import "tailwindcss";
 
-/* Birch by day, night in dark mode, lake blue as the one accent (spec #19 "Theme"). */
+/*
+ * Flat colours: white blocks on a light grey page by day, deep slate by night,
+ * one carrot accent, and midnight navigation. No shadows or gradients, only
+ * frosted glass where the page scrolls under the header and bottom bar. Dark
+ * mode follows `data-theme` on <html>, which the script in app/layout.tsx
+ * sets before the first paint from the Theme chosen on this device
+ * (⚙ Theme: System, Light or Dark).
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
-  color-scheme: light dark;
-  --background: #f7f4ee;
-  --surface: #fffdf9;
-  --foreground: #1f1b16;
-  --accent: #2b5d86;
+  color-scheme: light;
+  --background: #f4f5f7;
+  --surface: #ffffff;
+  --foreground: #1e2a36;
+  --accent: #e8590c;
   --accent-foreground: #ffffff;
-  --ink: #1f1b16;
-  --ink-foreground: #f7f4ee;
-  --ink-accent: #9cc4e8;
+  --rail: #22303e;
+  --rail-foreground: #aeb9c5;
+  --ink: #22303e;
+  --ink-foreground: #ffffff;
+  --ink-accent: #ffb07a;
+  /* Cool slate greys rather than Tailwind's warm stone. */
+  --color-stone-100: #eceef1;
+  --color-stone-200: #e2e5e9;
+  --color-stone-300: #cdd2d9;
+  --color-stone-400: #99a2ae;
+  --color-stone-500: #66717e;
+  --color-stone-600: #4a5461;
+  --color-stone-700: #343c47;
+  --color-stone-800: #232a33;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #10161c;
+  --surface: #19222b;
+  --foreground: #e4e9ee;
+  --accent: #ff8a4c;
+  --accent-foreground: #2a1205;
+  --rail: #0a0f14;
+  --rail-foreground: #8996a4;
+  --ink: #2a3643;
+  --ink-foreground: #e4e9ee;
+  --ink-accent: #ffb07a;
+  --color-stone-100: #1c252e;
+  --color-stone-200: #26303a;
+  --color-stone-300: #c8cfd7;
+  --color-stone-400: #97a1ad;
+  --color-stone-500: #85909c;
+  --color-stone-600: #56616d;
+  --color-stone-700: #2c3640;
+  --color-stone-800: #212a33;
 }
 
 @theme inline {
@@ -19,41 +61,23 @@
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-rail: var(--rail);
+  --color-rail-foreground: var(--rail-foreground);
   --color-ink: var(--ink);
   --color-ink-foreground: var(--ink-foreground);
   --color-ink-accent: var(--ink-accent);
-  --font-display: var(--font-nunito), system-ui, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0d141c;
-    --surface: #172230;
-    --foreground: #e6edf3;
-    --accent: #8cc0ec;
-    --accent-foreground: #10202e;
-    --ink: #283647;
-    --ink-foreground: #e6edf3;
-    --ink-accent: #9cc4e8;
-    /* Slate values, so greys in dark mode are cool rather than brown. */
-    --color-stone-300: #cad5e2;
-    --color-stone-400: #90a1b9;
-    --color-stone-500: #62748e;
-    --color-stone-600: #45556c;
-    --color-stone-700: #2c3a4f;
-    --color-stone-800: #1f2b3b;
-  }
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+  --font-display: var(--font-manrope), system-ui, sans-serif;
 }
 
 @layer base {
   body {
     background: var(--background);
     color: var(--foreground);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
 
   .font-display {
-    font-weight: 600;
+    font-weight: 650;
     letter-spacing: -0.015em;
   }
 
@@ -71,39 +95,46 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* A quick dim on press, flat like the rest. */
   button:not(:disabled),
   a {
-    transition:
-      transform 120ms ease-out,
-      opacity 120ms ease-out;
+    transition: opacity 120ms ease-out;
   }
 
   button:not(:disabled):active,
   a:active {
-    transform: scale(0.96);
-    opacity: 0.85;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    button:not(:disabled):active,
-    a:active {
-      transform: none;
-    }
+    opacity: 0.7;
   }
 }
 
 /* Frosted header and bottom bar; solid when the system asks for less transparency. */
-.material {
-  background: color-mix(in srgb, var(--background) 72%, transparent);
+.material,
+.material-rail {
   -webkit-backdrop-filter: blur(20px) saturate(170%);
   backdrop-filter: blur(20px) saturate(170%);
 }
 
+.material {
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+}
+
+.material-rail {
+  background: color-mix(in srgb, var(--rail) 82%, transparent);
+}
+
 @media (prefers-reduced-transparency: reduce) {
-  .material {
-    background: var(--background);
+  .material,
+  .material-rail {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+  }
+
+  .material {
+    background: var(--background);
+  }
+
+  .material-rail {
+    background: var(--rail);
   }
 }
 
