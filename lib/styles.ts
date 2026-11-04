@@ -18,3 +18,7 @@ export const secondaryButton = "rounded-md bg-stone-200 font-semibold dark:bg-st
 
 /** A list drawn as one card with hairline dividers between its rows. */
 export const cardList = `${card} divide-y divide-stone-100 dark:divide-stone-200`;
+
+/** A round – or + (or other icon) button, such as for Stock on the Product page. */
+export const stepButton =
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-700 disabled:opacity-30 dark:bg-stone-800 dark:text-stone-200";

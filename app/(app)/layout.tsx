@@ -25,12 +25,10 @@ const PLACES = [
 export default function AppLayout({ children }: LayoutProps<"/">) {
   const t = useT();
   const pathname = usePathname();
-  // A Product page (/koti/<id>) belongs to the Koti tab, Tapahtumat to Settings.
+  // A Product page belongs to the tab it opened over (/koti/<id>, /lista/<id>), Tapahtumat to Settings.
   const currentTab = TABS.find((tab) => pathname === `/${tab}` || pathname.startsWith(`/${tab}/`));
   const current: Place | undefined =
     currentTab ?? (pathname === "/settings" || pathname.startsWith("/settings/") ? "settings" : undefined);
-  // Koti's tables use a wide screen; the other tabs read better in a narrow column.
-  const width = currentTab === "koti" ? "max-w-4xl" : "max-w-xl";
 
   useEffect(() => {
     if (currentTab) rememberTab(currentTab);
@@ -41,8 +39,8 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       <Rail current={current} />
       <div className="md:pl-20">
         <header className="material sticky top-0 z-10 pt-[env(safe-area-inset-top)]">
-          <div className={`mx-auto flex ${width} items-center justify-between px-4 pt-4 pb-3`}>
-            <h1 className="font-display text-[26px] font-extrabold">{current && t(`nav.${current}`)}</h1>
+          <div className="mx-auto flex max-w-xl items-center justify-between px-4 pt-4 pb-3">
+            <h1 className="font-display text-[26px] font-extrabold text-accent">{current && t(`nav.${current}`)}</h1>
             {/* Phones only; wide screens have Settings at the foot of the rail. */}
             <AppLink
               href="/settings"
@@ -55,7 +53,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           </div>
           <OfflineBanner />
         </header>
-        <main className={`mx-auto ${width} overflow-x-clip px-4 py-2 pb-28 md:pb-10`}>
+        <main className="mx-auto max-w-xl overflow-x-clip px-4 py-2 pb-28 md:pb-10">
           <AuthLoading>
             <p className="text-stone-500">{t("common.loading")}</p>
           </AuthLoading>

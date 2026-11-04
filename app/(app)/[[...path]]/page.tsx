@@ -19,18 +19,20 @@ import SettingsScreen from "../_screens/Settings";
  * The whole signed-in app is this one route, which picks the screen from the
  * URL on the client. Moving between screens (see `AppLink`) never asks the
  * server for a route, so it keeps working while offline. A Product page
- * (/koti/<id>) is opened from Koti and fades in over it; Koti stays mounted
- * underneath, so Back returns to it as it was left, search results and all.
+ * (/koti/<id> or /lista/<id>) is opened from Komero or Kauppalista and fades
+ * in over it; that screen stays mounted underneath, so Back returns to it as
+ * it was left, search results and all.
  * The Tapahtumat screen (/settings/tapahtumat) opens over Settings the same way.
  */
 export default function AppScreens() {
   const pathname = usePathname();
   useScrollRestore(pathname);
   const [, first, second, ...rest] = pathname.split("/");
-  const productId = first === "koti" && second && rest.length === 0 ? (second as Id<"products">) : null;
+  const productId =
+    (first === "koti" || first === "lista") && second && rest.length === 0 ? (second as Id<"products">) : null;
   const isActivities = pathname === "/settings/tapahtumat";
   const screen =
-    productId !== null ? <KotiScreen />
+    productId !== null ? (first === "lista" ? <ListaScreen /> : <KotiScreen />)
     : isActivities ? <SettingsScreen />
     : rest.length > 0 || second ? null
     : first === "koti" ? <KotiScreen />
@@ -46,7 +48,7 @@ export default function AppScreens() {
   }, [known, pathname]);
 
   const topScreen =
-    productId !== null ? <ProductScreen productId={productId} />
+    productId !== null ? <ProductScreen productId={productId} home={`/${first}`} />
     : isActivities ? <ActivitiesScreen />
     : null;
 
