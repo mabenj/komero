@@ -1,16 +1,20 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { AnimatePresence } from "motion/react";
+import { type ReactNode, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
+import { AddFab } from "@/components/AddFab";
+import { AppLink } from "@/components/AppLink";
 import { CategorySelect } from "@/components/CategorySelect";
 import { Combobox, type ComboboxOption, useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { usePutAwayToast } from "@/components/StockToasts";
-import { ChevronDownIcon, TagIcon, TrashIcon } from "@/components/icons";
+import { ChevronDownIcon, TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
-import { NumberStepper, stepButton } from "@/components/NumberStepper";
-import { useChangeToast } from "@/components/UndoToast";
+import { Sheet } from "@/components/Sheet";
+import { QuantityStepper, useDeleteEntry } from "@/components/EntryControls";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey, tidyName } from "@/convex/productNames";
@@ -20,21 +24,18 @@ import {
   type Groups,
   putAwayAllLocally,
   putAwayLocally,
-  removeLocally,
-  setCategoryLocally,
   setQuantityLocally,
   tickLocally,
   untickLocally,
 } from "@/lib/listUpdates";
 import { bagFolded, lastLocation, rememberBagFolded, rememberLocation } from "@/lib/remembered";
-import { cardList, field, primaryButton, textLink } from "@/lib/styles";
+import { cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
 
 type Entry = {
   _id: Id<"entries">;
   name: string;
   quantity: number;
   productId?: Id<"products">;
-  categoryId?: Id<"categories"> | null;
   stock?: number;
   asksForDate?: boolean;
 };
@@ -60,12 +61,13 @@ const productOrOneOff = (entry: Entry) => entry.productId ?? `oneOff:${nameKey(e
  * The shared Shopping List: to-buy Entries grouped by Category in walking
  * order, then "Other" (Products without a Category, and One-offs), then the
  * Bag, grouped the same way. Like a checklist, nothing on it moves: rows
- * appear, change place and leave at once.
+ * appear, change place and leave at once. The floating + adds to it.
  */
 export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
   const [allPutAway, setAllPutAway] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (!allPutAway) return;
@@ -81,7 +83,6 @@ export default function ListaScreen() {
   const showAllPutAway = allPutAway && bagIsEmpty;
   return (
     <div className="flex flex-col gap-6">
-      <AddToList list={list} />
       {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
       {nothingToBuy && bagIsEmpty && <ListNote allPutAway={showAllPutAway} />}
       {titled(list, t("lista.other")).map((group) => (
@@ -89,6 +90,18 @@ export default function ListaScreen() {
       ))}
       {!bagIsEmpty && <Bag groups={list.bag} onEmptied={() => setAllPutAway(true)} />}
       {showAllPutAway && !nothingToBuy && <ListNote allPutAway />}
+      {/* Opening synchronously inside the tap lets the sheet focus the field, so phones show the keyboard. */}
+      <AddFab label={t("lista.search")} onClick={() => flushSync(() => setAdding(true))} />
+      <AnimatePresence>
+        {adding && (
+          <Sheet key="add" title={t("lista.search")} onClose={() => setAdding(false)}>
+            {/* Room for the matches under the field, so the sheet doesn't jump as they come and go. */}
+            <div className="min-h-[40dvh]">
+              <AddToList list={list} />
+            </div>
+          </Sheet>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -109,9 +122,10 @@ function ListNote({ allPutAway }: { allPutAway: boolean }) {
 }
 
 /**
- * The search/add field: Products matching the text, picked for Need More, or
- * "+ Add" for a One-off (which links itself if it names a Product). The field
- * keeps focus after a pick, so the next thing can be typed at once.
+ * The search/add field in the + sheet: Products matching the text, picked for
+ * Need More, or "+ Add" for a One-off (which links itself if it names a
+ * Product). The field keeps focus after a pick, so the next thing can be typed
+ * at once.
  */
 function AddToList({ list }: { list: Groups }) {
   const t = useT();
@@ -152,7 +166,7 @@ function AddToList({ list }: { list: Groups }) {
     });
   }
 
-  return <Combobox value={text} onChange={setText} label={t("lista.search")} options={options} keepFocus />;
+  return <Combobox value={text} onChange={setText} label={t("lista.search")} options={options} keepFocus inline />;
 }
 
 /** A Category's Entries (or Other's), on the list or inside the Bag. */
@@ -171,7 +185,7 @@ function EntryGroup({
   return (
     <section className="flex flex-col gap-1">
       <Heading className="px-1 text-xs font-semibold tracking-wide text-stone-500 uppercase">{title}</Heading>
-      <ul className={`${cardList} flex flex-col`}>
+      <ul className={`${cardList} flex flex-col overflow-hidden`}>
         {entries.map((entry) => (
           // On the list a Product or One-off has one Entry, so the row stays when the server gives it a new id.
           <EntryRow key={inBag ? entry._id : productOrOneOff(entry)} entry={entry} inBag={inBag} onEmptied={onEmptied} />
@@ -279,42 +293,33 @@ function Bag({ groups, onEmptied }: { groups: Groups; onEmptied: () => void }) {
 }
 
 /**
- * One Entry, as a line in a checklist: a checkbox, its name and its quantity,
- * with the Product's Stock at home (or, for a One-off, "Make a Product") under
- * the name. On the list the quantity opens –, +, the Product's Category and
- * delete, and ticking moves the Entry into the Bag at once; unticking it there
- * is the undo. In the Bag the name is struck through, with Put away beside it.
- * Every change shows at once, even on a weak signal in the shop.
+ * One Entry, as a line in a checklist: a checkbox, then its name with the
+ * Product's Stock at home under it (or that it is a One-off), and how many.
+ * Tapping the line opens the Product page, or for a One-off its sheet; that is
+ * where the quantity changes. On the list, ticking moves the Entry into the
+ * Bag at once; unticking it there is the undo. In the Bag the name is struck
+ * through, with Put away beside it. Every change shows at once, even on a weak
+ * signal in the shop.
  */
 function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: boolean; onEmptied?: () => void }) {
   const t = useT();
-  const [makingProduct, setMakingProduct] = useState(false);
   const [askingDate, setAskingDate] = useState(false);
-  const showChangeToast = useChangeToast();
-  const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
   const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate(tickLocally);
   const untick = useMutation(api.shoppingList.untick).withOptimisticUpdate(untickLocally);
   const putAwayEntry = useMutation(api.shoppingList.putAway).withOptimisticUpdate(putAwayLocally);
   const showPutAway = usePutAwayToast();
-  const remove = useMutation(api.shoppingList.remove).withOptimisticUpdate(removeLocally);
-  const restore = useMutation(api.shoppingList.restore);
-  const update = useMutation(api.products.update).withOptimisticUpdate(setCategoryLocally);
 
   const putAway = (expiryDate?: string) => {
     const done = putAwayEntry({ entryId: entry._id, expiryDate }).then(({ putAway }) => putAway);
     showPutAway(t("lista.putAwayDone", { name: entry.name }), done);
     onEmptied?.();
   };
-  const deleteEntry = () => {
-    const deleted = { productId: entry.productId, name: entry.name, quantity: entry.quantity };
-    showChangeToast(t("lista.deleted", { name: entry.name }), remove({ entryId: entry._id }), () => restore(deleted));
-  };
 
   return (
-    <li className="flex flex-col px-4 text-sm">
-      <div className="flex min-h-9 items-center gap-2">
-        {/* The box is small; its label is the full 44px tap area. */}
-        <label className="-my-1 -ml-3 flex h-11 w-11 shrink-0 items-center justify-center">
+    <li className="flex flex-col">
+      <div className="flex items-center pl-1">
+        {/* The box is small; its label is the row's full height. */}
+        <label className="flex h-14 w-12 shrink-0 items-center justify-center">
           <input
             type="checkbox"
             checked={inBag}
@@ -323,71 +328,37 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
             className="h-5 w-5 accent-accent"
           />
         </label>
-        {/* The Stock line sits under the name, so the box and the quantity centre on both lines. */}
-        <div className="flex min-w-0 flex-1 flex-col py-2">
-          <p className={`truncate ${inBag ? "text-stone-400 line-through" : ""}`}>{entry.name}</p>
-          {!inBag && (entry.stock !== undefined || !makingProduct) && (
-            <p className="truncate text-xs text-stone-500">
-              {entry.stock !== undefined && t("lista.stock", { stock: entry.stock })}
-              {entry.productId === undefined && !makingProduct && (
-                <button type="button" className={textLink} onClick={() => setMakingProduct(true)}>
-                  {t("lista.makeProduct")}
-                </button>
-              )}
-            </p>
+        <EntryLink entry={entry} inBag={inBag} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pr-4">
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className={`truncate font-medium ${inBag ? "text-stone-400 line-through" : ""}`}>{entry.name}</span>
+            {!inBag && (
+              <span className="truncate text-xs text-stone-500">
+                {entry.stock !== undefined ? t("lista.stock", { stock: entry.stock }) : t("lista.oneOff")}
+              </span>
+            )}
+          </span>
+          {(inBag || entry.quantity > 1) && (
+            <span className={`font-display tabular-nums ${inBag ? "text-stone-400" : "text-stone-500"}`}>
+              {t("lista.quantity", { quantity: entry.quantity })}
+            </span>
           )}
-        </div>
-        {inBag ? (
-          <>
-            <span className="text-stone-400 tabular-nums">{t("lista.quantity", { quantity: entry.quantity })}</span>
-            <button
-              type="button"
-              className={`${textLink} -my-1 min-h-11 shrink-0 px-2 text-xs`}
-              aria-label={t("lista.putAwayName", { name: entry.name })}
-              onClick={() => (entry.asksForDate ? setAskingDate(true) : putAway())}
-            >
-              {t("lista.putAway")}
-            </button>
-          </>
-        ) : (
-          <NumberStepper
-            text={t("lista.quantity", { quantity: entry.quantity })}
-            label={t("lista.changeQuantity", { name: entry.name, quantity: entry.quantity })}
-            onDecrease={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity - 1 })}
-            decreaseLabel={t("lista.decrease", { name: entry.name })}
-            decreaseDisabled={entry.quantity <= 1}
-            onIncrease={() => void setQuantity({ entryId: entry._id, quantity: entry.quantity + 1 })}
-            increaseLabel={t("lista.increase", { name: entry.name })}
-            extra={
-              <>
-                {entry.productId && (
-                  // The tag is the button; the native picker opens from the invisible select over it.
-                  <span className={`${stepButton} relative`}>
-                    <TagIcon width={18} height={18} />
-                    <CategorySelect
-                      value={entry.categoryId ?? null}
-                      onChange={(categoryId) => void update({ productId: entry.productId!, categoryId })}
-                      aria-label={t("lista.category", { name: entry.name })}
-                      className="absolute inset-0 opacity-0"
-                    />
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className={stepButton}
-                  aria-label={t("lista.delete", { name: entry.name })}
-                  onClick={deleteEntry}
-                >
-                  <TrashIcon width={18} height={18} />
-                </button>
-              </>
-            }
-          />
+          {!inBag && (
+            <ChevronDownIcon width={16} height={16} className="shrink-0 -rotate-90 text-stone-300 dark:text-stone-600" />
+          )}
+        </EntryLink>
+        {inBag && (
+          <button
+            type="button"
+            className={`${textLink} -ml-2 min-h-11 shrink-0 pr-4 pl-2 text-xs`}
+            aria-label={t("lista.putAwayName", { name: entry.name })}
+            onClick={() => (entry.asksForDate ? setAskingDate(true) : putAway())}
+          >
+            {t("lista.putAway")}
+          </button>
         )}
       </div>
-      {makingProduct && <MakeProduct entry={entry} onDone={() => setMakingProduct(false)} />}
       {askingDate && (
-        <div className="pb-2">
+        <div className="px-4 pb-2">
           <DatePrompt
             name={entry.name}
             onAnswer={(expiryDate) => {
@@ -399,6 +370,71 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * What tapping an Entry opens: its Product page (over Kauppalista), or for a
+ * One-off still to buy, the One-off's sheet. A One-off in the Bag has nothing
+ * left to change.
+ */
+function EntryLink({
+  entry,
+  inBag,
+  className,
+  children,
+}: {
+  entry: Entry;
+  inBag: boolean;
+  className: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (entry.productId)
+    return (
+      <AppLink href={`/lista/${entry.productId}`} className={className}>
+        {children}
+      </AppLink>
+    );
+  if (inBag) return <span className={className}>{children}</span>;
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={`${className} text-left`}>
+        {children}
+      </button>
+      <AnimatePresence>{open && <OneOffSheet key="oneOff" entry={entry} onClose={() => setOpen(false)} />}</AnimatePresence>
+    </>
+  );
+}
+
+/** A One-off's sheet: how many to buy, making it a Product, or deleting it from the list. */
+function OneOffSheet({ entry, onClose }: { entry: Entry; onClose: () => void }) {
+  const t = useT();
+  const [makingProduct, setMakingProduct] = useState(false);
+  const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
+  const deleteEntry = useDeleteEntry();
+  return (
+    <Sheet title={entry.name} onClose={onClose}>
+      <QuantityStepper entry={entry} label={t("lista.quantityLabel")} setQuantity={setQuantity} />
+      {makingProduct ? (
+        <MakeProduct entry={entry} onDone={onClose} />
+      ) : (
+        <button type="button" onClick={() => setMakingProduct(true)} className={`${secondaryButton} min-h-12`}>
+          {t("lista.makeProduct")}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          onClose();
+          deleteEntry(entry);
+        }}
+        className={`${secondaryButton} flex min-h-12 items-center justify-center gap-2 text-red-700 dark:text-red-400`}
+      >
+        <TrashIcon width={18} height={18} />
+        {t("lista.deleteButton")}
+      </button>
+    </Sheet>
   );
 }
 
@@ -427,7 +463,7 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
 
   return (
     <form
-      className="flex flex-col gap-2 pb-2 pl-10"
+      className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         void save();

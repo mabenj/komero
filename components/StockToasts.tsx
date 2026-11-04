@@ -7,7 +7,9 @@ import { useNeedMore } from "@/components/NeedMore";
 import { type ShownToast, useChangeToast, useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { applyRestock, applyUse, type StockState } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
+import { changeStockLocally } from "@/lib/listUpdates";
 
 type Product = { _id: Id<"products">; name: string };
 type StockChange = { from: number; to: number; expiryDateBefore?: string };
@@ -65,5 +67,44 @@ export function usePutAwayToast() {
     (message: string, putAway: PutAway | Promise<PutAway>) =>
       showChangeToast(message, putAway, (done) => undoPutAway({ putAway: done })),
     [showChangeToast, undoPutAway],
+  );
+}
+
+const stockRule = (change: "restock" | "use") =>
+  change === "restock" ? (state: StockState) => applyRestock(state, 1) : applyUse;
+
+/**
+ * The Product page's + / –: applied optimistically, so taps feel instant, and
+ * at the tap a toast shows the Stock it changes to, with Undo. Only the server
+ * knows the Minimum Stock, so when it answers that the change made the Product
+ * Running Low, the "running low" toast takes over and offers Need More;
+ * nothing goes on the list unless it is tapped.
+ */
+export function useStockChange() {
+  const t = useT();
+  const showChangeToast = useChangeToast();
+  const showRunningLow = useRunningLowToast();
+  const undoStockChange = useUndoStockChange();
+  const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate((store, { productId, change }) =>
+    changeStockLocally(store, productId, stockRule(change)),
+  );
+
+  return useCallback(
+    (product: Product & { stock: number }, change: "restock" | "use") => {
+      const from = product.stock;
+      const to = stockRule(change)({ stock: from }).stock;
+      if (from === to) return;
+      const changed = adjustStock({ productId: product._id, change });
+      const shown = showChangeToast(t("koti.stockChanged", { name: product.name, from, to }), changed, (done) =>
+        undoStockChange(product, done)(),
+      );
+      changed.then(
+        (done) => {
+          if (done.crossedIntoRunningLow) showRunningLow(product, undoStockChange(product, done), shown);
+        },
+        () => {},
+      );
+    },
+    [adjustStock, undoStockChange, showChangeToast, showRunningLow, t],
   );
 }

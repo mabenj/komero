@@ -5,26 +5,29 @@ import { BackLink, navigate } from "@/components/AppLink";
 import { ActivityList } from "@/components/ActivityList";
 import { CategorySelect } from "@/components/CategorySelect";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { TrashIcon } from "@/components/icons";
+import { QuantityStepper, useDeleteEntry } from "@/components/EntryControls";
+import { MinusIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { useNeedMore } from "@/components/NeedMore";
-import { useRunningLowToast } from "@/components/StockToasts";
+import { useRunningLowToast, useStockChange } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { isDate } from "@/convex/stock";
 import { useT } from "@/lib/i18n";
-import { setCategoryLocally } from "@/lib/listUpdates";
-import { card, cardList, field, primaryButton, secondaryButton } from "@/lib/styles";
+import { entriesIn, setCategoryLocally, setQuantityLocally } from "@/lib/listUpdates";
+import { card, cardList, field, primaryButton, secondaryButton, stepButton } from "@/lib/styles";
 
 const fieldClass = `${field} w-full px-4 py-2`;
 
 /**
  * Everything about one Product: rename it, move it to another Location, set,
- * change or clear its Category, set or clear its Minimum Stock, Expiry Kind
- * and Expiry Date, put it on the Shopping List, delete it, and see its recent
- * Activity.
+ * change or clear its Category, change its Stock with – and +, set or clear
+ * its Minimum Stock, Expiry Kind and Expiry Date, put it on the Shopping List
+ * or change how many are on it, delete it, and see its recent Activity. It
+ * opens over the tab it was opened from, `home`, which Back and deleting
+ * return to.
  */
-export default function ProductScreen({ productId }: { productId: Id<"products"> }) {
+export default function ProductScreen({ productId, home }: { productId: Id<"products">; home: string }) {
   const t = useT();
   const showUndoToast = useUndoToast();
   const product = useQuery(api.products.get, { productId });
@@ -36,12 +39,18 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
   const restore = useMutation(api.products.restore);
   const needMore = useNeedMore();
   const showRunningLow = useRunningLowToast();
+  const changeStock = useStockChange();
+  const list = useQuery(api.shoppingList.get);
+  const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
+  const deleteEntry = useDeleteEntry();
+  // The Product's Entry still to buy; one already in the Bag has been bought.
+  const onList = list && entriesIn(list).find((entry) => "productId" in entry && entry.productId === productId);
 
   if (product === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
   if (product === null) {
     return (
       <div className="flex flex-col gap-4">
-        <BackLink />
+        <BackLink home={home} />
         <p className="text-stone-500">{t("product.notFound")}</p>
       </div>
     );
@@ -59,14 +68,14 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
   };
 
   const deleteProduct = async () => {
-    navigate("/koti", { replace: true });
+    navigate(home, { replace: true });
     const deleted = await remove({ productId });
     showUndoToast(t("product.deleted", { name: deleted.name }), () => void restore(deleted));
   };
 
   return (
     <div className="flex flex-col gap-6">
-      <BackLink />
+      <BackLink home={home} />
       <div className={`${card} flex flex-col gap-5 p-4`}>
         <label className="flex flex-col gap-1">
           <span className="text-sm text-stone-500">{t("product.name")}</span>
@@ -110,9 +119,31 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
         </label>
         <div className="flex flex-col gap-1">
           <span className="text-sm text-stone-500">{t("product.stock")}</span>
-          <p className={`text-2xl font-semibold tabular-nums ${product.stock === 0 ? "text-stone-400" : ""}`}>
-            {product.stock}
-          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={product.stock === 0}
+              onClick={() => changeStock(product, "use")}
+              aria-label={t("koti.use", { name: product.name })}
+              className={`${stepButton} h-12 w-12`}
+            >
+              <MinusIcon width={22} height={22} />
+            </button>
+            <p
+              aria-live="polite"
+              className={`min-w-12 text-center font-display text-3xl tabular-nums ${product.stock === 0 ? "text-stone-400" : ""}`}
+            >
+              {product.stock}
+            </p>
+            <button
+              type="button"
+              onClick={() => changeStock(product, "restock")}
+              aria-label={t("koti.restock", { name: product.name })}
+              className={`${stepButton} h-12 w-12`}
+            >
+              <PlusIcon width={22} height={22} />
+            </button>
+          </div>
         </div>
         <label className="flex flex-col gap-1">
           <span className="text-sm text-stone-500">{t("product.minimumStock")}</span>
@@ -173,13 +204,25 @@ export default function ProductScreen({ productId }: { productId: Id<"products">
         )}
       </div>
       <Barcodes barcodes={product.barcodes} />
-      <button
-        type="button"
-        onClick={() => needMore(product)}
-        className={`${primaryButton} py-3 text-lg`}
-      >
-        {t("lista.needMore")}
-      </button>
+      {onList ? (
+        <div className={`${card} flex items-center gap-3 p-4`}>
+          <div className="min-w-0 flex-1">
+            <QuantityStepper entry={onList} label={t("product.onList")} setQuantity={setQuantity} />
+          </div>
+          <button
+            type="button"
+            onClick={() => deleteEntry(onList)}
+            aria-label={t("lista.delete", { name: product.name })}
+            className={stepButton}
+          >
+            <TrashIcon width={18} height={18} />
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => needMore(product)} className={`${primaryButton} py-3 text-lg`}>
+          {t("lista.needMore")}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => void deleteProduct()}

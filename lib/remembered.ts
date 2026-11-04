@@ -46,11 +46,6 @@ const location = remembered("komero.lastLocation", (stored): stored is string =>
 export const rememberLocation = location.set;
 export const lastLocation = location.get;
 
-// Location ids folded shut on Koti, comma-separated; ids of deleted Locations do no harm.
-const folded = remembered("komero.foldedLocations", (stored): stored is string => stored !== "");
-export const rememberFoldedLocations = (ids: string[]) => folded.set(ids.join(","));
-export const foldedLocations = (): string[] => folded.get()?.split(",") ?? [];
-
 // Whether Kauppalista's Bag is folded shut; it starts open.
 const bag = remembered("komero.bagFolded", oneOf(["folded", "open"] as const));
 export const rememberBagFolded = (folded: boolean) => bag.set(folded ? "folded" : "open");
