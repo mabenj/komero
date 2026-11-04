@@ -102,6 +102,63 @@ describe("One-offs", () => {
     expect(await lista(anna)).toEqual([{ group: "Other", entries: ["Synttärikynttilät ×2"] }]);
   });
 
+  test("a One-off gets a Category of its own and keeps it through tick, untick, delete undo and Put Away undo", async () => {
+    const [anna, ben] = await annaAndBen();
+    await anna.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
+    const kynttilat = await entryId(anna, "Synttärikynttilät");
+
+    await ben.mutation(api.shoppingList.setOneOffCategory, {
+      entryId: kynttilat,
+      categoryId: await categoryId(ben, "Kuivatuotteet"),
+    });
+    expect(await lista(anna)).toEqual([{ group: "Kuivatuotteet", entries: ["Synttärikynttilät ×1"] }]);
+
+    await anna.mutation(api.shoppingList.tick, { entryId: kynttilat });
+    expect(await lista(anna)).toEqual([{ group: "In the bag: Kuivatuotteet", entries: ["Synttärikynttilät ×1"] }]);
+    const putAway = await anna.mutation(api.shoppingList.putAway, { entryId: kynttilat });
+    await anna.mutation(api.shoppingList.undoPutAway, putAway);
+    expect(await lista(anna)).toEqual([{ group: "In the bag: Kuivatuotteet", entries: ["Synttärikynttilät ×1"] }]);
+
+    await anna.mutation(api.shoppingList.untick, { entryId: await entryId(anna, "Synttärikynttilät") });
+    expect(await lista(anna)).toEqual([{ group: "Kuivatuotteet", entries: ["Synttärikynttilät ×1"] }]);
+
+    const removed = await anna.mutation(api.shoppingList.remove, { entryId: await entryId(anna, "Synttärikynttilät") });
+    await anna.mutation(api.shoppingList.restore, { ...removed, categoryId: await categoryId(anna, "Kuivatuotteet") });
+    expect(await lista(anna)).toEqual([{ group: "Kuivatuotteet", entries: ["Synttärikynttilät ×1"] }]);
+
+    await anna.mutation(api.shoppingList.setOneOffCategory, {
+      entryId: await entryId(anna, "Synttärikynttilät"),
+      categoryId: null,
+    });
+    expect(await lista(anna)).toEqual([{ group: "Other", entries: ["Synttärikynttilät ×1"] }]);
+  });
+
+  test("deleting a One-off's Category puts it under Other", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    await anna.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
+    const kuivatuotteet = await categoryId(anna, "Kuivatuotteet");
+    await anna.mutation(api.shoppingList.setOneOffCategory, {
+      entryId: await entryId(anna, "Synttärikynttilät"),
+      categoryId: kuivatuotteet,
+    });
+
+    await anna.mutation(api.categories.remove, { categoryId: kuivatuotteet });
+
+    expect(await lista(anna)).toEqual([{ group: "Other", entries: ["Synttärikynttilät ×1"] }]);
+  });
+
+  test("only a One-off takes a Category on the list", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    await anna.mutation(api.shoppingList.needMore, { productId: await product(anna, "Maito") });
+
+    await expect(
+      anna.mutation(api.shoppingList.setOneOffCategory, {
+        entryId: await entryId(anna, "Maito"),
+        categoryId: await categoryId(anna, "Kuivatuotteet"),
+      }),
+    ).rejects.toThrow(/NOT_A_ONE_OFF/);
+  });
+
   test("a One-off needs a name", async () => {
     const anna = await signUp(newKomero(), "anna@example.com");
 

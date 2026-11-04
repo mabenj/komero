@@ -78,7 +78,7 @@ export const reorder = mutation({
 
 /**
  * Deletes a Category straight away, even the last one. Its Products are left
- * without a Category, so Lista shows them under "Other".
+ * and One-offs are left without a Category, so Lista shows them under "Other".
  */
 export const remove = mutation({
   args: { categoryId: v.id("categories") },
@@ -90,6 +90,8 @@ export const remove = mutation({
       .withIndex("by_category", (q) => q.eq("categoryId", categoryId))
       .collect();
     for (const product of products) await ctx.db.patch(product._id, { categoryId: undefined });
+    const oneOffs = (await ctx.db.query("entries").collect()).filter((entry) => entry.categoryId === categoryId);
+    for (const entry of oneOffs) await ctx.db.patch(entry._id, { categoryId: undefined });
     await ctx.db.delete(categoryId);
   },
 });

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence } from "motion/react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { AddFab } from "@/components/AddFab";
 import { AppLink } from "@/components/AppLink";
@@ -24,6 +24,7 @@ import {
   type Groups,
   putAwayAllLocally,
   putAwayLocally,
+  setOneOffCategoryLocally,
   tickLocally,
   untickLocally,
 } from "@/lib/listUpdates";
@@ -35,6 +36,7 @@ type Entry = {
   name: string;
   quantity: number;
   productId?: Id<"products">;
+  categoryId: Id<"categories"> | null;
   stock?: number;
   asksForDate?: boolean;
 };
@@ -68,6 +70,8 @@ export default function ListaScreen() {
   const list = useQuery(api.shoppingList.get);
   const [allPutAway, setAllPutAway] = useState(false);
   const [adding, setAdding] = useState(false);
+  // Kept here, not in its row, so the sheet stays open when a new Category moves the row to another group.
+  const [oneOffId, setOneOffId] = useState<Id<"entries"> | null>(null);
   const [trayOpen, setTrayOpen] = useState(false);
 
   useEffect(() => {
@@ -85,20 +89,19 @@ export default function ListaScreen() {
   const nothingToBuy = entriesIn(list).length === 0;
   // An undo that refills the Bag ends the moment.
   const showAllPutAway = allPutAway && bagIsEmpty;
+  // Gone from the list (ticked or deleted, maybe on another phone), its sheet closes.
+  const oneOff = entriesIn(list).find((entry) => entry._id === oneOffId);
   return (
     <div className="flex flex-col gap-3">
       {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
       {nothingToBuy && bagIsEmpty && <ListNote allPutAway={showAllPutAway} />}
       {titled(list, t("lista.other")).map((group) => (
         <section key={group.key} className={`${raisedCard} overflow-hidden`}>
-          <h2 className="flex items-center justify-between px-4 pt-2.5">
-            <span className="text-xs font-bold tracking-wide text-stone-500 uppercase">{group.title}</span>
-            <span className="text-xs font-semibold text-stone-400 tabular-nums">{group.entries.length}</span>
-          </h2>
+          <h2 className="px-4 pt-2.5 text-xs font-bold tracking-wide text-stone-500 uppercase">{group.title}</h2>
           <ul>
             {group.entries.map((entry) => (
               // A Product or One-off has one Entry on the list, so the row stays when the server gives it a new id.
-              <EntryRow key={productOrOneOff(entry)} entry={entry} />
+              <EntryRow key={productOrOneOff(entry)} entry={entry} onOpenOneOff={() => setOneOffId(entry._id)} />
             ))}
           </ul>
         </section>
@@ -115,12 +118,12 @@ export default function ListaScreen() {
       <AnimatePresence>
         {adding && (
           <Sheet key="add" title={t("lista.search")} onClose={() => setAdding(false)}>
-            {/* Room for the matches under the field, so the sheet doesn't jump as they come and go. */}
-            <div className="min-h-[40dvh]">
-              <AddToList list={list} />
-            </div>
+            <AddToList list={list} />
           </Sheet>
         )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {oneOff && <OneOffSheet key="oneOff" entry={oneOff} onClose={() => setOneOffId(null)} />}
       </AnimatePresence>
     </div>
   );
@@ -193,13 +196,21 @@ function AddToList({ list }: { list: Groups }) {
  * One Entry to buy, as a line in a checklist: a round tick, its name with the
  * Product's Stock at home beside it (or that it is a One-off), and how many.
  * Ticking moves it into the Bag at once; unticking it there is the undo.
- * Tapping the name opens the Product page, or for a One-off asks whether to
- * make it a Product. Every change shows at once, even on a weak signal in
- * the shop.
+ * Tapping the name opens the Product page (over Kauppalista), or a One-off's
+ * sheet. Every change shows at once, even on a weak signal in the shop.
  */
-function EntryRow({ entry }: { entry: Entry }) {
+function EntryRow({ entry, onOpenOneOff }: { entry: Entry; onOpenOneOff: () => void }) {
   const t = useT();
   const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate(tickLocally);
+  const nameClass = "flex min-h-11 min-w-0 flex-1 items-center text-left";
+  const name = (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className="truncate font-medium">{entry.name}</span>
+      <span className="shrink-0 text-xs text-stone-400">
+        {entry.stock !== undefined ? t("lista.stock", { stock: entry.stock }) : t("lista.oneOff")}
+      </span>
+    </span>
+  );
   return (
     <li className="flex items-center gap-1.5 pr-4 pl-1.5">
       <button
@@ -210,35 +221,17 @@ function EntryRow({ entry }: { entry: Entry }) {
       >
         <span className="h-[22px] w-[22px] rounded-full border-2 border-stone-300 transition-colors group-active:border-accent group-active:bg-accent/20 dark:border-stone-500" />
       </button>
-      <EntryLink entry={entry} className="flex min-h-11 min-w-0 flex-1 items-center text-left">
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate font-medium">{entry.name}</span>
-          <span className="shrink-0 text-xs text-stone-400">
-            {entry.stock !== undefined ? t("lista.stock", { stock: entry.stock }) : t("lista.oneOff")}
-          </span>
-        </span>
-      </EntryLink>
+      {entry.productId ? (
+        <AppLink href={`/lista/${entry.productId}`} className={nameClass}>
+          {name}
+        </AppLink>
+      ) : (
+        <button type="button" onClick={onOpenOneOff} className={nameClass}>
+          {name}
+        </button>
+      )}
       <Quantity entry={entry} />
     </li>
-  );
-}
-
-/** What tapping an Entry's name opens: its Product page (over Kauppalista), or for a One-off, its sheet. */
-function EntryLink({ entry, className, children }: { entry: Entry; className: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  if (entry.productId)
-    return (
-      <AppLink href={`/lista/${entry.productId}`} className={className}>
-        {children}
-      </AppLink>
-    );
-  return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} className={className}>
-        {children}
-      </button>
-      <AnimatePresence>{open && <OneOffSheet key="oneOff" entry={entry} onClose={() => setOpen(false)} />}</AnimatePresence>
-    </>
   );
 }
 
@@ -428,17 +421,29 @@ function BagRow({ entry, onEmptied }: { entry: Entry; onEmptied?: () => void }) 
 }
 
 /**
- * Tapping a One-off asks whether it should become a Product: a line on what
- * that means, then the form to make it one. Deleting it from the list is here
- * too.
+ * Tapping a One-off: its Category, which moves it on the list at once; then
+ * whether it should become a Product, with a line on what that means and the
+ * form to make it one. Deleting it from the list is here too.
  */
 function OneOffSheet({ entry, onClose }: { entry: Entry; onClose: () => void }) {
   const t = useT();
   const deleteEntry = useDeleteEntry();
+  const setCategory = useMutation(api.shoppingList.setOneOffCategory).withOptimisticUpdate(setOneOffCategoryLocally);
   return (
-    <Sheet title={t("lista.oneOffTitle", { name: entry.name })} onClose={onClose}>
-      <p className="-mt-2 text-sm text-stone-500">{t("lista.oneOffHint", { name: entry.name })}</p>
-      <MakeProduct entry={entry} onDone={onClose} />
+    <Sheet title={entry.name} onClose={onClose}>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-stone-500">{t("product.category")}</span>
+        <CategorySelect
+          value={entry.categoryId}
+          onChange={(categoryId) => void setCategory({ entryId: entry._id, categoryId })}
+          className={`${field} w-full px-3`}
+        />
+      </label>
+      <section className="flex flex-col gap-2">
+        <h3 className="font-semibold">{t("lista.oneOffTitle")}</h3>
+        <p className="text-sm text-stone-500">{t("lista.oneOffHint", { name: entry.name })}</p>
+        <MakeProduct entry={entry} onDone={onClose} />
+      </section>
       <button
         type="button"
         onClick={() => {
@@ -455,8 +460,8 @@ function OneOffSheet({ entry, onClose }: { entry: Entry; onClose: () => void }) 
 }
 
 /**
- * Turns a One-off into a Product: its name pre-filled, a Location to choose,
- * and optionally a Category, which is never remembered.
+ * Turns a One-off into a Product: its name pre-filled and a Location to
+ * choose. The Product takes the One-off's Category.
  */
 function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
   const t = useT();
@@ -464,7 +469,6 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
   const makeProduct = useMutation(api.shoppingList.makeProduct);
   const [name, setName] = useState(entry.name);
   const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
-  const [categoryId, setCategoryId] = useState<Id<"categories"> | null>(null);
 
   if (inventory === undefined) return null;
   const remembered = inventory.find((location) => location._id === lastLocation())?._id;
@@ -472,7 +476,7 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
 
   const save = async () => {
     if (!locationId || name.trim() === "") return;
-    await makeProduct({ entryId: entry._id, name, locationId, categoryId });
+    await makeProduct({ entryId: entry._id, name, locationId, categoryId: entry.categoryId });
     rememberLocation(locationId);
     onDone();
   };
@@ -490,12 +494,6 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
         onChange={(event) => setName(event.target.value)}
         aria-label={t("product.name")}
         autoComplete="off"
-        className={`${field} w-full px-3`}
-      />
-      <CategorySelect
-        value={categoryId}
-        onChange={setCategoryId}
-        aria-label={t("product.category")}
         className={`${field} w-full px-3`}
       />
       <div className="flex items-center gap-2">

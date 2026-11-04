@@ -174,8 +174,9 @@ function ReadProduct({ product }: { product: Product }) {
         </Fact>
       </ul>
 
-      <section>
-        <h2 className={groupHeader}>{t("activity.recent")}</h2>
+      <section className="flex flex-col gap-2">
+        {/* A title over the day headers, so each day reads as part of it. */}
+        <h2 className="px-1 text-lg font-semibold">{t("activity.recent")}</h2>
         <ActivityList activities={activities} />
       </section>
     </>

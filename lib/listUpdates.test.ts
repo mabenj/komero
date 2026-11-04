@@ -10,6 +10,7 @@ import {
   quantityAfterNeedMore,
   removeLocally,
   setCategoryLocally,
+  setOneOffCategoryLocally,
   setQuantityLocally,
   tickLocally,
   untickLocally,
@@ -56,7 +57,7 @@ const inventory: Inventory = [
 
 const milkEntry = { _id: id<"entries">("milkEntry"), productId: milk._id, categoryId: dairy._id, name: "Maito", quantity: 2, stock: 0, asksForDate: true };
 const oatsEntry = { _id: id<"entries">("oatsEntry"), productId: oats._id, categoryId: dry._id, name: "Kaurahiutaleet", quantity: 1, stock: 2, asksForDate: false };
-const candles = { _id: id<"entries">("candles"), name: "Kynttilät", quantity: 1 };
+const candles = { _id: id<"entries">("candles"), name: "Kynttilät", quantity: 1, categoryId: null };
 
 const empty = { categories: [], other: [] };
 
@@ -131,17 +132,36 @@ describe("taking an Entry out of the Bag", () => {
   });
 
   test("a One-off goes back under Other, joining one with the same name in any case", () => {
-    const balloons = { _id: id<"entries">("balloons"), name: "Ilmapallot", quantity: 1 };
+    const balloons = { _id: id<"entries">("balloons"), name: "Ilmapallot", quantity: 1, categoryId: null };
     const store = withList({
       categories: [],
       other: [balloons],
-      bag: { categories: [], other: [candles, { _id: id<"entries">("more"), name: "ilmapallot", quantity: 2 }] },
+      bag: { categories: [], other: [candles, { _id: id<"entries">("more"), name: "ilmapallot", quantity: 2, categoryId: null }] },
     });
 
     untickLocally(store, { entryId: candles._id });
     untickLocally(store, { entryId: id("more") });
 
     expect(listIn(store)).toEqual({ categories: [], other: [{ ...balloons, quantity: 3 }, candles], bag: empty });
+  });
+});
+
+describe("setting a One-off's Category", () => {
+  test("it moves from Other into the Category's group, and back under Other when cleared", () => {
+    const store = withList({ categories: [{ ...dairy, entries: [milkEntry] }], other: [candles], bag: empty });
+
+    setOneOffCategoryLocally(store, { entryId: candles._id, categoryId: produce._id });
+    expect(listIn(store)).toEqual({
+      categories: [
+        { ...produce, entries: [{ ...candles, categoryId: produce._id }] },
+        { ...dairy, entries: [milkEntry] },
+      ],
+      other: [],
+      bag: empty,
+    });
+
+    setOneOffCategoryLocally(store, { entryId: candles._id, categoryId: null });
+    expect(listIn(store)).toEqual({ categories: [{ ...dairy, entries: [milkEntry] }], other: [candles], bag: empty });
   });
 });
 
