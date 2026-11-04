@@ -3,6 +3,15 @@
 A household Inventory and shared Shopping List for phones. Domain language is in
 [`GLOSSARY.md`](GLOSSARY.md); architecture decisions are in [`docs/adr/`](docs/adr/).
 
+<p>
+  <img src="docs/screenshots/koti-light.jpg" alt="Komero: every Product at home by Location, with Expiry Dates and Stock" width="200">
+  <img src="docs/screenshots/lista-light.jpg" alt="Kauppalista: the Shopping List grouped by Category, with the Bag at the bottom" width="200">
+  <img src="docs/screenshots/product-dark.jpg" alt="A Product page in the dark theme: Stock, Use By date, Minimum Stock and recent Activities" width="200">
+  <img src="docs/screenshots/activity-light.jpg" alt="Tapahtumat: who changed what today" width="200">
+</p>
+
+<sub>The Inventory, the Shopping List, a Product (dark theme) and the Activity feed, with made-up sample data. The UI is in Finnish, with English available per Member.</sub>
+
 Stack: Next.js 16 (App Router, client-routed shell) on Vercel, Convex for data,
 live queries and auth (Convex Auth, Password provider). Node 20.17+, pnpm 9.
 
