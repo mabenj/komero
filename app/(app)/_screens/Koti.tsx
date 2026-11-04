@@ -10,8 +10,10 @@ import { CategorySelect } from "@/components/CategorySelect";
 import { useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { ChevronDownIcon, CloseIcon, ScanIcon, SearchIcon } from "@/components/icons";
+import { CloseIcon, ScanIcon, SearchIcon } from "@/components/icons";
 import { Sheet } from "@/components/Sheet";
+import { Stepper } from "@/components/Stepper";
+import { useStockChange } from "@/components/StockToasts";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey, tidyName } from "@/convex/productNames";
@@ -36,13 +38,15 @@ type Filter = "all" | "useSoon" | "runningLow";
 
 const usesSoon = (product: ProductRowData, today: string) => expiryStatus(toAttentionState(product), today) !== null;
 const runningLow = (product: ProductRowData) => isRunningLow(toAttentionState(product));
+// The Running Low tile leaves out Products without a Minimum Stock; at 0 they show greyed as Out of Stock instead.
+const lowAgainstMinimum = (product: ProductRowData) => product.minimumStock !== null && runningLow(product);
 
 /**
  * Komero: three tiles that count and filter (everything, use soon, Running
- * Low), a search, and tabs to see one Location or all of them, kept at the top
- * while scrolling. Each Location is a grouped list of its Products, with
- * their Expiry Date and Stock. A row opens its Product page, where the Stock
- * is changed. The floating + adds a Product to the Location in view.
+ * Low against a Minimum Stock), a search, and tabs to see one Location or all
+ * of them, kept at the top while scrolling. Each Location is a grouped list of
+ * its Products, with their Expiry Date and a Stock stepper. A row opens its
+ * Product page. The floating + adds a Product to the Location in view.
  */
 export default function KotiScreen() {
   const t = useT();
@@ -62,7 +66,7 @@ export default function KotiScreen() {
   const searchKey = nameKey(searchText);
   const shows = (product: ProductRowData) =>
     nameKey(product.name).includes(searchKey) &&
-    (filter === "all" || (filter === "useSoon" ? usesSoon(product, today) : runningLow(product)));
+    (filter === "all" || (filter === "useSoon" ? usesSoon(product, today) : lowAgainstMinimum(product)));
   const locations = (inventory ?? [])
     .filter((location) => locationTab === null || location._id === locationTab)
     .map((location) => ({
@@ -101,7 +105,7 @@ export default function KotiScreen() {
             />
             <FilterTile
               label={t("attention.runningLow")}
-              count={all.filter(runningLow).length}
+              count={all.filter(lowAgainstMinimum).length}
               tone={statusTone.runningLow.text}
               chosen={filter === "runningLow"}
               onClick={() => setFilter(filter === "runningLow" ? "all" : "runningLow")}
@@ -455,8 +459,10 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
 /**
  * A Product in its Location: its name, how far off its Expiry Date is
  * (coloured by what it means today), and its Stock, tinted when Running Low.
- * Tapping it opens the Product page. Out of Stock Products stay listed,
- * greyed. A Product just added scrolls into view and flashes.
+ * Tapping the Stock opens − n + to change it there, with the same toasts as
+ * the Product page; tapping the rest opens the Product page. Out of Stock
+ * Products stay listed, greyed. A Product just added scrolls into view and
+ * flashes.
  */
 function ProductRow({
   product,
@@ -469,6 +475,7 @@ function ProductRow({
 }) {
   const t = useT();
   const lang = useLang();
+  const changeStock = useStockChange();
   const row = useRef<HTMLLIElement>(null);
   const reduced = useReducedMotion();
   useEffect(() => {
@@ -479,11 +486,11 @@ function ProductRow({
   const status = expiryStatus(toAttentionState(product), today);
   return (
     // Clear of the Location tabs and the floating + when scrolled into view.
-    <li ref={row} className={`${groupRow} scroll-mt-20 scroll-mb-40 ${justAdded ? "just-added" : ""}`}>
+    <li ref={row} className={`${groupRow} flex items-center pr-3 scroll-mt-20 scroll-mb-40 ${justAdded ? "just-added" : ""}`}>
       <AppLink
         href={`/koti/${product._id}`}
         aria-label={t("koti.productLabel", { name: product.name, stock: product.stock })}
-        className="flex min-h-11 items-center gap-3 py-2.5 pr-3 pl-4 active:bg-stone-100"
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-3 self-stretch py-2.5 pr-2 pl-4 active:bg-stone-100"
       >
         <span className={`min-w-0 flex-1 truncate text-[17px] ${outOfStock ? "text-secondary" : ""}`}>
           {product.name}
@@ -493,20 +500,26 @@ function ProductRow({
             {relativeExpiry(product.expiryDate, today, lang)}
           </span>
         )}
-        <span
-          className={`w-6 shrink-0 text-right text-[17px] font-semibold tabular-nums ${
-            outOfStock ? "text-secondary" : runningLow(product) ? statusTone.runningLow.text : ""
-          }`}
-        >
-          {product.stock}
-        </span>
-        <ChevronDownIcon
-          width={14}
-          height={14}
-          strokeWidth={2.6}
-          className="shrink-0 -rotate-90 text-stone-300 dark:text-stone-600"
-        />
       </AppLink>
+      <Stepper
+        value={product.stock}
+        pillLabel={t("koti.stockOf", { name: product.name, stock: product.stock })}
+        pill={
+          <span
+            className={`min-w-8 rounded-full bg-stone-100 px-2.5 py-0.5 text-center text-[17px] font-semibold tabular-nums ${
+              outOfStock ? "text-secondary" : runningLow(product) ? statusTone.runningLow.text : ""
+            }`}
+          >
+            {product.stock}
+          </span>
+        }
+        decrease={{
+          label: t("koti.use", { name: product.name }),
+          onClick: () => changeStock(product, "use"),
+          disabled: outOfStock,
+        }}
+        increase={{ label: t("koti.restock", { name: product.name }), onClick: () => changeStock(product, "restock") }}
+      />
     </li>
   );
 }

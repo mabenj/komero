@@ -87,7 +87,7 @@ _Avoid_: Grocery list, cart
 One line on the Shopping List, with a quantity. An Entry is either linked to a Product or is a One-off.
 
 **One-off**:
-A plain-text Entry that is not linked to any Product, for things the household does not keep track of (e.g. birthday candles).
+A plain-text Entry that is not linked to any Product, for things the household does not keep track of (e.g. birthday candles). It can have a Category of its own, which places it on the Shopping List like a Product.
 _Avoid_: Free text, note
 
 **Bag**:

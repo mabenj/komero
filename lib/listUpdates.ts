@@ -136,6 +136,24 @@ export function setCategoryLocally(
   }
 }
 
+/**
+ * Setting a One-off's Category: it moves to that Category's group, on the
+ * list or in the Bag. Until the Categories have loaded, nothing changes.
+ */
+export function setOneOffCategoryLocally(
+  store: OptimisticLocalStore,
+  { entryId, categoryId }: { entryId: Id<"entries">; categoryId: Id<"categories"> | null },
+) {
+  const categories = store.getQuery(api.categories.list, {});
+  if (!categories) return;
+  const move = (groups: Groups) => {
+    const entry = entriesIn(groups).find((e) => e._id === entryId);
+    if (!entry) return groups;
+    return withEntryPlaced(withoutEntry(groups, entryId), { ...entry, categoryId }, categories) ?? groups;
+  };
+  updateList(store, (list) => ({ ...move(list), bag: move(list.bag) }));
+}
+
 /** Deleting an Entry, wherever it is. */
 export function removeLocally(store: OptimisticLocalStore, { entryId }: { entryId: Id<"entries"> }) {
   updateList(store, (list) => ({ ...withoutEntry(list, entryId), bag: withoutEntry(list.bag, entryId) }));

@@ -89,6 +89,8 @@ export default defineSchema({
     productId: v.optional(v.id("products")),
     // The One-off's text; Product Entries show the Product's current name instead.
     name: v.optional(v.string()),
+    // The One-off's own Category; Product Entries go by their Product's Category instead.
+    categoryId: v.optional(v.id("categories")),
     quantity: v.number(),
     state: v.union(v.literal("toBuy"), v.literal("inBag")),
     createdBy: v.id("users"),

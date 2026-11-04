@@ -7,11 +7,10 @@ import { findOrCreateProduct } from "./newProduct";
 import { nameKey, tidyName } from "./productNames";
 import { applyRestock, applyUndo, isDate, stockChange } from "./stock";
 
-type ListedEntry = { _id: Id<"entries">; name: string; quantity: number };
+type ListedEntry = { _id: Id<"entries">; name: string; quantity: number; categoryId: Id<"categories"> | null };
 // `asksForDate`: the Product has an Expiry Kind, so Put Away prompts for a date.
 type ProductEntry = ListedEntry & {
   productId: Id<"products">;
-  categoryId: Id<"categories"> | null;
   stock: number;
   asksForDate: boolean;
 };
@@ -42,7 +41,10 @@ export const get = query({
 
 /** An Entry as Lista shows it, or null if its Product is gone. */
 async function listedEntry(ctx: QueryCtx, entry: Doc<"entries">): Promise<ListedEntry | ProductEntry | null> {
-  if (entry.productId === undefined) return { _id: entry._id, name: entry.name ?? "", quantity: entry.quantity };
+  if (entry.productId === undefined) {
+    const category = entry.categoryId && (await ctx.db.get(entry.categoryId));
+    return { _id: entry._id, name: entry.name ?? "", quantity: entry.quantity, categoryId: category ? category._id : null };
+  }
   const product = await ctx.db.get(entry.productId);
   if (product === null) return null;
   return {
@@ -57,16 +59,15 @@ async function listedEntry(ctx: QueryCtx, entry: Doc<"entries">): Promise<Listed
 }
 
 function groupedByCategory(entries: (ListedEntry | ProductEntry)[], categories: Doc<"categories">[]) {
-  const categoryOf = (entry: ListedEntry | ProductEntry) => ("categoryId" in entry ? entry.categoryId : null);
   return {
     categories: categories
       .map(({ _id, name }) => ({
         _id,
         name,
-        entries: entries.filter((entry): entry is ProductEntry => categoryOf(entry) === _id).sort(byName),
+        entries: entries.filter((entry) => entry.categoryId === _id).sort(byName),
       }))
       .filter((category) => category.entries.length > 0),
-    other: entries.filter((entry) => categoryOf(entry) === null).sort(byName),
+    other: entries.filter((entry) => entry.categoryId === null).sort(byName),
   };
 }
 
@@ -106,6 +107,21 @@ export const addOneOff = mutation({
   },
 });
 
+/** A One-off as `addToList` takes it: its text, and its Category if it has one. */
+type OneOff = { name: string; categoryId?: Id<"categories"> };
+
+/** A One-off's Category, chosen on Lista; null takes it away. */
+export const setOneOffCategory = mutation({
+  args: { entryId: v.id("entries"), categoryId: v.union(v.id("categories"), v.null()) },
+  handler: async (ctx, { entryId, categoryId }) => {
+    await requireMemberId(ctx);
+    const entry = await requireEntry(ctx, entryId);
+    if (entry.productId !== undefined) throw new ConvexError("NOT_A_ONE_OFF");
+    if (categoryId !== null && (await ctx.db.get(categoryId)) === null) throw new ConvexError("CATEGORY_NOT_FOUND");
+    await ctx.db.patch(entryId, { categoryId: categoryId ?? undefined });
+  },
+});
+
 /** Need More of a Product, `quantity` at once. Returns the Entry and its new quantity, for the undo toast. */
 export async function needMoreOf(ctx: MutationCtx, memberId: Id<"users">, product: Doc<"products">, quantity = 1) {
   const added = await addToList(ctx, memberId, { product }, quantity);
@@ -121,7 +137,7 @@ export async function needMoreOf(ctx: MutationCtx, memberId: Id<"users">, produc
 async function addToList(
   ctx: MutationCtx,
   memberId: Id<"users">,
-  productOrOneOff: { product: Doc<"products"> } | { name: string },
+  productOrOneOff: { product: Doc<"products"> } | OneOff,
   quantity: number,
   state: "toBuy" | "inBag" = "toBuy",
 ) {
@@ -138,13 +154,15 @@ async function addToList(
             .collect()
         ).find((entry) => entry.productId === undefined && nameKey(entry.name ?? "") === nameKey(productOrOneOff.name));
   const name = "product" in productOrOneOff ? productOrOneOff.product.name : (existing?.name ?? productOrOneOff.name);
+  const categoryId = "product" in productOrOneOff ? undefined : productOrOneOff.categoryId;
   if (!existing) {
-    const link = "product" in productOrOneOff ? { productId: productOrOneOff.product._id } : { name };
+    const link = "product" in productOrOneOff ? { productId: productOrOneOff.product._id } : { name, categoryId };
     const entryId = await ctx.db.insert("entries", { ...link, quantity, state, createdBy: memberId });
     return { entryId, name, quantity };
   }
   const total = existing.quantity + quantity;
-  await ctx.db.patch(existing._id, { quantity: total });
+  // A One-off joining one without a Category brings its own.
+  await ctx.db.patch(existing._id, { quantity: total, categoryId: existing.categoryId ?? categoryId });
   return { entryId: existing._id, name, quantity: total };
 }
 
@@ -192,12 +210,18 @@ export const remove = mutation({
  * Product has been deleted since.
  */
 export const restore = mutation({
-  args: { productId: v.optional(v.id("products")), name: v.string(), quantity: v.number() },
-  handler: async (ctx, { productId, name, quantity }) => {
+  args: {
+    productId: v.optional(v.id("products")),
+    name: v.string(),
+    quantity: v.number(),
+    categoryId: v.optional(v.id("categories")),
+  },
+  handler: async (ctx, { productId, name, quantity, categoryId }) => {
     const memberId = await requireMemberId(ctx);
     const product = productId && (await ctx.db.get(productId));
     if (product === null) return;
-    const restored = await addToList(ctx, memberId, product ? { product } : { name }, quantity);
+    const oneOff = { name, categoryId: await existingCategory(ctx, categoryId) };
+    const restored = await addToList(ctx, memberId, product ? { product } : oneOff, quantity);
     await recordActivity(ctx, memberId, "restoreEntry", product ?? { name: restored.name }, {
       quantity: restored.quantity,
     });
@@ -240,7 +264,7 @@ export const untick = mutation({
  */
 const putAwayRecord = v.union(
   v.object({ productId: v.id("products"), quantity: v.number(), ...stockChange.fields }),
-  v.object({ name: v.string(), quantity: v.number() }),
+  v.object({ name: v.string(), quantity: v.number(), categoryId: v.optional(v.id("categories")) }),
 );
 type PutAwayRecord = Infer<typeof putAwayRecord>;
 
@@ -296,7 +320,7 @@ async function putAwayEntry(
   await ctx.db.delete(entry._id);
   if (!("_id" in productOrOneOff)) {
     await recordActivity(ctx, memberId, "putAway", productOrOneOff, { quantity });
-    return { name: productOrOneOff.name, quantity };
+    return { ...productOrOneOff, quantity };
   }
   return await restockFromBag(ctx, memberId, productOrOneOff, quantity, expiryDate);
 }
@@ -327,7 +351,8 @@ export const undoPutAway = mutation({
     const memberId = await requireMemberId(ctx);
     for (const record of putAway) {
       if (!("productId" in record)) {
-        const { name } = await addToList(ctx, memberId, { name: record.name }, record.quantity, "inBag");
+        const oneOff = { name: record.name, categoryId: await existingCategory(ctx, record.categoryId) };
+        const { name } = await addToList(ctx, memberId, oneOff, record.quantity, "inBag");
         await recordActivity(ctx, memberId, "undoPutAway", { name }, { quantity: record.quantity });
         continue;
       }
@@ -372,16 +397,21 @@ export const makeProduct = mutation({
       await ctx.db.delete(entryId);
       await addToList(ctx, memberId, { product }, entry.quantity);
     } else {
-      await ctx.db.patch(entryId, { productId: product._id, name: undefined });
+      await ctx.db.patch(entryId, { productId: product._id, name: undefined, categoryId: undefined });
     }
     return product._id;
   },
 });
 
-/** What an Activity about an Entry names: its Product, or the One-off's text. */
+/** What an Activity about an Entry names: its Product, or the One-off (its text and Category). */
 async function named(ctx: MutationCtx, entry: Doc<"entries">) {
   const product = entry.productId && (await ctx.db.get(entry.productId));
-  return product ?? { name: entry.name ?? "" };
+  return product ?? { name: entry.name ?? "", categoryId: await existingCategory(ctx, entry.categoryId) };
+}
+
+/** A Category the Entry had, unless it has been deleted since. */
+async function existingCategory(ctx: MutationCtx, categoryId: Id<"categories"> | undefined) {
+  return categoryId && (await ctx.db.get(categoryId)) ? categoryId : undefined;
 }
 
 async function requireEntry(ctx: MutationCtx, entryId: Id<"entries">) {
