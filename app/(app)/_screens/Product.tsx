@@ -14,8 +14,8 @@ import { useUndoToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { attentionStatus, isDate } from "@/convex/stock";
-import { localToday, relativeExpiry } from "@/lib/dates";
+import { attentionStatus, isDate, toAttentionState } from "@/convex/stock";
+import { formatExpiryDate, localToday, relativeExpiry } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
 import { entriesIn, setCategoryLocally } from "@/lib/listUpdates";
 import {
@@ -27,6 +27,7 @@ import {
   groupRow,
   raisedCard,
   secondaryButton,
+  stepButton,
   statusTone,
   textLink,
 } from "@/lib/styles";
@@ -90,20 +91,7 @@ function ReadProduct({ product }: { product: Product }) {
   const onList = list && entriesIn(list).find((entry) => "productId" in entry && entry.productId === product._id);
 
   const today = localToday();
-  const status = attentionStatus(
-    {
-      stock: product.stock,
-      expiryKind: product.expiryKind ?? undefined,
-      expiryDate: product.expiryDate ?? undefined,
-      minimumStock: product.minimumStock ?? undefined,
-    },
-    today,
-  );
-  const date =
-    product.expiryDate &&
-    new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "numeric", year: "numeric" }).format(
-      new Date(`${product.expiryDate}T12:00`),
-    );
+  const status = attentionStatus(toAttentionState(product), today);
 
   return (
     <>
@@ -137,7 +125,7 @@ function ReadProduct({ product }: { product: Product }) {
             disabled={product.stock === 0}
             onClick={() => changeStock(product, "use")}
             aria-label={t("koti.use", { name: product.name })}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-stone-100 disabled:opacity-30"
+            className={`${stepButton} h-12 w-12`}
           >
             <MinusIcon width={22} height={22} />
           </button>
@@ -145,7 +133,7 @@ function ReadProduct({ product }: { product: Product }) {
             type="button"
             onClick={() => changeStock(product, "restock")}
             aria-label={t("koti.restock", { name: product.name })}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-foreground"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground"
           >
             <PlusIcon width={22} height={22} />
           </button>
@@ -159,7 +147,7 @@ function ReadProduct({ product }: { product: Product }) {
           ) : product.expiryDate ? (
             <span className={status && status !== "runningLow" ? statusTone[status].text : ""}>
               {t("product.expiryDateAndDistance", {
-                date: date ?? product.expiryDate,
+                date: formatExpiryDate(product.expiryDate, lang),
                 distance: relativeExpiry(product.expiryDate, today, lang),
               })}
             </span>

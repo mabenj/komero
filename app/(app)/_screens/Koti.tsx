@@ -15,7 +15,7 @@ import { Sheet } from "@/components/Sheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey, tidyName } from "@/convex/productNames";
-import { type ExpiryKind, expiryStatus, isRunningLow } from "@/convex/stock";
+import { type ExpiryKind, expiryStatus, isRunningLow, toAttentionState } from "@/convex/stock";
 import { localToday, relativeExpiry } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
@@ -34,15 +34,8 @@ type ProductRowData = {
 /** Komero's filter tiles: everything, what to use soon (by its Expiry Date), or what is Running Low. */
 type Filter = "all" | "useSoon" | "runningLow";
 
-const attentionState = (product: ProductRowData) => ({
-  stock: product.stock,
-  expiryKind: product.expiryKind ?? undefined,
-  expiryDate: product.expiryDate ?? undefined,
-  minimumStock: product.minimumStock ?? undefined,
-});
-
-const usesSoon = (product: ProductRowData, today: string) => expiryStatus(attentionState(product), today) !== null;
-const runningLow = (product: ProductRowData) => isRunningLow(attentionState(product));
+const usesSoon = (product: ProductRowData, today: string) => expiryStatus(toAttentionState(product), today) !== null;
+const runningLow = (product: ProductRowData) => isRunningLow(toAttentionState(product));
 
 /**
  * Komero: three tiles that count and filter (everything, use soon, Running
@@ -66,8 +59,9 @@ export default function KotiScreen() {
   const locationTab = inventory?.some((location) => location._id === chosenLocation) ? chosenLocation : null;
   const searching = searchText.trim() !== "";
   const narrowed = searching || filter !== "all";
+  const searchKey = nameKey(searchText);
   const shows = (product: ProductRowData) =>
-    nameKey(product.name).includes(nameKey(searchText)) &&
+    nameKey(product.name).includes(searchKey) &&
     (filter === "all" || (filter === "useSoon" ? usesSoon(product, today) : runningLow(product)));
   const locations = (inventory ?? [])
     .filter((location) => locationTab === null || location._id === locationTab)
@@ -101,14 +95,14 @@ export default function KotiScreen() {
             <FilterTile
               label={t("koti.useSoon")}
               count={all.filter((product) => usesSoon(product, today)).length}
-              tone="text-amber-600 dark:text-amber-400"
+              tone={statusTone.expiringSoon.text}
               chosen={filter === "useSoon"}
               onClick={() => setFilter(filter === "useSoon" ? "all" : "useSoon")}
             />
             <FilterTile
               label={t("attention.runningLow")}
               count={all.filter(runningLow).length}
-              tone="text-sky-600 dark:text-sky-400"
+              tone={statusTone.runningLow.text}
               chosen={filter === "runningLow"}
               onClick={() => setFilter(filter === "runningLow" ? "all" : "runningLow")}
             />
@@ -116,7 +110,6 @@ export default function KotiScreen() {
           <Search value={searchText} onChange={setSearchText} />
           <LocationTabs
             locations={inventory.map((location) => ({ ...location, count: location.products.length }))}
-            count={all.length}
             chosen={locationTab}
             onChoose={setChosenLocation}
           />
@@ -138,7 +131,12 @@ export default function KotiScreen() {
               ) : (
                 <ul aria-label={location.name} className={group}>
                   {location.products.map((product) => (
-                    <ProductRow key={product._id} product={product} justAdded={product._id === justAdded.id} />
+                    <ProductRow
+                      key={product._id}
+                      product={product}
+                      today={today}
+                      justAdded={product._id === justAdded.id}
+                    />
                   ))}
                 </ul>
               )}
@@ -236,16 +234,15 @@ function Search({ value, onChange }: { value: string; onChange: (text: string) =
 /** "All" and each Location, scrolled sideways and kept at the top of the screen; the chosen one is raised. */
 function LocationTabs({
   locations,
-  count,
   chosen,
   onChoose,
 }: {
   locations: (Location & { count: number })[];
-  count: number;
   chosen: Id<"locations"> | null;
   onChoose: (locationId: Id<"locations"> | null) => void;
 }) {
   const t = useT();
+  const count = locations.reduce((sum, location) => sum + location.count, 0);
   const tabs = [{ _id: null, name: t("koti.all"), count }, ...locations];
   return (
     <div className="material sticky top-0 z-10 -mx-4 px-4 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2">
@@ -461,7 +458,15 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
  * Tapping it opens the Product page. Out of Stock Products stay listed,
  * greyed. A Product just added scrolls into view and flashes.
  */
-function ProductRow({ product, justAdded }: { product: ProductRowData; justAdded: boolean }) {
+function ProductRow({
+  product,
+  today,
+  justAdded,
+}: {
+  product: ProductRowData;
+  today: string;
+  justAdded: boolean;
+}) {
   const t = useT();
   const lang = useLang();
   const row = useRef<HTMLLIElement>(null);
@@ -470,9 +475,8 @@ function ProductRow({ product, justAdded }: { product: ProductRowData; justAdded
     if (justAdded) row.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
   }, [justAdded, reduced]);
 
-  const today = localToday();
   const outOfStock = product.stock === 0;
-  const status = expiryStatus(attentionState(product), today);
+  const status = expiryStatus(toAttentionState(product), today);
   return (
     // Clear of the Location tabs and the floating + when scrolled into view.
     <li ref={row} className={`${groupRow} scroll-mt-20 scroll-mb-40 ${justAdded ? "just-added" : ""}`}>

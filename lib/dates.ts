@@ -9,6 +9,17 @@ export function localToday(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/** An Expiry Date written out with its weekday, e.g. "pe 7.11.2026". */
+export function formatExpiryDate(expiryDate: string, lang: Lang): string {
+  // Noon, so no time zone moves it to another day.
+  return new Date(`${expiryDate}T12:00`).toLocaleDateString(lang, {
+    weekday: "short",
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  });
+}
+
 /**
  * How far an Expiry Date is from today, in a few characters: "tänään",
  * "huomenna", "5 pv", "2 vk", "3 kk", "yli 1 v", or "… sitten" when it has passed.

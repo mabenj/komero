@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { AddFab } from "@/components/AddFab";
 import { AppLink } from "@/components/AppLink";
@@ -271,6 +271,7 @@ function BagTray({
 }) {
   const t = useT();
   const trayMotion = useEnterExit({ y: 40, opacity: 0 });
+  const tray = useTrayHeight();
   const entries: Entry[] = titled(groups, "").flatMap((group) => group.entries);
   const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll).withOptimisticUpdate(putAwayAllLocally);
   const showPutAway = usePutAwayToast();
@@ -305,9 +306,10 @@ function BagTray({
 
   return (
     <motion.div
+      ref={tray}
       {...trayMotion}
       data-bag-tray
-      className="fixed inset-x-0 bottom-[calc(var(--nav-clearance)+0.75rem)] z-10 mx-auto w-[min(36rem,calc(100%-1.5rem))] overflow-hidden rounded-3xl bg-surface shadow-[0_-4px_32px_-8px_rgb(0_0_0/0.3)] ring-1 ring-black/5 md:left-20 dark:ring-white/10"
+      className="fixed inset-x-0 bottom-[calc(var(--nav-clearance)+0.75rem)] z-10 mx-auto w-[min(36rem,calc(100%-1.5rem))] overflow-hidden rounded-3xl bg-surface shadow-[0_-4px_32px_-8px_rgb(0_0_0/0.3)] ring-1 ring-black/5 left-(--rail-width) dark:ring-white/10"
     >
       {open && (
         <div id="bag" className="flex max-h-[45dvh] flex-col gap-2 overflow-y-auto border-b border-hairline p-2">
@@ -355,6 +357,27 @@ function BagTray({
       </div>
     </motion.div>
   );
+}
+
+/**
+ * Measures the Bag tray into --tray-height on the page while it is shown, so
+ * the floating +, the toasts and the foot of the list stay clear of it as it
+ * folds and unfolds (see --tray-clearance in globals.css).
+ */
+function useTrayHeight() {
+  const tray = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = tray.current;
+    if (!element) return;
+    const root = document.documentElement.style;
+    const observer = new ResizeObserver(() => root.setProperty("--tray-height", `${element.offsetHeight}px`));
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.removeProperty("--tray-height");
+    };
+  }, []);
+  return tray;
 }
 
 /**

@@ -17,7 +17,7 @@ export const segment = (chosen: boolean) =>
     : "bg-stone-200/60 text-stone-500 dark:bg-transparent dark:ring-1 dark:ring-stone-200 dark:ring-inset";
 
 /** An inset grouped list (Komero's Locations, a Product's facts); its rows are `groupRow`. */
-export const group = `${raisedCard} overflow-hidden rounded-xl`;
+export const group = "overflow-hidden rounded-xl bg-surface shadow-raised";
 
 /** The small uppercase heading over a `group`. */
 export const groupHeader = "px-4 pb-1.5 text-[13px] text-secondary uppercase";
@@ -46,20 +46,19 @@ export const cardList = `${card} divide-y divide-hairline`;
 export const stepButton =
   "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-700 disabled:opacity-30 dark:bg-stone-800 dark:text-stone-200";
 
+const dateTone = {
+  text: "text-amber-700 dark:text-amber-400",
+  pill: "bg-amber-100 text-amber-900 dark:bg-amber-400/20 dark:text-amber-200",
+};
+
 /** What a Needs Attention status looks like: red for expired, amber for the dates, sky for Running Low. */
 export const statusTone: Record<AttentionStatus, { text: string; pill: string }> = {
   expired: {
     text: "text-red-700 dark:text-red-400",
     pill: "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300",
   },
-  checkIt: {
-    text: "text-amber-700 dark:text-amber-400",
-    pill: "bg-amber-100 text-amber-900 dark:bg-amber-400/20 dark:text-amber-200",
-  },
-  expiringSoon: {
-    text: "text-amber-700 dark:text-amber-400",
-    pill: "bg-amber-100 text-amber-900 dark:bg-amber-400/20 dark:text-amber-200",
-  },
+  checkIt: dateTone,
+  expiringSoon: dateTone,
   runningLow: {
     text: "text-sky-700 dark:text-sky-300",
     pill: "bg-sky-100 text-sky-800 dark:bg-sky-400/20 dark:text-sky-200",

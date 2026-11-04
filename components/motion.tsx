@@ -38,19 +38,6 @@ export function useEnterExit(hidden: Hidden) {
 }
 
 /**
- * The `layout` prop for rows and sections that slide to their new place when
- * something above them appears or leaves. Under reduced motion they just move.
- */
-export function useLayoutMotion() {
-  return useReducedMotion() ? undefined : ("position" as const);
-}
-
-/** Props for a section of a list that fades in and out, and slides to its new place. */
-export function useSectionMotion() {
-  return { layout: useLayoutMotion(), ...useEnterExit({ opacity: 0 }) };
-}
-
-/**
  * Something that opens under what was tapped, such as a date prompt, and
  * closes the same way. Render it inside `AnimatePresence`.
  */

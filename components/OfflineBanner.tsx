@@ -31,7 +31,7 @@ export function OfflineBanner() {
   return (
     <div
       role="status"
-      className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 mx-auto w-fit max-w-md rounded-full bg-amber-100 px-4 py-1.5 text-center text-sm font-medium text-amber-900 shadow-raised md:left-24 dark:bg-amber-950 dark:text-amber-200"
+      className="fixed right-4 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 mx-auto w-fit max-w-md rounded-full bg-amber-100 px-4 py-1.5 text-center text-sm font-medium text-amber-900 shadow-raised left-[calc(var(--rail-width)+1rem)] dark:bg-amber-950 dark:text-amber-200"
     >
       {t("offline.banner")}
       {inflightMutations > 0 && ` · ${t("offline.pending")}`}

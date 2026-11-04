@@ -4,7 +4,9 @@
 import { useMutation } from "convex/react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { MinusIcon, PlusIcon, TrashIcon } from "@/components/icons";
+import { useEnterExit } from "@/components/motion";
 import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -27,23 +29,21 @@ export function Quantity({ entry }: { entry: Entry }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const pill = useRef<HTMLButtonElement>(null);
-  const refocus = useRef(false);
   const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
   const deleteEntry = useDeleteEntry();
   const { quantity } = entry;
 
+  const stepperMotion = useEnterExit({ opacity: 0, scale: 0.9 });
+
   const close = useCallback(() => {
+    if (!root.current?.contains(document.activeElement)) return setOpen(false);
     // Focus inside goes back to the pill, so a keyboard doesn't lose its place.
-    refocus.current = root.current?.contains(document.activeElement) ?? false;
-    setOpen(false);
+    flushSync(() => setOpen(false));
+    pill.current?.focus();
   }, []);
 
   useEffect(() => {
-    if (!open) {
-      if (refocus.current) pill.current?.focus();
-      refocus.current = false;
-      return;
-    }
+    if (!open) return;
     const timer = setTimeout(close, CLOSE_AFTER_MS);
     const outside = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) close();
@@ -68,8 +68,7 @@ export function Quantity({ entry }: { entry: Entry }) {
     >
       {open ? (
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
+          {...stepperMotion}
           className="flex items-center rounded-full bg-stone-100"
         >
           <button
