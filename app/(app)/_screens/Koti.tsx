@@ -248,7 +248,7 @@ function LocationTabs({
     <div className="material sticky top-0 z-10 -mx-4 px-4 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2">
       <div
         role="group"
-        aria-label={t("settings.locations")}
+        aria-label={t("koti.locationTabs")}
         className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]"
       >
         {tabs.map((tab) => {

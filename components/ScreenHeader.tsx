@@ -35,14 +35,27 @@ function useGreeting(): MessageKey | null {
 }
 
 /**
- * The top of a tab's screen: a greeting over the tab's name in large type, and
- * ⚙ Settings on phones (wide screens have it at the foot of the rail). It
- * scrolls away with the page, and a Product page opened over the tab covers it.
+ * The top of a tab's screen. Komero and Kauppalista have a greeting over the
+ * tab's name in large type; Scan and Settings a plain carrot title. ⚙ Settings
+ * is there on phones (wide screens have it at the foot of the rail). It scrolls
+ * away with the page, and a Product page opened over the tab covers it.
  */
 export function ScreenHeader() {
   const t = useT();
   const current = usePlace();
   const greeting = useGreeting();
+  // Scan and Settings keep the plain title they had; only Settings' own page has no ⚙.
+  if (current === "scan" || current === "settings")
+    return (
+      <header className="flex items-center justify-between px-1 pt-4 pb-3">
+        <h1 className="font-display text-[26px] font-extrabold text-accent">{t(`nav.${current}`)}</h1>
+        {current === "scan" && (
+          <AppLink href="/settings" aria-label={t("nav.settings")} className="-m-2 rounded-md p-2 text-stone-500 md:hidden">
+            <SettingsIcon />
+          </AppLink>
+        )}
+      </header>
+    );
   return (
     <header className="flex items-end justify-between px-1 pt-10 pb-4">
       <div>
@@ -52,10 +65,7 @@ export function ScreenHeader() {
       <AppLink
         href="/settings"
         aria-label={t("nav.settings")}
-        aria-current={current === "settings" ? "page" : undefined}
-        className={`flex h-11 w-11 items-center justify-center rounded-full bg-surface shadow-raised md:hidden ${
-          current === "settings" ? "text-accent" : "text-stone-500"
-        }`}
+        className="flex h-11 w-11 items-center justify-center rounded-full bg-surface text-stone-500 shadow-raised md:hidden"
       >
         <SettingsIcon width={20} height={20} />
       </AppLink>

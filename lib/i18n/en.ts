@@ -55,6 +55,7 @@ export const en = {
   "koti.noneUseSoon": "Nothing is expiring soon",
   "koti.noneRunningLow": "Nothing is running low",
   "koti.filters": "Show",
+  "koti.locationTabs": "Show Location",
   "koti.productLabel": "{name}, {stock} at home",
   "koti.addTo": "Location",
   "koti.addTitle": "Add a Product",

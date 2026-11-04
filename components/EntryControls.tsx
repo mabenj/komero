@@ -2,11 +2,9 @@
 
 // An Entry's controls shared by Kauppalista (on the list and in the Bag) and a Product page.
 import { useMutation } from "convex/react";
-import { motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { MinusIcon, PlusIcon, TrashIcon } from "@/components/icons";
-import { useEnterExit } from "@/components/motion";
 import { useChangeToast } from "@/components/UndoToast";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -32,8 +30,6 @@ export function Quantity({ entry }: { entry: Entry }) {
   const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
   const deleteEntry = useDeleteEntry();
   const { quantity } = entry;
-
-  const stepperMotion = useEnterExit({ opacity: 0, scale: 0.9 });
 
   const close = useCallback(() => {
     if (!root.current?.contains(document.activeElement)) return setOpen(false);
@@ -67,9 +63,7 @@ export function Quantity({ entry }: { entry: Entry }) {
       }}
     >
       {open ? (
-        <motion.div
-          {...stepperMotion}
-          className="flex items-center rounded-full bg-stone-100"
+        <div className="flex items-center rounded-full bg-stone-100"
         >
           <button
             type="button"
@@ -98,7 +92,7 @@ export function Quantity({ entry }: { entry: Entry }) {
           >
             <PlusIcon width={16} height={16} strokeWidth={2.5} />
           </button>
-        </motion.div>
+        </div>
       ) : (
         <button
           ref={pill}

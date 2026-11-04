@@ -164,17 +164,6 @@
   animation: just-added 1.6s ease-out;
 }
 
-/* A tick that lands: the circle dips and comes back as it fills. */
-@keyframes tick-pop {
-  40% {
-    transform: scale(0.82);
-  }
-}
-
-.tick-pop {
-  animation: tick-pop 260ms cubic-bezier(0.3, 0.7, 0.2, 1);
-}
-
 /* The cupboard's doors swing open once; already open under reduced motion. */
 @keyframes cupboard-door {
   from {
@@ -208,9 +197,5 @@
   .cupboard-door {
     animation: none;
     transform: scaleX(0.18);
-  }
-
-  .tick-pop {
-    animation: none;
   }
 }

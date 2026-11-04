@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { AddFab } from "@/components/AddFab";
@@ -12,7 +12,6 @@ import { CupboardNote } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
 import { Quantity, useDeleteEntry } from "@/components/EntryControls";
 import { CheckIcon, ChevronUpIcon, TrashIcon } from "@/components/icons";
-import { useEnterExit } from "@/components/motion";
 import { useNeedMore } from "@/components/NeedMore";
 import { Sheet } from "@/components/Sheet";
 import { usePutAwayToast } from "@/components/StockToasts";
@@ -110,17 +109,9 @@ export default function ListaScreen() {
         // Opening synchronously inside the tap lets the sheet focus the field, so phones show the keyboard.
         <AddFab label={t("lista.search")} onClick={() => flushSync(() => setAdding(true))} />
       )}
-      <AnimatePresence>
-        {!bagIsEmpty && (
-          <BagTray
-            key="bag"
-            groups={list.bag}
-            open={trayOpen}
-            onOpen={setTrayOpen}
-            onEmptied={() => setAllPutAway(true)}
-          />
-        )}
-      </AnimatePresence>
+      {!bagIsEmpty && (
+        <BagTray groups={list.bag} open={trayOpen} onOpen={setTrayOpen} onEmptied={() => setAllPutAway(true)} />
+      )}
       <AnimatePresence>
         {adding && (
           <Sheet key="add" title={t("lista.search")} onClose={() => setAdding(false)}>
@@ -270,7 +261,6 @@ function BagTray({
   onEmptied: () => void;
 }) {
   const t = useT();
-  const trayMotion = useEnterExit({ y: 40, opacity: 0 });
   const tray = useTrayHeight();
   const entries: Entry[] = titled(groups, "").flatMap((group) => group.entries);
   const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll).withOptimisticUpdate(putAwayAllLocally);
@@ -305,9 +295,8 @@ function BagTray({
   };
 
   return (
-    <motion.div
+    <div
       ref={tray}
-      {...trayMotion}
       data-bag-tray
       className="fixed inset-x-0 bottom-[calc(var(--nav-clearance)+0.75rem)] z-10 mx-auto w-[min(36rem,calc(100%-1.5rem))] overflow-hidden rounded-3xl bg-surface shadow-[0_-4px_32px_-8px_rgb(0_0_0/0.3)] ring-1 ring-black/5 left-(--rail-width) dark:ring-white/10"
     >
@@ -341,7 +330,7 @@ function BagTray({
             <ChevronUpIcon
               width={18}
               height={18}
-              className={`text-stone-400 transition-transform ${open ? "rotate-180" : ""}`}
+              className={`text-stone-400 ${open ? "rotate-180" : ""}`}
             />
             <span className="font-semibold">{t("lista.bag")}</span>
             <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5 text-xs font-bold text-accent-foreground tabular-nums">
@@ -355,7 +344,7 @@ function BagTray({
           </button>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -407,7 +396,7 @@ function BagRow({ entry, onEmptied }: { entry: Entry; onEmptied?: () => void }) 
           aria-label={t("lista.untick", { name: entry.name })}
           className="flex h-11 w-11 shrink-0 items-center justify-center"
         >
-          <span className="tick-pop flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground">
             <CheckIcon width={16} height={16} strokeWidth={3} />
           </span>
         </button>

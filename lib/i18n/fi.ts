@@ -55,6 +55,7 @@ export const fi = {
   "koti.noneUseSoon": "Mikään ei vanhene pian",
   "koti.noneRunningLow": "Mikään ei ole vähissä",
   "koti.filters": "Näytä",
+  "koti.locationTabs": "Näytä säilytyspaikka",
   "koti.productLabel": "{name}, komerossa {stock}",
   "koti.addTo": "Säilytyspaikka",
   "koti.addTitle": "Lisää tuote",
