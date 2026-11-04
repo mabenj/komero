@@ -8,7 +8,7 @@ import { useT } from "@/lib/i18n";
 const SHOW_AFTER_MS = 1500;
 
 /**
- * Shown while the Convex connection is down. Queries keep their last result and the
+ * A pill floating at the top while the Convex connection is down. Queries keep their last result and the
  * Convex client holds mutations in memory until it reconnects (ADR-0001), so the
  * banner only has to say so.
  */
@@ -31,7 +31,7 @@ export function OfflineBanner() {
   return (
     <div
       role="status"
-      className="mx-4 mb-2 rounded-md bg-amber-100 px-3 py-1.5 text-center text-sm font-medium text-amber-900 dark:bg-amber-400/15 dark:text-amber-200"
+      className="fixed right-4 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 mx-auto w-fit max-w-md rounded-full bg-amber-100 px-4 py-1.5 text-center text-sm font-medium text-amber-900 shadow-raised left-[calc(var(--rail-width)+1rem)] dark:bg-amber-950 dark:text-amber-200"
     >
       {t("offline.banner")}
       {inflightMutations > 0 && ` · ${t("offline.pending")}`}

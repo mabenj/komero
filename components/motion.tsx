@@ -6,14 +6,11 @@ import type { ReactNode } from "react";
 // Motion for the whole app (spec #19 "Motion"): springs start from wherever a
 // thing is on screen, so every animation can be interrupted, and they move only
 // transform and opacity. With reduced motion, they become short cross-fades.
-// Koti's table rows and everything on Kauppalista stay still (#31): rows appear,
-// move and leave at once, like a table or a checklist.
+// Komero's rows and everything on Kauppalista stay still (#31): rows appear,
+// move and leave at once, like a checklist.
 
 /** The default spring: critically damped, so nothing overshoots. */
 export const settle: Transition = { type: "spring", bounce: 0, visualDuration: 0.35 };
-
-/** A swiped row springing back with a little bounce; give it the release `velocity`. */
-export const swipeBack: Transition = { type: "spring", bounce: 0.25, visualDuration: 0.4 };
 
 export const crossFade: Transition = { duration: 0.15, ease: "easeOut" };
 
@@ -41,19 +38,6 @@ export function useEnterExit(hidden: Hidden) {
 }
 
 /**
- * The `layout` prop for rows and sections that slide to their new place when
- * something above them appears or leaves. Under reduced motion they just move.
- */
-export function useLayoutMotion() {
-  return useReducedMotion() ? undefined : ("position" as const);
-}
-
-/** Props for a section of a list that fades in and out, and slides to its new place. */
-export function useSectionMotion() {
-  return { layout: useLayoutMotion(), ...useEnterExit({ opacity: 0 }) };
-}
-
-/**
  * Something that opens under what was tapped, such as a date prompt, and
  * closes the same way. Render it inside `AnimatePresence`.
  */
@@ -61,24 +45,6 @@ export function Reveal({ children, className }: { children: ReactNode; className
   const reveal = useEnterExit({ y: -8, opacity: 0 });
   return (
     <motion.div {...reveal} className={className}>
-      {children}
-    </motion.div>
-  );
-}
-
-/**
- * Something that folds open under its heading and shut again, growing from no
- * height so whatever is below moves along with it. It clips only while it moves,
- * so a dropdown inside it shows once it's open, and only top and bottom, so a table
- * running edge to edge past the page's gutter is never cut at the sides. Render
- * it inside `AnimatePresence`; under reduced motion it cross-fades.
- */
-export function Fold({ children, id }: { children: ReactNode; id?: string }) {
-  const reduced = useReducedMotion();
-  const shut = reduced ? { opacity: 0 } : { height: 0, opacity: 0, overflowY: "clip" };
-  const open = reduced ? { opacity: 1 } : { height: "auto", opacity: 1, transitionEnd: { overflowY: "visible" } };
-  return (
-    <motion.div id={id} initial={shut} animate={open} exit={shut} transition={reduced ? crossFade : settle}>
       {children}
     </motion.div>
   );

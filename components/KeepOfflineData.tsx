@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { localToday } from "@/lib/dates";
 
 // Product pages kept subscribed: the most recently opened ones.
 const KEEP_PRODUCTS = 20;
@@ -19,7 +18,6 @@ const KEEP_PRODUCTS = 20;
  */
 export function KeepOfflineData() {
   useQuery(api.inventory.get);
-  useQuery(api.inventory.needsAttention, { today: localToday() });
   useQuery(api.shoppingList.get);
   // Lista's optimistic updates read it to place Entries in their Category's group.
   useQuery(api.categories.list);

@@ -55,7 +55,7 @@ export function TopScreen({ children }: { children: ReactNode }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={crossFade}
-      className="relative -mx-4 -mt-2 bg-background px-4 pt-2"
+      className="relative -mx-4 -mt-2 bg-background px-4 pt-8"
     >
       {children}
     </motion.div>

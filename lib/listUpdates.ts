@@ -68,13 +68,13 @@ export function quantityAfterNeedMore(list: ShoppingList | undefined, productId:
   return (entry?.quantity ?? 0) + 1;
 }
 
-/** An Entry's quantity stepper, on the list (the Bag has none). */
+/** An Entry's quantity stepper, on the list or in the Bag. */
 export function setQuantityLocally(
   store: OptimisticLocalStore,
   { entryId, quantity }: { entryId: Id<"entries">; quantity: number },
 ) {
   const update: EntryChange = (e) => (e._id === entryId ? { ...e, quantity } : e);
-  updateList(store, (list) => ({ ...changeEntries(list, update), bag: list.bag }));
+  updateList(store, (list) => ({ ...changeEntries(list, update), bag: changeEntries(list.bag, update) }));
 }
 
 /** Ticking an Entry off in the shop: it moves into its group in the Bag. */

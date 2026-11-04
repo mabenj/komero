@@ -1,167 +1,156 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import { AppLink, navigate } from "@/components/AppLink";
+import { AnimatePresence, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { AddFab } from "@/components/AddFab";
+import { AppLink } from "@/components/AppLink";
 import { CategorySelect } from "@/components/CategorySelect";
-import { Combobox, type ComboboxOption, useProductSearch } from "@/components/Combobox";
+import { useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
-import { useChangeToast } from "@/components/UndoToast";
+import { ChevronDownIcon, CloseIcon, ScanIcon, SearchIcon } from "@/components/icons";
+import { Sheet } from "@/components/Sheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { ChevronDownIcon, ScanIcon } from "@/components/icons";
-import { Fold, settle, useLayoutMotion } from "@/components/motion";
-import { NeedsAttention, statusText } from "@/components/NeedsAttention";
-import { SwipeToNeedMore } from "@/components/NeedMore";
-import { NumberStepper } from "@/components/NumberStepper";
-import { Sheet } from "@/components/Sheet";
-import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { nameKey, tidyName } from "@/convex/productNames";
-import {
-  applyRestock,
-  applyUse,
-  type ExpiryKind,
-  expiryStatus,
-  isRunningLow,
-  type StockState,
-} from "@/convex/stock";
+import { type ExpiryKind, expiryStatus, isRunningLow, toAttentionState } from "@/convex/stock";
 import { localToday, relativeExpiry } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
-import { changeStockLocally } from "@/lib/listUpdates";
-import { foldedLocations, lastLocation, rememberFoldedLocations, rememberLocation } from "@/lib/remembered";
-import { type SortColumn, type SortDirection, sortProducts } from "@/lib/sortProducts";
-import { cardList, field, primaryButton } from "@/lib/styles";
-
-type StockChange = "restock" | "use";
+import { lastLocation, rememberLocation } from "@/lib/remembered";
+import { field, group, groupHeader, groupRow, primaryButton, segment, statusTone } from "@/lib/styles";
 
 const sheetField = `${field} w-full px-3`;
 type Location = { _id: Id<"locations">; name: string };
-type Sort = { column: SortColumn; direction: SortDirection };
 type ProductRowData = {
   _id: Id<"products">;
   name: string;
   stock: number;
-  expiryKind?: ExpiryKind | null;
-  expiryDate?: string | null;
-  minimumStock?: number | null;
+  expiryKind: ExpiryKind | null;
+  expiryDate: string | null;
+  minimumStock: number | null;
 };
+/** Komero's filter tiles: everything, what to use soon (by its Expiry Date), or what is Running Low. */
+type Filter = "all" | "useSoon" | "runningLow";
 
-/** Running Low but not yet Out of Stock, which rows already show. */
-const lowNotOut = (product: ProductRowData) =>
-  product.stock > 0 && isRunningLow({ stock: product.stock, minimumStock: product.minimumStock ?? undefined });
+const usesSoon = (product: ProductRowData, today: string) => expiryStatus(toAttentionState(product), today) !== null;
+const runningLow = (product: ProductRowData) => isRunningLow(toAttentionState(product));
 
+/**
+ * Komero: three tiles that count and filter (everything, use soon, Running
+ * Low), a search, and tabs to see one Location or all of them, kept at the top
+ * while scrolling. Each Location is a grouped list of its Products, with
+ * their Expiry Date and Stock. A row opens its Product page, where the Stock
+ * is changed. The floating + adds a Product to the Location in view.
+ */
 export default function KotiScreen() {
   const t = useT();
+  const lang = useLang();
   const inventory = useQuery(api.inventory.get);
-  const locationInView = useLocationInView(inventory !== undefined);
-  const changeStock = useStockChange();
+  const [filter, setFilter] = useState<Filter>("all");
+  const [chosenLocation, setChosenLocation] = useState<Id<"locations"> | null>(null);
   const [searchText, setSearchText] = useState("");
   const [adding, setAdding] = useState<{ name: string; locationId: Id<"locations"> } | null>(null);
   const justAdded = useJustAdded();
-  const [folded, toggleFolded, unfold] = useFoldedLocations();
-  // One sort for every Location; it starts by name each time Koti opens.
-  const [sort, setSort] = useState<Sort>({ column: "name", direction: "asc" });
-  const sortBy = (column: SortColumn) =>
-    setSort((current) => ({
-      column,
-      direction: current.column === column && current.direction === "asc" ? "desc" : "asc",
-    }));
-  const layout = useLayoutMotion();
+  const today = localToday();
+
+  // A Location deleted meanwhile no longer narrows anything.
+  const locationTab = inventory?.some((location) => location._id === chosenLocation) ? chosenLocation : null;
+  const searching = searchText.trim() !== "";
+  const narrowed = searching || filter !== "all";
+  const searchKey = nameKey(searchText);
+  const shows = (product: ProductRowData) =>
+    nameKey(product.name).includes(searchKey) &&
+    (filter === "all" || (filter === "useSoon" ? usesSoon(product, today) : runningLow(product)));
+  const locations = (inventory ?? [])
+    .filter((location) => locationTab === null || location._id === locationTab)
+    .map((location) => ({
+      ...location,
+      products: location.products.filter(shows).sort((a, b) => a.name.localeCompare(b.name, lang)),
+    }))
+    // An empty Location shows only while nothing narrows the list.
+    .filter((location) => !narrowed || location.products.length > 0);
+  const locationInView = useLocationInView(locations.map((location) => location._id).join());
 
   if (inventory === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
-  const empty = inventory.every((location) => location.products.length === 0);
-  // One layout group, so a part that opens moves the Locations below it smoothly; table rows themselves stay still.
+  const all = inventory.flatMap((location) => location.products);
+  const remembered = inventory.find((location) => location._id === lastLocation())?._id;
+  const addTo = locationTab ?? locationInView ?? remembered ?? inventory[0]?._id;
+
   return (
-    <LayoutGroup>
-      <div className="flex flex-col gap-6">
-        <SearchAdd
-          text={searchText}
-          onTextChange={setSearchText}
-          locations={inventory}
-          locationInView={locationInView}
-          onAdd={(name, locationId) => setAdding({ name, locationId })}
-        />
-        {empty ? <EmptyKoti /> : <NeedsAttention />}
-        {inventory.map((location) => (
-          <motion.section
-            key={location._id}
-            layout={layout}
-            data-location-id={location._id}
-            className="flex flex-col"
-          >
-            <div className="flex items-center gap-2 px-1">
-              {/* The heading fills the row up to Add, so a tap anywhere beside it folds. */}
-              <h2 className="flex-1">
-                <button
-                  type="button"
-                  aria-expanded={!folded.has(location._id)}
-                  aria-controls={`products-${location._id}`}
-                  onClick={() => toggleFolded(location._id)}
-                  className="flex min-h-11 w-full items-center gap-1.5 text-left"
-                >
-                  <motion.span
-                    animate={{ rotate: folded.has(location._id) ? -90 : 0 }}
-                    transition={settle}
-                    className="flex text-stone-400"
-                  >
-                    <ChevronDownIcon width={16} height={16} />
-                  </motion.span>
-                  <span className="flex items-center gap-2">
-                    <span className="font-display text-lg">{location.name}</span>
-                    <span className="text-xs font-semibold text-stone-400 tabular-nums">
-                      {location.products.length}
-                    </span>
-                    <LowCount products={location.products} />
-                  </span>
-                </button>
+    <>
+      {all.length === 0 ? (
+        <EmptyKoti />
+      ) : (
+        <div className="flex flex-col gap-5">
+          <div role="group" aria-label={t("koti.filters")} className="grid grid-cols-3 gap-2.5">
+            <FilterTile
+              label={t("koti.all")}
+              count={all.length}
+              chosen={filter === "all"}
+              onClick={() => setFilter("all")}
+            />
+            <FilterTile
+              label={t("koti.useSoon")}
+              count={all.filter((product) => usesSoon(product, today)).length}
+              tone={statusTone.expiringSoon.text}
+              chosen={filter === "useSoon"}
+              onClick={() => setFilter(filter === "useSoon" ? "all" : "useSoon")}
+            />
+            <FilterTile
+              label={t("attention.runningLow")}
+              count={all.filter(runningLow).length}
+              tone={statusTone.runningLow.text}
+              chosen={filter === "runningLow"}
+              onClick={() => setFilter(filter === "runningLow" ? "all" : "runningLow")}
+            />
+          </div>
+          <Search value={searchText} onChange={setSearchText} />
+          <LocationTabs
+            locations={inventory.map((location) => ({ ...location, count: location.products.length }))}
+            chosen={locationTab}
+            onChoose={setChosenLocation}
+          />
+          {locations.length === 0 && (
+            <p className="px-1 text-sm text-stone-500">
+              {searching ? t("koti.noMatches", { text: searchText.trim() })
+                : filter === "useSoon" ? t("koti.noneUseSoon")
+                : t("koti.noneRunningLow")}
+            </p>
+          )}
+          {locations.map((location) => (
+            <section key={location._id} data-location-id={location._id}>
+              <h2 className={`${groupHeader} flex justify-between`}>
+                <span>{location.name}</span>
+                <span className="tabular-nums">{location.products.length}</span>
               </h2>
-              <button
-                type="button"
-                // Opening synchronously inside the tap lets the sheet focus Name, so phones show the keyboard.
-                onClick={() => flushSync(() => setAdding({ name: "", locationId: location._id }))}
-                aria-label={t("koti.addHereLabel", { location: location.name })}
-                className="min-h-11 rounded-full px-3 text-sm font-medium text-stone-600 dark:text-stone-400"
-              >
-                {t("koti.addHere")}
-              </button>
-            </div>
-            <AnimatePresence initial={false}>
-              {folded.has(location._id) ? (
-                location.products.length > 0 && (
-                  <Fold key="names">
-                    <p className="truncate pt-0.5 pr-1 pl-[26px] text-sm text-stone-500">
-                      {location.products.map((product) => product.name).join(", ")}
-                    </p>
-                  </Fold>
-                )
+              {location.products.length === 0 ? (
+                <p className={`${group} px-4 py-3 text-secondary`}>{t("koti.noProducts")}</p>
               ) : (
-                <Fold key="products" id={`products-${location._id}`}>
-                  <div className="pt-1.5">
-                    {location.products.length > 0 ? (
-                      <ProductTable
-                        label={location.name}
-                        products={location.products}
-                        sort={sort}
-                        onSort={sortBy}
-                        onChangeStock={changeStock}
-                        justAdded={justAdded.id}
-                      />
-                    ) : (
-                      !empty && (
-                        <p className={`${cardList} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
-                      )
-                    )}
-                  </div>
-                </Fold>
+                <ul aria-label={location.name} className={group}>
+                  {location.products.map((product) => (
+                    <ProductRow
+                      key={product._id}
+                      product={product}
+                      today={today}
+                      justAdded={product._id === justAdded.id}
+                    />
+                  ))}
+                </ul>
               )}
-            </AnimatePresence>
-          </motion.section>
-        ))}
-      </div>
+            </section>
+          ))}
+        </div>
+      )}
+      {addTo && (
+        <AddFab
+          label={t("koti.addTitle")}
+          // Opening synchronously inside the tap lets the sheet focus Name, so phones show the keyboard.
+          onClick={() => flushSync(() => setAdding({ name: "", locationId: addTo }))}
+        />
+      )}
       <AnimatePresence>
         {adding && (
           <AddSheet
@@ -170,80 +159,116 @@ export default function KotiScreen() {
             locations={inventory}
             initialLocationId={adding.locationId}
             onClose={() => setAdding(null)}
-            onSubmitted={() => {
-              // A name came with the sheet only from the search field, which clears for the next search.
-              if (adding.name !== "") setSearchText("");
-              setAdding(null);
-            }}
             onCreated={(productId, locationId) => {
-              unfold(locationId);
+              // Whatever narrowed the list makes way, so the new Product can show.
+              setSearchText("");
+              setFilter("all");
+              if (locationTab !== null && locationTab !== locationId) setChosenLocation(locationId);
               justAdded.set(productId);
             }}
-            onFailed={(name) => setSearchText((current) => current || name)}
+            onFailed={(name, locationId) => setAdding({ name, locationId })}
           />
         )}
       </AnimatePresence>
-    </LayoutGroup>
+    </>
   );
 }
 
-/** How many of a Location's Products are Running Low, in the heading; nothing when none are. */
-function LowCount({ products }: { products: ProductRowData[] }) {
-  const t = useT();
-  const count = products.filter(lowNotOut).length;
-  if (count === 0) return null;
-  return (
-    <span className={`text-xs font-semibold tabular-nums ${statusText.runningLow}`}>
-      {t("koti.lowCount", { count })}
-    </span>
-  );
-}
-
-/** The search/add field: matching Products to open as you type, or "+ Add" for a new one. */
-function SearchAdd({
-  text,
-  onTextChange: setText,
-  locations,
-  locationInView,
-  onAdd,
+/** A filter tile: a big count over its name. The chosen one is raised; tapping it again shows everything. */
+function FilterTile({
+  label,
+  count,
+  tone = "",
+  chosen,
+  onClick,
 }: {
-  text: string;
-  onTextChange: (text: string) => void;
-  locations: (Location & { products: ProductRowData[] })[];
-  locationInView: Id<"locations"> | null;
-  onAdd: (name: string, locationId: Id<"locations">) => void;
+  label: string;
+  count: number;
+  tone?: string;
+  chosen: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={chosen}
+      className={`flex flex-col items-start gap-0.5 rounded-2xl px-3.5 py-3 text-left transition-colors duration-150 ${segment(chosen)}`}
+    >
+      <span className={`font-display text-[28px] leading-none tabular-nums ${tone}`}>{count}</span>
+      <span className="text-xs font-semibold">{label}</span>
+    </button>
+  );
+}
+
+/** Narrows Komero to the Products whose name contains the text. */
+function Search({ value, onChange }: { value: string; onChange: (text: string) => void }) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-2 rounded-full bg-surface pl-4 shadow-raised focus-within:ring-2 focus-within:ring-accent">
+      <SearchIcon width={18} height={18} className="pointer-events-none shrink-0 text-stone-400" />
+      <input
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={t("koti.search")}
+        aria-label={t("koti.search")}
+        enterKeyHint="search"
+        autoComplete="off"
+        className="min-h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-stone-400 [&::-webkit-search-cancel-button]:hidden"
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label={t("common.clear")}
+          className="flex h-12 w-12 shrink-0 items-center justify-center text-stone-400"
+        >
+          <CloseIcon width={18} height={18} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** "All" and each Location, scrolled sideways and kept at the top of the screen; the chosen one is raised. */
+function LocationTabs({
+  locations,
+  chosen,
+  onChoose,
+}: {
+  locations: (Location & { count: number })[];
+  chosen: Id<"locations"> | null;
+  onChoose: (locationId: Id<"locations"> | null) => void;
 }) {
   const t = useT();
-  const result = useProductSearch(text);
-  const name = tidyName(text);
-  const matches = result?.matches ?? [];
-  // From the matches, not the answer's own `canAdd`, which may still be for the text before.
-  const exists = matches.some((match) => nameKey(match.name) === nameKey(name));
-
-  const remembered = locations.find((location) => location._id === lastLocation())?._id;
-  const locationId = locationInView ?? remembered ?? locations[0]?._id;
-
-  const options: ComboboxOption[] = matches.map((match) => ({
-    key: match._id,
-    label: match.name,
-    detail: `${match.locationName} · ${t("lista.stock", { stock: match.stock })}`,
-    onPick: () => {
-      setText("");
-      navigate(`/koti/${match._id}`);
-    },
-  }));
-  if (name !== "" && !exists && locationId) {
-    const duplicate = result?.duplicate;
-    options.push({
-      key: "add",
-      label: t("koti.add", { name }),
-      detail: duplicate && t("koti.similar", { name: duplicate.name, location: duplicate.locationName }),
-      add: true,
-      onPick: () => onAdd(name, locationId),
-    });
-  }
-
-  return <Combobox value={text} onChange={setText} label={t("koti.search")} options={options} />;
+  const count = locations.reduce((sum, location) => sum + location.count, 0);
+  const tabs = [{ _id: null, name: t("koti.all"), count }, ...locations];
+  return (
+    <div className="material sticky top-0 z-10 -mx-4 px-4 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2">
+      <div
+        role="group"
+        aria-label={t("koti.locationTabs")}
+        className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]"
+      >
+        {tabs.map((tab) => {
+          const active = chosen === tab._id;
+          return (
+            <button
+              key={tab._id ?? "all"}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChoose(tab._id)}
+              className={`flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition-colors duration-150 ${segment(active)}`}
+            >
+              {tab.name}
+              <span className="text-xs tabular-nums opacity-60">{tab.count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 const isPackages = (n: number) => Number.isInteger(n) && n >= 0;
@@ -257,7 +282,6 @@ function AddSheet({
   locations,
   initialLocationId,
   onClose,
-  onSubmitted,
   onCreated,
   onFailed,
 }: {
@@ -265,9 +289,9 @@ function AddSheet({
   locations: Location[];
   initialLocationId: Id<"locations">;
   onClose: () => void;
-  onSubmitted: () => void;
   onCreated: (productId: Id<"products">, locationId: Id<"locations">) => void;
-  onFailed: (name: string) => void;
+  /** Adding didn't go through: the sheet reopens with what was typed. */
+  onFailed: (name: string, locationId: Id<"locations">) => void;
 }) {
   const t = useT();
   const [name, setName] = useState(initialName);
@@ -291,12 +315,12 @@ function AddSheet({
   const showsExpiryDate = expiryKind !== null && stock > 0;
 
   // A name that already exists can still be added, next to its warning.
-  // The sheet closes at once; the name comes back in the search field if adding fails.
+  // The sheet closes at once, and reopens with the name if adding fails.
   const add = () => {
     if (!valid) return;
     const tidy = tidyName(name);
     rememberLocation(locationId);
-    onSubmitted();
+    onClose();
     createProduct({
       name: tidy,
       locationId,
@@ -305,7 +329,10 @@ function AddSheet({
       minimumStock,
       expiryKind: expiryKind ?? undefined,
       expiryDate: showsExpiryDate && expiryDate ? expiryDate : undefined,
-    }).then((productId) => onCreated(productId, locationId), () => onFailed(tidy));
+    }).then(
+      (productId) => onCreated(productId, locationId),
+      () => onFailed(tidy, locationId),
+    );
   };
 
   return (
@@ -425,195 +452,62 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
   );
 }
 
-const tableRow = "flex items-center gap-2 px-4";
-const columns: SortColumn[] = ["name", "expiry", "stock"];
-// Fixed widths, so the columns line up across Locations; Stock grows while its stepper is open.
-const cellWidths: Record<SortColumn, string> = {
-  name: "min-w-0 flex-1",
-  expiry: "w-24 shrink-0 truncate",
-  stock: "flex min-w-16 shrink-0 justify-end",
-};
-
 /**
- * A Location's Products as a table: Name · Expiry Date · Stock. Tapping a
- * column header sorts every Location by it, and again reverses the order.
- * On phones it runs edge to edge.
- */
-function ProductTable({
-  label,
-  products,
-  sort,
-  onSort,
-  onChangeStock,
-  justAdded,
-}: {
-  label: string;
-  products: ProductRowData[];
-  sort: Sort;
-  onSort: (column: SortColumn) => void;
-  onChangeStock: (product: ProductRowData, change: StockChange) => void;
-  justAdded: Id<"products"> | null;
-}) {
-  const t = useT();
-  const lang = useLang();
-  return (
-    <div
-      role="table"
-      aria-label={label}
-      className={`${cardList} overflow-hidden max-sm:-mx-4 max-sm:rounded-none max-sm:shadow-none`}
-    >
-      <div role="row" className={`${tableRow} min-h-9 text-xs font-semibold text-stone-500`}>
-        {columns.map((column) => {
-          const sorted = sort.column === column;
-          return (
-            <div
-              key={column}
-              role="columnheader"
-              aria-sort={sorted ? (sort.direction === "asc" ? "ascending" : "descending") : undefined}
-              className={cellWidths[column]}
-            >
-              <button type="button" onClick={() => onSort(column)} className="-my-1 flex min-h-11 items-center gap-0.5">
-                {t(`koti.column.${column}`)}
-                {sorted && <span aria-hidden="true">{sort.direction === "asc" ? "↑" : "↓"}</span>}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-      {sortProducts(products, sort.column, sort.direction, lang).map((product) => (
-        <ProductRow
-          key={product._id}
-          product={product}
-          onChangeStock={onChangeStock}
-          justAdded={product._id === justAdded}
-        />
-      ))}
-    </div>
-  );
-}
-
-const dimmedName = "text-stone-400 dark:text-stone-500";
-
-/**
- * A Product in its Location's table: its name, how far off its Expiry Date is,
- * and its Stock as a number that opens – / +; swipe it left for Need More.
- * Out of Stock Products stay listed, dimmed. A Product just added scrolls into
- * view and flashes.
+ * A Product in its Location: its name, how far off its Expiry Date is
+ * (coloured by what it means today), and its Stock, tinted when Running Low.
+ * Tapping it opens the Product page. Out of Stock Products stay listed,
+ * greyed. A Product just added scrolls into view and flashes.
  */
 function ProductRow({
   product,
-  onChangeStock,
+  today,
   justAdded,
 }: {
   product: ProductRowData;
-  onChangeStock: (product: ProductRowData, change: StockChange) => void;
+  today: string;
   justAdded: boolean;
 }) {
-  const nameCell = useRef<HTMLDivElement>(null);
+  const t = useT();
+  const lang = useLang();
+  const row = useRef<HTMLLIElement>(null);
   const reduced = useReducedMotion();
   useEffect(() => {
-    if (justAdded) nameCell.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+    if (justAdded) row.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
   }, [justAdded, reduced]);
 
-  return (
-    <SwipeToNeedMore
-      product={product}
-      role="row"
-      className={`${tableRow} min-h-9 text-sm ${justAdded ? "just-added" : ""}`}
-    >
-      {/* Clear of the top bar and the bottom tab bar when scrolled into view. */}
-      <div ref={nameCell} role="cell" className={`${cellWidths.name} scroll-mt-20 scroll-mb-28`}>
-        <AppLink
-          href={`/koti/${product._id}`}
-          className={`-my-1 flex min-h-11 items-center ${product.stock === 0 ? dimmedName : ""}`}
-        >
-          <span className="truncate">{product.name}</span>
-        </AppLink>
-      </div>
-      <div role="cell" className={cellWidths.expiry}>
-        <ExpiryDate product={product} />
-      </div>
-      <div role="cell" className={cellWidths.stock}>
-        <StockStepper product={product} onChangeStock={onChangeStock} />
-      </div>
-    </SwipeToNeedMore>
-  );
-}
-
-/** How far off a Product's Expiry Date is, coloured by what it means today; nothing without one. */
-function ExpiryDate({ product }: { product: ProductRowData }) {
-  const lang = useLang();
-  const { expiryKind, expiryDate } = product;
-  if (!expiryKind || !expiryDate) return null;
-  const today = localToday();
-  const status = expiryStatus({ stock: 1, expiryKind, expiryDate }, today);
-  return (
-    <span className={`shrink-0 tabular-nums ${status ? statusText[status] : "text-stone-500"}`}>
-      {relativeExpiry(expiryDate, today, lang)}
-    </span>
-  );
-}
-
-/** A Product's Stock as a number that opens – / +: amber when Running Low, dimmed when Out of Stock. */
-function StockStepper({
-  product,
-  onChangeStock,
-}: {
-  product: ProductRowData;
-  onChangeStock: (product: ProductRowData, change: StockChange) => void;
-}) {
-  const t = useT();
   const outOfStock = product.stock === 0;
+  const status = expiryStatus(toAttentionState(product), today);
   return (
-    <NumberStepper
-      text={String(product.stock)}
-      label={t("koti.changeStock", { name: product.name, stock: product.stock })}
-      dimmed={outOfStock}
-      runningLow={lowNotOut(product)}
-      onDecrease={() => onChangeStock(product, "use")}
-      decreaseLabel={t("koti.use", { name: product.name })}
-      decreaseDisabled={outOfStock}
-      onIncrease={() => onChangeStock(product, "restock")}
-      increaseLabel={t("koti.restock", { name: product.name })}
-    />
-  );
-}
-
-const stockRule = (change: StockChange) => (change === "restock" ? (state: StockState) => applyRestock(state, 1) : applyUse);
-
-/**
- * Applies + / – (optimistically, so taps feel instant) and, at the tap, shows
- * the Stock it changes to with Undo. Only the server knows the Minimum Stock,
- * so when it answers that the change made the Product Running Low, the
- * "running low" toast takes over and offers Need More; nothing goes on the
- * list unless it is tapped.
- */
-function useStockChange() {
-  const t = useT();
-  const showChangeToast = useChangeToast();
-  const showRunningLow = useRunningLowToast();
-  const undoStockChange = useUndoStockChange();
-  const adjustStock = useMutation(api.products.adjustStock).withOptimisticUpdate((store, { productId, change }) =>
-    changeStockLocally(store, productId, stockRule(change)),
-  );
-
-  return useCallback(
-    (product: ProductRowData, change: StockChange) => {
-      const from = product.stock;
-      const to = stockRule(change)({ stock: from }).stock;
-      if (from === to) return;
-      const changed = adjustStock({ productId: product._id, change });
-      const shown = showChangeToast(t("koti.stockChanged", { name: product.name, from, to }), changed, (done) =>
-        undoStockChange(product, done)(),
-      );
-      changed.then(
-        (done) => {
-          if (done.crossedIntoRunningLow) showRunningLow(product, undoStockChange(product, done), shown);
-        },
-        () => {},
-      );
-    },
-    [adjustStock, undoStockChange, showChangeToast, showRunningLow, t],
+    // Clear of the Location tabs and the floating + when scrolled into view.
+    <li ref={row} className={`${groupRow} scroll-mt-20 scroll-mb-40 ${justAdded ? "just-added" : ""}`}>
+      <AppLink
+        href={`/koti/${product._id}`}
+        aria-label={t("koti.productLabel", { name: product.name, stock: product.stock })}
+        className="flex min-h-11 items-center gap-3 py-2.5 pr-3 pl-4 active:bg-stone-100"
+      >
+        <span className={`min-w-0 flex-1 truncate text-[17px] ${outOfStock ? "text-secondary" : ""}`}>
+          {product.name}
+        </span>
+        {product.expiryKind && product.expiryDate && (
+          <span className={`shrink-0 text-[15px] tabular-nums ${status ? statusTone[status].text : "text-secondary"}`}>
+            {relativeExpiry(product.expiryDate, today, lang)}
+          </span>
+        )}
+        <span
+          className={`w-6 shrink-0 text-right text-[17px] font-semibold tabular-nums ${
+            outOfStock ? "text-secondary" : runningLow(product) ? statusTone.runningLow.text : ""
+          }`}
+        >
+          {product.stock}
+        </span>
+        <ChevronDownIcon
+          width={14}
+          height={14}
+          strokeWidth={2.6}
+          className="shrink-0 -rotate-90 text-stone-300 dark:text-stone-600"
+        />
+      </AppLink>
+    </li>
   );
 }
 
@@ -629,34 +523,19 @@ function useJustAdded() {
   return { id, set };
 }
 
-/** The Locations folded shut on Koti, remembered on this device, a toggle for one, and opening one. */
-function useFoldedLocations() {
-  const [folded, setFolded] = useState(() => new Set(foldedLocations()));
-  const change = useCallback((id: Id<"locations">, shut: (isShut: boolean) => boolean) => {
-    setFolded((current) => {
-      const next = new Set(current);
-      if (shut(next.has(id))) next.add(id);
-      else next.delete(id);
-      rememberFoldedLocations([...next]);
-      return next;
-    });
-  }, []);
-  const toggle = useCallback((id: Id<"locations">) => change(id, (isShut) => !isShut), [change]);
-  const unfold = useCallback((id: Id<"locations">) => change(id, () => false), [change]);
-  return [folded, toggle, unfold] as const;
-}
-
 /**
- * The Location section the Member has scrolled to, which new Products default to.
- * At the top of Koti nothing is "in view", so the last used Location wins.
+ * The Location section the Member has scrolled to, which new Products default
+ * to. At the top of Komero nothing is "in view", so the last used Location
+ * wins. `shown` names the sections on screen, so they are watched again
+ * whenever the filters, search or tabs change them.
  */
-function useLocationInView(ready: boolean) {
+function useLocationInView(shown: string) {
   const [inView, setInView] = useState<Id<"locations"> | null>(null);
   const visible = useRef(new Set<Element>());
 
   useEffect(() => {
-    if (!ready) return;
     const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-location-id]"));
+    visible.current.clear();
     const update = () => {
       if (window.scrollY < 8) return setInView(null);
       const first = sections.find((section) => visible.current.has(section));
@@ -679,7 +558,7 @@ function useLocationInView(ready: boolean) {
       observer.disconnect();
       window.removeEventListener("scroll", update);
     };
-  }, [ready]);
+  }, [shown]);
 
   return inView;
 }

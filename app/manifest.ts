@@ -13,8 +13,8 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     orientation: "portrait",
     // The light page grey; the manifest has no dark variant, the viewport theme colour covers dark mode.
-    background_color: "#f4f5f7",
-    theme_color: "#f4f5f7",
+    background_color: "#f2f2f7",
+    theme_color: "#f2f2f7",
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },

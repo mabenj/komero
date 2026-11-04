@@ -60,6 +60,21 @@ export function isDate(text: string): boolean {
 /** What the Needs Attention rules look at. */
 export type AttentionState = StockState & { minimumStock?: number };
 
+/** A Product as queries send it (null for what it doesn't have), as the Needs Attention rules look at it. */
+export function toAttentionState(product: {
+  stock: number;
+  expiryKind: ExpiryKind | null;
+  expiryDate: string | null;
+  minimumStock: number | null;
+}): AttentionState {
+  return {
+    stock: product.stock,
+    expiryKind: product.expiryKind ?? undefined,
+    expiryDate: product.expiryDate ?? undefined,
+    minimumStock: product.minimumStock ?? undefined,
+  };
+}
+
 /** Running Low: Stock at or below the Minimum Stock, or at 0 without one. */
 export function isRunningLow(product: AttentionState): boolean {
   return product.stock <= (product.minimumStock ?? 0);

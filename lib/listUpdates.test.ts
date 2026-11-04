@@ -10,6 +10,7 @@ import {
   quantityAfterNeedMore,
   removeLocally,
   setCategoryLocally,
+  setQuantityLocally,
   tickLocally,
   untickLocally,
 } from "./listUpdates";
@@ -248,6 +249,26 @@ describe("deleting an Entry", () => {
     removeLocally(store, { entryId: candles._id });
 
     expect(listIn(store)).toEqual({ categories: [{ ...dry, entries: [oatsEntry] }], other: [], bag: empty });
+  });
+});
+
+describe("changing how many of an Entry to buy", () => {
+  test("it changes on the list and in the Bag alike", () => {
+    const store = withList({
+      categories: [{ ...dry, entries: [oatsEntry] }],
+      other: [],
+      bag: { categories: [{ ...dairy, entries: [milkEntry] }], other: [candles] },
+    });
+
+    setQuantityLocally(store, { entryId: oatsEntry._id, quantity: 3 });
+    setQuantityLocally(store, { entryId: milkEntry._id, quantity: 4 });
+    setQuantityLocally(store, { entryId: candles._id, quantity: 2 });
+
+    expect(listIn(store)).toEqual({
+      categories: [{ ...dry, entries: [{ ...oatsEntry, quantity: 3 }] }],
+      other: [],
+      bag: { categories: [{ ...dairy, entries: [{ ...milkEntry, quantity: 4 }] }], other: [{ ...candles, quantity: 2 }] },
+    });
   });
 });
 

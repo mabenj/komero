@@ -13,7 +13,6 @@ import { DatePrompt } from "@/components/DatePrompt";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { MinusIcon, PlusIcon } from "@/components/icons";
 import { crossFade, Reveal, useEnterExit } from "@/components/motion";
-import { stepButton } from "@/components/NumberStepper";
 import { useNeedMoreToast } from "@/components/NeedMore";
 import { useRunningLowToast, useUndoStockChange } from "@/components/StockToasts";
 import { useUndoToast } from "@/components/UndoToast";
@@ -23,7 +22,7 @@ import { SCAN_MODES, type ScanMode } from "@/convex/scanModes";
 import type { ExpiryKind } from "@/convex/stock";
 import { haptic } from "@/lib/haptics";
 import { useT } from "@/lib/i18n";
-import { card, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
+import { card, field, primaryButton, secondaryButton, stepButton, textLink } from "@/lib/styles";
 import { lastLocation, lastScanMode, rememberLocation, rememberScanMode } from "@/lib/remembered";
 
 type ScanOutcome = Exclude<FunctionReturnType<typeof api.barcodes.scan>, { unknown: true }>;
