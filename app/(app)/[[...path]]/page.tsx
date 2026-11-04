@@ -4,6 +4,7 @@ import { AnimatePresence } from "motion/react";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect } from "react";
 import { navigate } from "@/components/AppLink";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { CoveredScreen, TopScreen } from "@/components/TopScreen";
 import type { Id } from "@/convex/_generated/dataModel";
 import { lastTab } from "@/lib/remembered";
@@ -54,7 +55,10 @@ export default function AppScreens() {
 
   return (
     <>
-      <CoveredScreen covered={topScreen !== null}>{screen}</CoveredScreen>
+      <CoveredScreen covered={topScreen !== null}>
+        {screen && <ScreenHeader />}
+        {screen}
+      </CoveredScreen>
       <AnimatePresence initial={false}>{topScreen && <TopScreen key={pathname}>{topScreen}</TopScreen>}</AnimatePresence>
     </>
   );

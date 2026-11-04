@@ -46,11 +46,6 @@ const location = remembered("komero.lastLocation", (stored): stored is string =>
 export const rememberLocation = location.set;
 export const lastLocation = location.get;
 
-// Whether Kauppalista's Bag is folded shut; it starts open.
-const bag = remembered("komero.bagFolded", oneOf(["folded", "open"] as const));
-export const rememberBagFolded = (folded: boolean) => bag.set(folded ? "folded" : "open");
-export const bagFolded = () => bag.get() === "folded";
-
 // ⚙ Theme on this device; System follows the device's light or dark setting.
 export const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];

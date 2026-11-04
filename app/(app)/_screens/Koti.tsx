@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { AddFab } from "@/components/AddFab";
@@ -11,8 +11,6 @@ import { useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
 import { ChevronDownIcon, CloseIcon, ScanIcon, SearchIcon } from "@/components/icons";
-import { useLayoutMotion } from "@/components/motion";
-import { NeedsAttention, statusText } from "@/components/NeedsAttention";
 import { Sheet } from "@/components/Sheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -21,7 +19,7 @@ import { type ExpiryKind, expiryStatus, isRunningLow } from "@/convex/stock";
 import { localToday, relativeExpiry } from "@/lib/dates";
 import { useLang, useT } from "@/lib/i18n";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
-import { card, cardList, field, primaryButton } from "@/lib/styles";
+import { field, group, groupHeader, groupRow, primaryButton, segment, statusTone } from "@/lib/styles";
 
 const sheetField = `${field} w-full px-3`;
 type Location = { _id: Id<"locations">; name: string };
@@ -33,71 +31,118 @@ type ProductRowData = {
   expiryDate: string | null;
   minimumStock: number | null;
 };
+/** Komero's filter tiles: everything, what to use soon (by its Expiry Date), or what is Running Low. */
+type Filter = "all" | "useSoon" | "runningLow";
+
+const attentionState = (product: ProductRowData) => ({
+  stock: product.stock,
+  expiryKind: product.expiryKind ?? undefined,
+  expiryDate: product.expiryDate ?? undefined,
+  minimumStock: product.minimumStock ?? undefined,
+});
+
+const usesSoon = (product: ProductRowData, today: string) => expiryStatus(attentionState(product), today) !== null;
+const runningLow = (product: ProductRowData) => isRunningLow(attentionState(product));
 
 /**
- * Komero: a search that narrows the list, Needs Attention, then each Location
- * with its Products as calm two-line rows, name and Expiry Date with the Stock
- * beside them. A row opens its Product page, where the Stock is changed. The
- * floating + adds a Product to the Location in view.
+ * Komero: three tiles that count and filter (everything, use soon, Running
+ * Low), a search, and tabs to see one Location or all of them, kept at the top
+ * while scrolling. Each Location is a grouped list of its Products, with
+ * their Expiry Date and Stock. A row opens its Product page, where the Stock
+ * is changed. The floating + adds a Product to the Location in view.
  */
 export default function KotiScreen() {
   const t = useT();
   const lang = useLang();
   const inventory = useQuery(api.inventory.get);
-  const locationInView = useLocationInView(inventory !== undefined);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [chosenLocation, setChosenLocation] = useState<Id<"locations"> | null>(null);
   const [searchText, setSearchText] = useState("");
   const [adding, setAdding] = useState<{ name: string; locationId: Id<"locations"> } | null>(null);
   const justAdded = useJustAdded();
-  const layout = useLayoutMotion();
+  const today = localToday();
+
+  // A Location deleted meanwhile no longer narrows anything.
+  const locationTab = inventory?.some((location) => location._id === chosenLocation) ? chosenLocation : null;
+  const searching = searchText.trim() !== "";
+  const narrowed = searching || filter !== "all";
+  const shows = (product: ProductRowData) =>
+    nameKey(product.name).includes(nameKey(searchText)) &&
+    (filter === "all" || (filter === "useSoon" ? usesSoon(product, today) : runningLow(product)));
+  const locations = (inventory ?? [])
+    .filter((location) => locationTab === null || location._id === locationTab)
+    .map((location) => ({
+      ...location,
+      products: location.products.filter(shows).sort((a, b) => a.name.localeCompare(b.name, lang)),
+    }))
+    // An empty Location shows only while nothing narrows the list.
+    .filter((location) => !narrowed || location.products.length > 0);
+  const locationInView = useLocationInView(locations.map((location) => location._id).join());
 
   if (inventory === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
+  const all = inventory.flatMap((location) => location.products);
   const remembered = inventory.find((location) => location._id === lastLocation())?._id;
-  const addTo = locationInView ?? remembered ?? inventory[0]?._id;
-  const empty = inventory.every((location) => location.products.length === 0);
-  const searching = searchText.trim() !== "";
-  const locations = inventory
-    .map((location) => ({
-      ...location,
-      products: location.products
-        .filter((product) => nameKey(product.name).includes(nameKey(searchText)))
-        .sort((a, b) => a.name.localeCompare(b.name, lang)),
-    }))
-    .filter((location) => !searching || location.products.length > 0);
+  const addTo = locationTab ?? locationInView ?? remembered ?? inventory[0]?._id;
 
-  // One layout group, so the Locations slide down smoothly when Needs Attention appears.
   return (
-    <LayoutGroup>
-      {empty ? (
+    <>
+      {all.length === 0 ? (
         <EmptyKoti />
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5">
+          <div role="group" aria-label={t("koti.filters")} className="grid grid-cols-3 gap-2.5">
+            <FilterTile
+              label={t("koti.all")}
+              count={all.length}
+              chosen={filter === "all"}
+              onClick={() => setFilter("all")}
+            />
+            <FilterTile
+              label={t("koti.useSoon")}
+              count={all.filter((product) => usesSoon(product, today)).length}
+              tone="text-amber-600 dark:text-amber-400"
+              chosen={filter === "useSoon"}
+              onClick={() => setFilter(filter === "useSoon" ? "all" : "useSoon")}
+            />
+            <FilterTile
+              label={t("attention.runningLow")}
+              count={all.filter(runningLow).length}
+              tone="text-sky-600 dark:text-sky-400"
+              chosen={filter === "runningLow"}
+              onClick={() => setFilter(filter === "runningLow" ? "all" : "runningLow")}
+            />
+          </div>
           <Search value={searchText} onChange={setSearchText} />
-          {!searching && <NeedsAttention />}
+          <LocationTabs
+            locations={inventory.map((location) => ({ ...location, count: location.products.length }))}
+            count={all.length}
+            chosen={locationTab}
+            onChoose={setChosenLocation}
+          />
           {locations.length === 0 && (
-            <p className="px-1 text-sm text-stone-500">{t("koti.noMatches", { text: searchText.trim() })}</p>
+            <p className="px-1 text-sm text-stone-500">
+              {searching ? t("koti.noMatches", { text: searchText.trim() })
+                : filter === "useSoon" ? t("koti.noneUseSoon")
+                : t("koti.noneRunningLow")}
+            </p>
           )}
           {locations.map((location) => (
-            <motion.section
-              key={location._id}
-              layout={layout}
-              data-location-id={location._id}
-              className="flex flex-col gap-2"
-            >
-              <h2 className="flex items-baseline gap-2 px-1">
-                <span className="font-display text-lg">{location.name}</span>
-                <span className="text-xs font-semibold text-stone-400 tabular-nums">{location.products.length}</span>
+            <section key={location._id} data-location-id={location._id}>
+              <h2 className={`${groupHeader} flex justify-between`}>
+                <span>{location.name}</span>
+                <span className="tabular-nums">{location.products.length}</span>
               </h2>
               {location.products.length === 0 ? (
-                <p className={`${card} px-4 py-3 text-sm text-stone-500`}>{t("koti.noProducts")}</p>
+                <p className={`${group} px-4 py-3 text-secondary`}>{t("koti.noProducts")}</p>
               ) : (
-                <ul aria-label={location.name} className={`${cardList} overflow-hidden`}>
+                <ul aria-label={location.name} className={group}>
                   {location.products.map((product) => (
                     <ProductRow key={product._id} product={product} justAdded={product._id === justAdded.id} />
                   ))}
                 </ul>
               )}
-            </motion.section>
+            </section>
           ))}
         </div>
       )}
@@ -116,15 +161,45 @@ export default function KotiScreen() {
             locations={inventory}
             initialLocationId={adding.locationId}
             onClose={() => setAdding(null)}
-            onCreated={(productId) => {
+            onCreated={(productId, locationId) => {
+              // Whatever narrowed the list makes way, so the new Product can show.
               setSearchText("");
+              setFilter("all");
+              if (locationTab !== null && locationTab !== locationId) setChosenLocation(locationId);
               justAdded.set(productId);
             }}
             onFailed={(name, locationId) => setAdding({ name, locationId })}
           />
         )}
       </AnimatePresence>
-    </LayoutGroup>
+    </>
+  );
+}
+
+/** A filter tile: a big count over its name. The chosen one is raised; tapping it again shows everything. */
+function FilterTile({
+  label,
+  count,
+  tone = "",
+  chosen,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  tone?: string;
+  chosen: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={chosen}
+      className={`flex flex-col items-start gap-0.5 rounded-2xl px-3.5 py-3 text-left transition-colors duration-150 ${segment(chosen)}`}
+    >
+      <span className={`font-display text-[28px] leading-none tabular-nums ${tone}`}>{count}</span>
+      <span className="text-xs font-semibold">{label}</span>
+    </button>
   );
 }
 
@@ -132,8 +207,8 @@ export default function KotiScreen() {
 function Search({ value, onChange }: { value: string; onChange: (text: string) => void }) {
   const t = useT();
   return (
-    <div className="relative flex items-center">
-      <SearchIcon width={18} height={18} className="pointer-events-none absolute left-3 text-stone-400" />
+    <div className="flex items-center gap-2 rounded-full bg-surface pl-4 shadow-raised focus-within:ring-2 focus-within:ring-accent">
+      <SearchIcon width={18} height={18} className="pointer-events-none shrink-0 text-stone-400" />
       <input
         type="search"
         value={value}
@@ -142,18 +217,59 @@ function Search({ value, onChange }: { value: string; onChange: (text: string) =
         aria-label={t("koti.search")}
         enterKeyHint="search"
         autoComplete="off"
-        className={`${field} w-full pr-11 pl-10 [&::-webkit-search-cancel-button]:hidden`}
+        className="min-h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-stone-400 [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
         <button
           type="button"
           onClick={() => onChange("")}
           aria-label={t("common.clear")}
-          className="absolute right-0 flex h-11 w-11 items-center justify-center text-stone-400"
+          className="flex h-12 w-12 shrink-0 items-center justify-center text-stone-400"
         >
           <CloseIcon width={18} height={18} />
         </button>
       )}
+    </div>
+  );
+}
+
+/** "All" and each Location, scrolled sideways and kept at the top of the screen; the chosen one is raised. */
+function LocationTabs({
+  locations,
+  count,
+  chosen,
+  onChoose,
+}: {
+  locations: (Location & { count: number })[];
+  count: number;
+  chosen: Id<"locations"> | null;
+  onChoose: (locationId: Id<"locations"> | null) => void;
+}) {
+  const t = useT();
+  const tabs = [{ _id: null, name: t("koti.all"), count }, ...locations];
+  return (
+    <div className="material sticky top-0 z-10 -mx-4 px-4 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2">
+      <div
+        role="group"
+        aria-label={t("settings.locations")}
+        className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]"
+      >
+        {tabs.map((tab) => {
+          const active = chosen === tab._id;
+          return (
+            <button
+              key={tab._id ?? "all"}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChoose(tab._id)}
+              className={`flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition-colors duration-150 ${segment(active)}`}
+            >
+              {tab.name}
+              <span className="text-xs tabular-nums opacity-60">{tab.count}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -176,7 +292,7 @@ function AddSheet({
   locations: Location[];
   initialLocationId: Id<"locations">;
   onClose: () => void;
-  onCreated: (productId: Id<"products">) => void;
+  onCreated: (productId: Id<"products">, locationId: Id<"locations">) => void;
   /** Adding didn't go through: the sheet reopens with what was typed. */
   onFailed: (name: string, locationId: Id<"locations">) => void;
 }) {
@@ -216,7 +332,10 @@ function AddSheet({
       minimumStock,
       expiryKind: expiryKind ?? undefined,
       expiryDate: showsExpiryDate && expiryDate ? expiryDate : undefined,
-    }).then(onCreated, () => onFailed(tidy, locationId));
+    }).then(
+      (productId) => onCreated(productId, locationId),
+      () => onFailed(tidy, locationId),
+    );
   };
 
   return (
@@ -336,67 +455,55 @@ function DuplicateWarning({ duplicate }: { duplicate: { name: string; locationNa
   );
 }
 
-/** Running Low but not yet Out of Stock, which rows already show. */
-const lowNotOut = (product: ProductRowData) =>
-  product.stock > 0 && isRunningLow({ stock: product.stock, minimumStock: product.minimumStock ?? undefined });
-
 /**
- * A Product in its Location: its name with how far off its Expiry Date is
- * under it, and its Stock beside it. Tapping it opens the Product page. Out of
- * Stock Products stay listed, dimmed. A Product just added scrolls into view
- * and flashes.
+ * A Product in its Location: its name, how far off its Expiry Date is
+ * (coloured by what it means today), and its Stock, tinted when Running Low.
+ * Tapping it opens the Product page. Out of Stock Products stay listed,
+ * greyed. A Product just added scrolls into view and flashes.
  */
 function ProductRow({ product, justAdded }: { product: ProductRowData; justAdded: boolean }) {
   const t = useT();
+  const lang = useLang();
   const row = useRef<HTMLLIElement>(null);
   const reduced = useReducedMotion();
   useEffect(() => {
     if (justAdded) row.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
   }, [justAdded, reduced]);
 
+  const today = localToday();
   const outOfStock = product.stock === 0;
+  const status = expiryStatus(attentionState(product), today);
   return (
-    // Clear of the top bar and the bottom tab bar when scrolled into view.
-    <li ref={row} className={`scroll-mt-20 scroll-mb-28 ${justAdded ? "just-added" : ""}`}>
+    // Clear of the Location tabs and the floating + when scrolled into view.
+    <li ref={row} className={`${groupRow} scroll-mt-20 scroll-mb-40 ${justAdded ? "just-added" : ""}`}>
       <AppLink
         href={`/koti/${product._id}`}
         aria-label={t("koti.productLabel", { name: product.name, stock: product.stock })}
-        className="flex min-h-14 items-center gap-3 px-4 py-2"
+        className="flex min-h-11 items-center gap-3 py-2.5 pr-3 pl-4 active:bg-stone-100"
       >
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className={`truncate font-medium ${outOfStock ? "text-stone-400 dark:text-stone-500" : ""}`}>
-            {product.name}
-          </span>
-          <ExpiryDate product={product} />
+        <span className={`min-w-0 flex-1 truncate text-[17px] ${outOfStock ? "text-secondary" : ""}`}>
+          {product.name}
         </span>
+        {product.expiryKind && product.expiryDate && (
+          <span className={`shrink-0 text-[15px] tabular-nums ${status ? statusTone[status].text : "text-secondary"}`}>
+            {relativeExpiry(product.expiryDate, today, lang)}
+          </span>
+        )}
         <span
-          className={`min-w-9 shrink-0 rounded-full px-2 py-0.5 text-center font-display text-base tabular-nums ${
-            outOfStock
-              ? "text-stone-400 ring-1 ring-stone-300 ring-inset dark:ring-stone-700"
-              : lowNotOut(product)
-                ? "bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300"
-                : "bg-stone-100 dark:bg-stone-800"
+          className={`w-6 shrink-0 text-right text-[17px] font-semibold tabular-nums ${
+            outOfStock ? "text-secondary" : runningLow(product) ? statusTone.runningLow.text : ""
           }`}
         >
           {product.stock}
         </span>
-        <ChevronDownIcon width={16} height={16} className="shrink-0 -rotate-90 text-stone-300 dark:text-stone-600" />
+        <ChevronDownIcon
+          width={14}
+          height={14}
+          strokeWidth={2.6}
+          className="shrink-0 -rotate-90 text-stone-300 dark:text-stone-600"
+        />
       </AppLink>
     </li>
-  );
-}
-
-/** How far off a Product's Expiry Date is, coloured by what it means today; nothing without one. */
-function ExpiryDate({ product }: { product: ProductRowData }) {
-  const lang = useLang();
-  const { expiryKind, expiryDate } = product;
-  if (!expiryKind || !expiryDate) return null;
-  const today = localToday();
-  const status = expiryStatus({ stock: 1, expiryKind, expiryDate }, today);
-  return (
-    <span className={`text-xs tabular-nums ${status ? statusText[status] : "text-stone-500"}`}>
-      {relativeExpiry(expiryDate, today, lang)}
-    </span>
   );
 }
 
@@ -413,16 +520,18 @@ function useJustAdded() {
 }
 
 /**
- * The Location section the Member has scrolled to, which new Products default to.
- * At the top of Koti nothing is "in view", so the last used Location wins.
+ * The Location section the Member has scrolled to, which new Products default
+ * to. At the top of Komero nothing is "in view", so the last used Location
+ * wins. `shown` names the sections on screen, so they are watched again
+ * whenever the filters, search or tabs change them.
  */
-function useLocationInView(ready: boolean) {
+function useLocationInView(shown: string) {
   const [inView, setInView] = useState<Id<"locations"> | null>(null);
   const visible = useRef(new Set<Element>());
 
   useEffect(() => {
-    if (!ready) return;
     const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-location-id]"));
+    visible.current.clear();
     const update = () => {
       if (window.scrollY < 8) return setInView(null);
       const first = sections.find((section) => visible.current.has(section));
@@ -445,7 +554,7 @@ function useLocationInView(ready: boolean) {
       observer.disconnect();
       window.removeEventListener("scroll", update);
     };
-  }, [ready]);
+  }, [shown]);
 
   return inView;
 }

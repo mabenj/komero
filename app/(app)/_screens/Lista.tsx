@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { AddFab } from "@/components/AddFab";
@@ -10,11 +10,12 @@ import { CategorySelect } from "@/components/CategorySelect";
 import { Combobox, type ComboboxOption, useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { DatePrompt } from "@/components/DatePrompt";
-import { usePutAwayToast } from "@/components/StockToasts";
-import { ChevronDownIcon, TrashIcon } from "@/components/icons";
+import { Quantity, useDeleteEntry } from "@/components/EntryControls";
+import { CheckIcon, ChevronUpIcon, TrashIcon } from "@/components/icons";
+import { useEnterExit } from "@/components/motion";
 import { useNeedMore } from "@/components/NeedMore";
 import { Sheet } from "@/components/Sheet";
-import { QuantityStepper, useDeleteEntry } from "@/components/EntryControls";
+import { usePutAwayToast } from "@/components/StockToasts";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey, tidyName } from "@/convex/productNames";
@@ -24,12 +25,11 @@ import {
   type Groups,
   putAwayAllLocally,
   putAwayLocally,
-  setQuantityLocally,
   tickLocally,
   untickLocally,
 } from "@/lib/listUpdates";
-import { bagFolded, lastLocation, rememberBagFolded, rememberLocation } from "@/lib/remembered";
-import { cardList, field, primaryButton, secondaryButton, textLink } from "@/lib/styles";
+import { lastLocation, rememberLocation } from "@/lib/remembered";
+import { field, primaryButton, raisedCard, textLink } from "@/lib/styles";
 
 type Entry = {
   _id: Id<"entries">;
@@ -58,16 +58,18 @@ const ALL_PUT_AWAY_MS = 4000;
 const productOrOneOff = (entry: Entry) => entry.productId ?? `oneOff:${nameKey(entry.name)}`;
 
 /**
- * The shared Shopping List: to-buy Entries grouped by Category in walking
- * order, then "Other" (Products without a Category, and One-offs), then the
- * Bag, grouped the same way. Like a checklist, nothing on it moves: rows
- * appear, change place and leave at once. The floating + adds to it.
+ * The shared Shopping List: a card for each Category with Entries to buy, in
+ * walking order, then "Other" (Products without a Category, and One-offs).
+ * Ticked Entries go into the Bag, a tray floating above the navigation. Like
+ * a checklist, nothing on it moves: rows appear, change place and leave at
+ * once. The floating + adds to it.
  */
 export default function ListaScreen() {
   const t = useT();
   const list = useQuery(api.shoppingList.get);
   const [allPutAway, setAllPutAway] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false);
 
   useEffect(() => {
     if (!allPutAway) return;
@@ -75,23 +77,50 @@ export default function ListaScreen() {
     return () => clearTimeout(timer);
   }, [allPutAway]);
 
+  const bagIsEmpty = list === undefined || entriesIn(list.bag).length === 0;
+  // An emptied Bag's tray closes, so it comes back shut.
+  if (bagIsEmpty && trayOpen) setTrayOpen(false);
+
   if (list === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
   const nothingToBuy = entriesIn(list).length === 0;
-  const bagIsEmpty = entriesIn(list.bag).length === 0;
   // An undo that refills the Bag ends the moment.
   const showAllPutAway = allPutAway && bagIsEmpty;
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-3">
       {/* With nothing left to buy, "All put away!" turns into the empty list in place, so the cupboard stays put. */}
       {nothingToBuy && bagIsEmpty && <ListNote allPutAway={showAllPutAway} />}
       {titled(list, t("lista.other")).map((group) => (
-        <EntryGroup key={group.key} title={group.title} entries={group.entries} />
+        <section key={group.key} className={`${raisedCard} overflow-hidden`}>
+          <h2 className="flex items-center justify-between px-4 pt-2.5">
+            <span className="text-xs font-bold tracking-wide text-stone-500 uppercase">{group.title}</span>
+            <span className="text-xs font-semibold text-stone-400 tabular-nums">{group.entries.length}</span>
+          </h2>
+          <ul>
+            {group.entries.map((entry) => (
+              // A Product or One-off has one Entry on the list, so the row stays when the server gives it a new id.
+              <EntryRow key={productOrOneOff(entry)} entry={entry} />
+            ))}
+          </ul>
+        </section>
       ))}
-      {!bagIsEmpty && <Bag groups={list.bag} onEmptied={() => setAllPutAway(true)} />}
       {showAllPutAway && !nothingToBuy && <ListNote allPutAway />}
-      {/* Opening synchronously inside the tap lets the sheet focus the field, so phones show the keyboard. */}
-      <AddFab label={t("lista.search")} onClick={() => flushSync(() => setAdding(true))} />
+      {/* The open tray covers the corner, so the + waits until it closes. */}
+      {!trayOpen && (
+        // Opening synchronously inside the tap lets the sheet focus the field, so phones show the keyboard.
+        <AddFab label={t("lista.search")} onClick={() => flushSync(() => setAdding(true))} />
+      )}
+      <AnimatePresence>
+        {!bagIsEmpty && (
+          <BagTray
+            key="bag"
+            groups={list.bag}
+            open={trayOpen}
+            onOpen={setTrayOpen}
+            onEmptied={() => setAllPutAway(true)}
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {adding && (
           <Sheet key="add" title={t("lista.search")} onClose={() => setAdding(false)}>
@@ -169,46 +198,80 @@ function AddToList({ list }: { list: Groups }) {
   return <Combobox value={text} onChange={setText} label={t("lista.search")} options={options} keepFocus inline />;
 }
 
-/** A Category's Entries (or Other's), on the list or inside the Bag. */
-function EntryGroup({
-  title,
-  entries,
-  inBag = false,
-  onEmptied,
-}: {
-  title: string;
-  entries: Entry[];
-  inBag?: boolean;
-  onEmptied?: () => void;
-}) {
-  const Heading = inBag ? "h3" : "h2";
+/**
+ * One Entry to buy, as a line in a checklist: a round tick, its name with the
+ * Product's Stock at home beside it (or that it is a One-off), and how many.
+ * Ticking moves it into the Bag at once; unticking it there is the undo.
+ * Tapping the name opens the Product page, or for a One-off asks whether to
+ * make it a Product. Every change shows at once, even on a weak signal in
+ * the shop.
+ */
+function EntryRow({ entry }: { entry: Entry }) {
+  const t = useT();
+  const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate(tickLocally);
   return (
-    <section className="flex flex-col gap-1">
-      <Heading className="px-1 text-xs font-semibold tracking-wide text-stone-500 uppercase">{title}</Heading>
-      <ul className={`${cardList} flex flex-col overflow-hidden`}>
-        {entries.map((entry) => (
-          // On the list a Product or One-off has one Entry, so the row stays when the server gives it a new id.
-          <EntryRow key={inBag ? entry._id : productOrOneOff(entry)} entry={entry} inBag={inBag} onEmptied={onEmptied} />
-        ))}
-      </ul>
-    </section>
+    <li className="flex items-center gap-1.5 pr-4 pl-1.5">
+      <button
+        type="button"
+        onClick={() => void tick({ entryId: entry._id })}
+        aria-label={t("lista.tick", { name: entry.name })}
+        className="group flex h-11 w-11 shrink-0 items-center justify-center"
+      >
+        <span className="h-[22px] w-[22px] rounded-full border-2 border-stone-300 transition-colors group-active:border-accent group-active:bg-accent/20 dark:border-stone-500" />
+      </button>
+      <EntryLink entry={entry} className="flex min-h-11 min-w-0 flex-1 items-center text-left">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate font-medium">{entry.name}</span>
+          <span className="shrink-0 text-xs text-stone-400">
+            {entry.stock !== undefined ? t("lista.stock", { stock: entry.stock }) : t("lista.oneOff")}
+          </span>
+        </span>
+      </EntryLink>
+      <Quantity entry={entry} />
+    </li>
+  );
+}
+
+/** What tapping an Entry's name opens: its Product page (over Kauppalista), or for a One-off, its sheet. */
+function EntryLink({ entry, className, children }: { entry: Entry; className: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  if (entry.productId)
+    return (
+      <AppLink href={`/lista/${entry.productId}`} className={className}>
+        {children}
+      </AppLink>
+    );
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={className}>
+        {children}
+      </button>
+      <AnimatePresence>{open && <OneOffSheet key="oneOff" entry={entry} onClose={() => setOpen(false)} />}</AnimatePresence>
+    </>
   );
 }
 
 /**
- * "In the bag", like a checklist's ticked items below it: Entries ticked off
- * in the shop, grouped by Category like the list, put away one at a time or
- * all at once. "Put away all" first asks for a date for each Product with an
- * Expiry Kind. It folds shut, and this device remembers the fold.
+ * "In the bag": Entries ticked off in the shop, as a tray floating above the
+ * navigation, so the list stays in view. Folded, it is a bar with how many
+ * are in the Bag and "Put away all", which first asks for a date for each
+ * Product with an Expiry Kind. Unfolded, its Entries are listed above the bar,
+ * each with how many and Put away.
  */
-function Bag({ groups, onEmptied }: { groups: Groups; onEmptied: () => void }) {
+function BagTray({
+  groups,
+  open,
+  onOpen,
+  onEmptied,
+}: {
+  groups: Groups;
+  open: boolean;
+  onOpen: (open: boolean) => void;
+  onEmptied: () => void;
+}) {
   const t = useT();
-  const entries: Entry[] = entriesIn(groups);
-  const [folded, setFolded] = useState(bagFolded);
-  const toggleFolded = () => {
-    rememberBagFolded(!folded);
-    setFolded(!folded);
-  };
+  const trayMotion = useEnterExit({ y: 40, opacity: 0 });
+  const entries: Entry[] = titled(groups, "").flatMap((group) => group.entries);
   const putAwayAllEntries = useMutation(api.shoppingList.putAwayAll).withOptimisticUpdate(putAwayAllLocally);
   const showPutAway = usePutAwayToast();
   const putAwayAll = (expiryDates?: Record<string, string>) => {
@@ -224,8 +287,9 @@ function Bag({ groups, onEmptied }: { groups: Groups; onEmptied: () => void }) {
     const asking = entries.filter(
       (entry, i) => entry.asksForDate && entries.findIndex((e) => e.productId === entry.productId) === i,
     );
-    if (asking.length === 0) putAwayAll();
-    else setPrompts({ asking, index: 0, dates: {} });
+    if (asking.length === 0) return putAwayAll();
+    setPrompts({ asking, index: 0, dates: {} });
+    onOpen(true);
   };
   const answer = (date: string | undefined) => {
     if (!prompts) return;
@@ -240,71 +304,67 @@ function Bag({ groups, onEmptied }: { groups: Groups; onEmptied: () => void }) {
   };
 
   return (
-    <section className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2 px-1">
-        {/* The heading fills the row up to Put away all, so a tap anywhere beside it folds. */}
+    <motion.div
+      {...trayMotion}
+      data-bag-tray
+      className="fixed inset-x-0 bottom-[calc(var(--nav-clearance)+0.75rem)] z-10 mx-auto w-[min(36rem,calc(100%-1.5rem))] overflow-hidden rounded-3xl bg-surface shadow-[0_-4px_32px_-8px_rgb(0_0_0/0.3)] ring-1 ring-black/5 md:left-20 dark:ring-white/10"
+    >
+      {open && (
+        <div id="bag" className="flex max-h-[45dvh] flex-col gap-2 overflow-y-auto border-b border-hairline p-2">
+          {prompts && (
+            <DatePrompt
+              key={prompts.asking[prompts.index]._id}
+              name={prompts.asking[prompts.index].name}
+              step={{ index: prompts.index, count: prompts.asking.length }}
+              onAnswer={answer}
+              onCancel={() => setPrompts(null)}
+            />
+          )}
+          <ul>
+            {entries.map((entry) => (
+              <BagRow key={entry._id} entry={entry} onEmptied={entries.length === 1 ? onEmptied : undefined} />
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="flex items-center gap-3 p-2 pl-4">
         <h2 className="flex-1">
           <button
             type="button"
-            aria-expanded={!folded}
-            aria-controls={folded ? undefined : "bag"}
-            onClick={toggleFolded}
-            className="flex min-h-11 w-full items-center gap-1.5 text-left"
+            aria-expanded={open}
+            aria-controls={open ? "bag" : undefined}
+            onClick={() => onOpen(!open)}
+            className="flex min-h-11 w-full items-center gap-2 text-left"
           >
-            <ChevronDownIcon width={16} height={16} className={`text-stone-400 ${folded ? "-rotate-90" : ""}`} />
-            <span className="font-display text-lg">{t("lista.bag")}</span>
-            <span className="text-xs font-semibold text-stone-400 tabular-nums">{entries.length}</span>
+            <ChevronUpIcon
+              width={18}
+              height={18}
+              className={`text-stone-400 transition-transform ${open ? "rotate-180" : ""}`}
+            />
+            <span className="font-semibold">{t("lista.bag")}</span>
+            <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5 text-xs font-bold text-accent-foreground tabular-nums">
+              {entries.length}
+            </span>
           </button>
         </h2>
         {!prompts && (
-          <button
-            type="button"
-            onClick={start}
-            className={`${primaryButton} min-h-11 px-4 py-2`}
-          >
+          <button type="button" onClick={start} className={`${primaryButton} min-h-11 rounded-full px-5 text-sm`}>
             {t("lista.putAwayAll")}
           </button>
         )}
       </div>
-      {prompts && (
-        <DatePrompt
-          key={prompts.asking[prompts.index]._id}
-          name={prompts.asking[prompts.index].name}
-          step={{ index: prompts.index, count: prompts.asking.length }}
-          onAnswer={answer}
-          onCancel={() => setPrompts(null)}
-        />
-      )}
-      {!folded && (
-        <div id="bag" className="flex flex-col gap-3">
-          {titled(groups, t("lista.other")).map((group) => (
-            <EntryGroup
-              key={group.key}
-              title={group.title}
-              entries={group.entries}
-              inBag
-              onEmptied={entries.length === 1 ? onEmptied : undefined}
-            />
-          ))}
-        </div>
-      )}
-    </section>
+    </motion.div>
   );
 }
 
 /**
- * One Entry, as a line in a checklist: a checkbox, then its name with the
- * Product's Stock at home under it (or that it is a One-off), and how many.
- * Tapping the line opens the Product page, or for a One-off its sheet; that is
- * where the quantity changes. On the list, ticking moves the Entry into the
- * Bag at once; unticking it there is the undo. In the Bag the name is struck
- * through, with Put away beside it. Every change shows at once, even on a weak
- * signal in the shop.
+ * An Entry in the Bag: its tick filled in (tapping it takes the Entry back
+ * to the list), its name struck through, how many, and Put away, which first
+ * asks for the date on the package if its Product has an Expiry Kind.
  */
-function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: boolean; onEmptied?: () => void }) {
+function BagRow({ entry, onEmptied }: { entry: Entry; onEmptied?: () => void }) {
   const t = useT();
   const [askingDate, setAskingDate] = useState(false);
-  const tick = useMutation(api.shoppingList.tick).withOptimisticUpdate(tickLocally);
   const untick = useMutation(api.shoppingList.untick).withOptimisticUpdate(untickLocally);
   const putAwayEntry = useMutation(api.shoppingList.putAway).withOptimisticUpdate(putAwayLocally);
   const showPutAway = usePutAwayToast();
@@ -317,48 +377,30 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
 
   return (
     <li className="flex flex-col">
-      <div className="flex items-center pl-1">
-        {/* The box is small; its label is the row's full height. */}
-        <label className="flex h-14 w-12 shrink-0 items-center justify-center">
-          <input
-            type="checkbox"
-            checked={inBag}
-            onChange={() => void (inBag ? untick : tick)({ entryId: entry._id })}
-            aria-label={t(inBag ? "lista.untick" : "lista.tick", { name: entry.name })}
-            className="h-5 w-5 accent-accent"
-          />
-        </label>
-        <EntryLink entry={entry} inBag={inBag} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pr-4">
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className={`truncate font-medium ${inBag ? "text-stone-400 line-through" : ""}`}>{entry.name}</span>
-            {!inBag && (
-              <span className="truncate text-xs text-stone-500">
-                {entry.stock !== undefined ? t("lista.stock", { stock: entry.stock }) : t("lista.oneOff")}
-              </span>
-            )}
+      <div className="flex items-center gap-2 pr-2">
+        <button
+          type="button"
+          onClick={() => void untick({ entryId: entry._id })}
+          aria-label={t("lista.untick", { name: entry.name })}
+          className="flex h-11 w-11 shrink-0 items-center justify-center"
+        >
+          <span className="tick-pop flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground">
+            <CheckIcon width={16} height={16} strokeWidth={3} />
           </span>
-          {(inBag || entry.quantity > 1) && (
-            <span className={`font-display tabular-nums ${inBag ? "text-stone-400" : "text-stone-500"}`}>
-              {t("lista.quantity", { quantity: entry.quantity })}
-            </span>
-          )}
-          {!inBag && (
-            <ChevronDownIcon width={16} height={16} className="shrink-0 -rotate-90 text-stone-300 dark:text-stone-600" />
-          )}
-        </EntryLink>
-        {inBag && (
-          <button
-            type="button"
-            className={`${textLink} -ml-2 min-h-11 shrink-0 pr-4 pl-2 text-xs`}
-            aria-label={t("lista.putAwayName", { name: entry.name })}
-            onClick={() => (entry.asksForDate ? setAskingDate(true) : putAway())}
-          >
-            {t("lista.putAway")}
-          </button>
-        )}
+        </button>
+        <span className="min-w-0 flex-1 truncate text-stone-500 line-through">{entry.name}</span>
+        <Quantity entry={entry} />
+        <button
+          type="button"
+          className={`${textLink} min-h-11 shrink-0 px-2 text-sm`}
+          aria-label={t("lista.putAwayName", { name: entry.name })}
+          onClick={() => (entry.asksForDate ? setAskingDate(true) : putAway())}
+        >
+          {t("lista.putAway")}
+        </button>
       </div>
       {askingDate && (
-        <div className="px-4 pb-2">
+        <div className="pb-2">
           <DatePrompt
             name={entry.name}
             onAnswer={(expiryDate) => {
@@ -374,64 +416,26 @@ function EntryRow({ entry, inBag = false, onEmptied }: { entry: Entry; inBag?: b
 }
 
 /**
- * What tapping an Entry opens: its Product page (over Kauppalista), or for a
- * One-off still to buy, the One-off's sheet. A One-off in the Bag has nothing
- * left to change.
+ * Tapping a One-off asks whether it should become a Product: a line on what
+ * that means, then the form to make it one. Deleting it from the list is here
+ * too.
  */
-function EntryLink({
-  entry,
-  inBag,
-  className,
-  children,
-}: {
-  entry: Entry;
-  inBag: boolean;
-  className: string;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  if (entry.productId)
-    return (
-      <AppLink href={`/lista/${entry.productId}`} className={className}>
-        {children}
-      </AppLink>
-    );
-  if (inBag) return <span className={className}>{children}</span>;
-  return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} className={`${className} text-left`}>
-        {children}
-      </button>
-      <AnimatePresence>{open && <OneOffSheet key="oneOff" entry={entry} onClose={() => setOpen(false)} />}</AnimatePresence>
-    </>
-  );
-}
-
-/** A One-off's sheet: how many to buy, making it a Product, or deleting it from the list. */
 function OneOffSheet({ entry, onClose }: { entry: Entry; onClose: () => void }) {
   const t = useT();
-  const [makingProduct, setMakingProduct] = useState(false);
-  const setQuantity = useMutation(api.shoppingList.setQuantity).withOptimisticUpdate(setQuantityLocally);
   const deleteEntry = useDeleteEntry();
   return (
-    <Sheet title={entry.name} onClose={onClose}>
-      <QuantityStepper entry={entry} label={t("lista.quantityLabel")} setQuantity={setQuantity} />
-      {makingProduct ? (
-        <MakeProduct entry={entry} onDone={onClose} />
-      ) : (
-        <button type="button" onClick={() => setMakingProduct(true)} className={`${secondaryButton} min-h-12`}>
-          {t("lista.makeProduct")}
-        </button>
-      )}
+    <Sheet title={t("lista.oneOffTitle", { name: entry.name })} onClose={onClose}>
+      <p className="-mt-2 text-sm text-stone-500">{t("lista.oneOffHint", { name: entry.name })}</p>
+      <MakeProduct entry={entry} onDone={onClose} />
       <button
         type="button"
         onClick={() => {
           onClose();
           deleteEntry(entry);
         }}
-        className={`${secondaryButton} flex min-h-12 items-center justify-center gap-2 text-red-700 dark:text-red-400`}
+        className="flex min-h-11 items-center justify-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400"
       >
-        <TrashIcon width={18} height={18} />
+        <TrashIcon width={16} height={16} />
         {t("lista.deleteButton")}
       </button>
     </Sheet>
@@ -474,7 +478,6 @@ function MakeProduct({ entry, onDone }: { entry: Entry; onDone: () => void }) {
         onChange={(event) => setName(event.target.value)}
         aria-label={t("product.name")}
         autoComplete="off"
-        autoFocus
         className={`${field} w-full px-3`}
       />
       <CategorySelect

@@ -67,10 +67,10 @@ export function UndoToastProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * A toast above the bottom bar (clear of the Scan button) with an Undo button,
- * and optionally one more action. It rises out of the bar and sinks back after
- * a few seconds; a newer toast takes over the same surface, so nothing
- * flickers. It waits while pressed or focused. Ignoring it does nothing.
+ * A toast above the pill navigation and the Bag tray, over the floating +,
+ * with an Undo button, and optionally one more action. It rises from below
+ * and sinks back after a few seconds; a newer toast takes over the same
+ * surface, so nothing flickers. It waits while pressed or focused. Ignoring it does nothing.
  */
 function UndoToast({ toast, onClose }: { toast: Toast | null; onClose: () => void }) {
   const t = useT();
@@ -111,8 +111,8 @@ function UndoToast({ toast, onClose }: { toast: Toast | null; onClose: () => voi
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
           }}
-          className="fixed inset-x-0 z-5 mx-auto flex min-h-13 max-w-md items-center overflow-hidden rounded-lg bg-ink px-4 py-1 text-ink-foreground shadow-xl shadow-black/20"
-          style={{ width: "calc(100% - 2rem)", bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }}
+          className="fixed inset-x-0 z-30 mx-auto flex min-h-13 max-w-md items-center overflow-hidden rounded-2xl bg-ink px-4 py-1 text-ink-foreground shadow-xl shadow-black/20"
+          style={{ width: "calc(100% - 2rem)", bottom: "calc(var(--nav-clearance) + var(--tray-clearance) + 1.25rem)" }}
         >
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div key={toast.id} {...contentMotion} className="flex w-full items-center justify-between gap-4">

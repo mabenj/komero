@@ -1,27 +1,34 @@
 @import "tailwindcss";
 
 /*
- * Flat colours: white blocks on a light grey page by day, deep slate by night,
- * one carrot accent, and midnight navigation. No shadows or gradients, only
- * frosted glass where the page scrolls under the header and bottom bar. Dark
- * mode follows `data-theme` on <html>, which the script in app/layout.tsx
- * sets before the first paint from the Theme chosen on this device
- * (⚙ Theme: System, Light or Dark).
+ * System greys: white cards and grouped lists on a light grey page by day,
+ * black and graphite by night, one carrot accent, and a graphite pill for
+ * navigation. What stands out (a chosen filter, a list's card) is raised with
+ * a faint shadow by day and a lighter grey by night. Frosted glass only where
+ * the page scrolls under something. Dark mode follows `data-theme` on <html>,
+ * which the script in app/layout.tsx sets before the first paint from the
+ * Theme chosen on this device (⚙ Theme: System, Light or Dark).
  */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {
   color-scheme: light;
-  --background: #f4f5f7;
+  --background: #f2f2f7;
   --surface: #ffffff;
-  --foreground: #1e2a36;
-  --accent: #e8590c;
+  --foreground: #111114;
+  /* Deep enough that white text on it reads at 4.7:1. */
+  --accent: #c94a0a;
   --accent-foreground: #ffffff;
-  --rail: #22303e;
-  --rail-foreground: #aeb9c5;
-  --ink: #22303e;
+  /* The pill navigation and the rail. */
+  --rail: #1c1c1e;
+  --rail-foreground: #8e8e93;
+  /* Toasts. */
+  --ink: #1c1c1e;
   --ink-foreground: #ffffff;
   --ink-accent: #ffb07a;
+  --hairline: rgb(60 60 67 / 0.18);
+  --secondary: #8a8a8e;
+  --raised: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 14px -6px rgb(0 0 0 / 0.08);
   /* Cool slate greys rather than Tailwind's warm stone. */
   --color-stone-100: #eceef1;
   --color-stone-200: #e2e5e9;
@@ -35,24 +42,48 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: #10161c;
-  --surface: #19222b;
-  --foreground: #e4e9ee;
-  --accent: #ff8a4c;
-  --accent-foreground: #2a1205;
-  --rail: #0a0f14;
-  --rail-foreground: #8996a4;
-  --ink: #2a3643;
-  --ink-foreground: #e4e9ee;
+  --background: #000000;
+  --surface: #1c1c1e;
+  --foreground: #f5f5f7;
+  --accent: #ff8a3d;
+  --accent-foreground: #1d0c02;
+  --rail: #2c2c2e;
+  --rail-foreground: #8e8e93;
+  --ink: #2c2c2e;
+  --ink-foreground: #f5f5f7;
   --ink-accent: #ffb07a;
-  --color-stone-100: #1c252e;
-  --color-stone-200: #26303a;
+  --hairline: rgb(84 84 88 / 0.6);
+  --secondary: #98989f;
+  --raised: none;
+  --color-stone-100: #2c2c2e;
+  --color-stone-200: #3a3a3c;
   --color-stone-300: #c8cfd7;
   --color-stone-400: #97a1ad;
   --color-stone-500: #85909c;
   --color-stone-600: #56616d;
   --color-stone-700: #2c3640;
   --color-stone-800: #212a33;
+}
+
+/*
+ * How far up from the bottom of the screen floating things sit, clear of what
+ * is under them: the pill navigation on phones (wide screens have the rail
+ * instead), and Kauppalista's Bag tray while it shows.
+ */
+:root {
+  --nav-clearance: calc(4.5rem + env(safe-area-inset-bottom));
+  --tray-clearance: 0px;
+}
+
+@media (width >= 48rem) {
+  :root {
+    --nav-clearance: 0px;
+  }
+}
+
+/* A Bag tray under a Product page (its screen is inert) doesn't count. */
+:root:has([data-bag-tray]:not([inert] *)) {
+  --tray-clearance: 4.5rem;
 }
 
 @theme inline {
@@ -66,6 +97,9 @@
   --color-ink: var(--ink);
   --color-ink-foreground: var(--ink-foreground);
   --color-ink-accent: var(--ink-accent);
+  --color-hairline: var(--hairline);
+  --color-secondary: var(--secondary);
+  --shadow-raised: var(--raised);
   --font-sans: var(--font-manrope), system-ui, sans-serif;
   --font-display: var(--font-manrope), system-ui, sans-serif;
 }
@@ -95,7 +129,7 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* A quick dim on press, flat like the rest. */
+  /* A quick dim on press. */
   button:not(:disabled),
   a {
     transition: opacity 120ms ease-out;
@@ -107,38 +141,22 @@
   }
 }
 
-/* Frosted header and bottom bar; solid when the system asks for less transparency. */
-.material,
-.material-rail {
+/* Frosted glass where the page scrolls under; solid when the system asks for less transparency. */
+.material {
   -webkit-backdrop-filter: blur(20px) saturate(170%);
   backdrop-filter: blur(20px) saturate(170%);
-}
-
-.material {
-  background: color-mix(in srgb, var(--background) 72%, transparent);
-}
-
-.material-rail {
-  background: color-mix(in srgb, var(--rail) 82%, transparent);
+  background: color-mix(in srgb, var(--background) 82%, transparent);
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .material,
-  .material-rail {
+  .material {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-  }
-
-  .material {
     background: var(--background);
-  }
-
-  .material-rail {
-    background: var(--rail);
   }
 }
 
-/* A Product just added lights up once in its Location's table. */
+/* A Product just added lights up once in its Location's list. */
 @keyframes just-added {
   from {
     background-color: color-mix(in oklab, var(--accent) 22%, var(--surface));
@@ -147,6 +165,17 @@
 
 .just-added {
   animation: just-added 1.6s ease-out;
+}
+
+/* A tick that lands: the circle dips and comes back as it fills. */
+@keyframes tick-pop {
+  40% {
+    transform: scale(0.82);
+  }
+}
+
+.tick-pop {
+  animation: tick-pop 260ms cubic-bezier(0.3, 0.7, 0.2, 1);
 }
 
 /* The cupboard's doors swing open once; already open under reduced motion. */
@@ -182,5 +211,9 @@
   .cupboard-door {
     animation: none;
     transform: scaleX(0.18);
+  }
+
+  .tick-pop {
+    animation: none;
   }
 }

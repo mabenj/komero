@@ -1,18 +1,16 @@
 "use client";
 
 import { Authenticated, AuthLoading } from "convex/react";
-import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { AppLink } from "@/components/AppLink";
 import { HomeIcon, ListIcon, ScanIcon, SettingsIcon } from "@/components/icons";
 import { KeepOfflineData } from "@/components/KeepOfflineData";
 import { MotionProvider } from "@/components/motion";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { type Place, usePlace } from "@/components/ScreenHeader";
 import { UndoToastProvider } from "@/components/UndoToast";
 import { useT } from "@/lib/i18n";
-import { rememberTab, TABS, type Tab } from "@/lib/remembered";
-
-type Place = Tab | "settings";
+import { rememberTab } from "@/lib/remembered";
 
 const PLACES = [
   { place: "koti", Icon: HomeIcon },
@@ -21,41 +19,28 @@ const PLACES = [
   { place: "settings", Icon: SettingsIcon },
 ] as const;
 
-/** The signed-in app: a midnight rail (wide screens) or bottom bar (phones), the screen's title with ⚙ Settings on phones, and the page. */
+/**
+ * The signed-in app: a graphite rail down the left on wide screens, a
+ * floating pill along the bottom on phones, and the page. Each tab's screen
+ * brings its own header (`ScreenHeader`).
+ */
 export default function AppLayout({ children }: LayoutProps<"/">) {
   const t = useT();
-  const pathname = usePathname();
-  // A Product page belongs to the tab it opened over (/koti/<id>, /lista/<id>), Tapahtumat to Settings.
-  const currentTab = TABS.find((tab) => pathname === `/${tab}` || pathname.startsWith(`/${tab}/`));
-  const current: Place | undefined =
-    currentTab ?? (pathname === "/settings" || pathname.startsWith("/settings/") ? "settings" : undefined);
+  const current = usePlace();
 
   useEffect(() => {
-    if (currentTab) rememberTab(currentTab);
-  }, [currentTab]);
+    if (current && current !== "settings") rememberTab(current);
+  }, [current]);
 
   return (
     <div className="min-h-dvh">
       <Rail current={current} />
+      <OfflineBanner />
       <div className="md:pl-20">
-        <header className="material sticky top-0 z-10 pt-[env(safe-area-inset-top)]">
-          <div className="mx-auto flex max-w-xl items-center justify-between px-4 pt-4 pb-3">
-            <h1 className="font-display text-[26px] font-extrabold text-accent">{current && t(`nav.${current}`)}</h1>
-            {/* Phones only; wide screens have Settings at the foot of the rail. */}
-            <AppLink
-              href="/settings"
-              aria-label={t("nav.settings")}
-              aria-current={current === "settings" ? "page" : undefined}
-              className={`-m-2 rounded-md p-2 md:hidden ${current === "settings" ? "text-accent" : "text-stone-500"}`}
-            >
-              <SettingsIcon />
-            </AppLink>
-          </div>
-          <OfflineBanner />
-        </header>
-        <main className="mx-auto max-w-xl overflow-x-clip px-4 py-2 pb-28 md:pb-10">
+        {/* Room at the foot for the floating + to scroll clear of the last row. */}
+        <main className="mx-auto max-w-xl overflow-x-clip px-4 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-[calc(var(--nav-clearance)+var(--tray-clearance)+5.5rem)]">
           <AuthLoading>
-            <p className="text-stone-500">{t("common.loading")}</p>
+            <p className="pt-12 text-stone-500">{t("common.loading")}</p>
           </AuthLoading>
           <Authenticated>
             <KeepOfflineData />
@@ -65,19 +50,19 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           </Authenticated>
         </main>
       </div>
-      <BottomBar current={current} />
+      <PillNav current={current} />
     </div>
   );
 }
 
-/** Wide screens: a narrow midnight rail down the left, with the app's initial on top and Settings at the bottom. */
+/** Wide screens: a narrow graphite rail down the left, with the app's initial on top and Settings at the bottom. */
 function Rail({ current }: { current: Place | undefined }) {
   const t = useT();
   return (
     <nav className="fixed inset-y-0 left-0 z-20 hidden w-20 flex-col items-center gap-2 bg-rail py-4 text-rail-foreground md:flex">
       <span
         aria-hidden="true"
-        className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-accent font-bold text-accent-foreground"
+        className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-accent font-bold text-accent-foreground"
       >
         {t("app.name").charAt(0)}
       </span>
@@ -88,7 +73,7 @@ function Rail({ current }: { current: Place | undefined }) {
             key={place}
             href={`/${place}`}
             aria-current={active ? "page" : undefined}
-            className={`flex w-16 flex-col items-center gap-1 rounded-md py-2 text-[11px] font-semibold ${
+            className={`flex w-16 flex-col items-center gap-1 rounded-xl py-2 text-[11px] font-semibold ${
               place === "settings" ? "mt-auto" : ""
             } ${active ? "bg-white/10 text-white" : "hover:text-white"}`}
           >
@@ -101,41 +86,41 @@ function Rail({ current }: { current: Place | undefined }) {
   );
 }
 
-/** Phones: a frosted midnight bar along the bottom with the three tabs, Scan as a flat carrot square in the middle. */
-function BottomBar({ current }: { current: Place | undefined }) {
+/**
+ * Phones: a graphite pill floating over the foot of the page, with Komero and
+ * Kauppalista either side of a round carrot Scan. The current tab widens to
+ * show its name.
+ */
+function PillNav({ current }: { current: Place | undefined }) {
   const t = useT();
+  const tab = (place: "koti" | "lista", Icon: typeof HomeIcon) => {
+    const active = current === place;
+    return (
+      <AppLink
+        href={`/${place}`}
+        aria-current={active ? "page" : undefined}
+        aria-label={t(`nav.${place}`)}
+        className={`flex h-12 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold ${
+          active ? "flex-[1.6] bg-white/12 text-white" : "flex-1 text-white/55"
+        }`}
+      >
+        <Icon width={22} height={22} className={active ? "text-accent" : undefined} />
+        {active && <span aria-hidden="true">{t(`nav.${place}`)}</span>}
+      </AppLink>
+    );
+  };
   return (
-    <nav className="material-rail fixed inset-x-0 bottom-0 z-10 pb-[env(safe-area-inset-bottom)] text-rail-foreground md:hidden">
-      <div className="flex items-center py-1.5">
-        {PLACES.filter(({ place }) => place !== "settings").map(({ place, Icon }) => {
-          const active = current === place;
-          if (place === "scan")
-            return (
-              <AppLink
-                key={place}
-                href="/scan"
-                aria-label={t("nav.scan")}
-                aria-current={active ? "page" : undefined}
-                className="flex flex-1 justify-center"
-              >
-                <span className="flex h-12 w-14 items-center justify-center rounded-md bg-accent text-accent-foreground">
-                  <ScanIcon width={24} height={24} />
-                </span>
-              </AppLink>
-            );
-          return (
-            <AppLink
-              key={place}
-              href={`/${place}`}
-              aria-current={active ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center gap-1 py-1.5 text-[11px] font-semibold ${active ? "text-white" : ""}`}
-            >
-              <Icon width={22} height={22} className={active ? "text-accent" : undefined} />
-              {t(`nav.${place}`)}
-            </AppLink>
-          );
-        })}
-      </div>
+    <nav className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-20 mx-auto flex w-[min(22rem,calc(100%-2rem))] items-center gap-1 rounded-full bg-rail p-1.5 shadow-[0_12px_32px_-8px_rgb(0_0_0/0.45)] md:hidden">
+      {tab("koti", HomeIcon)}
+      <AppLink
+        href="/scan"
+        aria-label={t("nav.scan")}
+        aria-current={current === "scan" ? "page" : undefined}
+        className="-my-4 flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground ring-4 ring-background"
+      >
+        <ScanIcon width={26} height={26} />
+      </AppLink>
+      {tab("lista", ListIcon)}
     </nav>
   );
 }
