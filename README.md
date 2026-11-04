@@ -12,6 +12,13 @@ A household Inventory and shared Shopping List for phones. Domain language is in
 
 <sub>The Inventory, the Shopping List, a Product (dark theme) and the Activity feed, with made-up sample data. The UI is in Finnish, with English available per Member.</sub>
 
+- **What's at home**: every Product, its Stock and Location (fridge, freezer, cupboard…), and its Best Before or Use By date.
+- **Needs Attention**: what has expired, expires soon or is Running Low, most urgent first.
+- **One shared Shopping List**, grouped by Category in the order you walk through your shop. Ticked Entries go into the Bag, and Put Away moves them into Stock at home.
+- **Barcode scanning** to add, use or put a Product on the list; unknown Barcodes are looked up on [Open Food Facts](https://world.openfoodfacts.org).
+- **Live for everyone**: every Member sees every change at once, and Activities show who changed what.
+- **Phone-first**: installable as an app, light and dark theme, and it keeps showing the last data when the connection drops.
+
 Stack: Next.js 16 (App Router, client-routed shell) on Vercel, Convex for data,
 live queries and auth (Convex Auth, Password provider). Node 20.17+, pnpm 9.
 
@@ -72,3 +79,7 @@ then `pnpm dev`. The first person to open the app creates the first Member.
    `convex deploy` pushes the functions and sets `NEXT_PUBLIC_CONVEX_URL` for the build.
 3. Open the deployed URL, create the first Member, and check on a real phone that you stay
    signed in after closing the browser.
+
+## License
+
+[MIT](LICENSE)
