@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { CloseIcon, SearchIcon } from "@/components/icons";
 import { api } from "@/convex/_generated/api";
-import { nameKey } from "@/convex/productNames";
+import { nameKey, searchProducts } from "@/convex/productNames";
 import { splitAtMatch } from "@/lib/highlight";
 import { useT } from "@/lib/i18n";
 import { field } from "@/lib/styles";
@@ -189,12 +189,17 @@ function Highlighted({ name, text }: { name: string; text: string }) {
 }
 
 /**
- * `products.search` for a combobox. While the answer for new text loads, the
- * last answer stays, so the options don't blink away on every keystroke.
+ * `products.search` for a combobox. Until the server answers the new text, or
+ * while the connection is down, the same search runs on the Products already on
+ * the phone (kept by KeepOfflineData), so options show at once on every keystroke.
  */
 export function useProductSearch(text: string) {
   const result = useQuery(api.products.search, text.trim() ? { text } : "skip");
-  const [last, setLast] = useState(result);
-  if (result !== undefined && result !== last) setLast(result);
-  return text.trim() ? (result ?? last) : undefined;
+  const inventory = useQuery(api.inventory.get);
+  if (!text.trim()) return undefined;
+  if (result || !inventory) return result;
+  const products = inventory.flatMap((location) =>
+    location.products.map(({ _id, name, stock, expiryKind }) => ({ _id, name, stock, expiryKind, locationName: location.name })),
+  );
+  return searchProducts(products, text);
 }

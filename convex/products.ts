@@ -5,7 +5,7 @@ import { requireCategory } from "./categories";
 import { requireMemberId } from "./members";
 import type { Doc, Id } from "./_generated/dataModel";
 import { createProduct, requireMinimumStock } from "./newProduct";
-import { isLikelySame, nameKey, tidyName } from "./productNames";
+import { nameKey, searchProducts, tidyName } from "./productNames";
 import { removedEntries, removeEntriesOf, restoreEntriesOf } from "./shoppingList";
 import { applyRestock, applyUndo, applyUse, crossedIntoRunningLow, expiryKind, isDate, stockChange } from "./stock";
 
@@ -234,44 +234,23 @@ async function requireProduct(ctx: MutationCtx, productId: Id<"products">) {
   return product;
 }
 
-const MAX_MATCHES = 8;
-
-/**
- * The search/add field: Products whose name contains the text (any case), those
- * starting with it first; whether the typed name can be added as a new Product;
- * and a likely duplicate to warn about.
- */
 export const search = query({
   args: { text: v.string() },
   handler: async (ctx, { text }) => {
     await requireMemberId(ctx);
-    const name = tidyName(text);
-    const key = nameKey(name);
-    if (key === "") return { matches: [], canAdd: false, name, duplicate: null };
-
-    const locationName = async (product: Doc<"products">) => (await ctx.db.get(product.locationId))?.name ?? "";
-
-    // A household has hundreds of Products at most, so matches and near-duplicates are found by a full scan.
-    const all = await ctx.db.query("products").collect();
-    const startsFirst = (product: Doc<"products">) => (product.nameKey.startsWith(key) ? 0 : 1);
-    const products = all
-      .filter((product) => product.nameKey.includes(key))
-      .sort((a, b) => startsFirst(a) - startsFirst(b) || a.nameKey.localeCompare(b.nameKey))
-      .slice(0, MAX_MATCHES);
-    const matches = await Promise.all(
-      products.map(async (product) => ({
+    // A household has hundreds of Products at most, so the search scans them all.
+    const locations = new Map((await ctx.db.query("locations").collect()).map((l) => [l._id, l.name]));
+    const products = await ctx.db.query("products").collect();
+    return searchProducts(
+      products.map((product) => ({
         _id: product._id,
         name: product.name,
         stock: product.stock,
         expiryKind: product.expiryKind ?? null,
-        locationName: await locationName(product),
+        locationName: locations.get(product.locationId) ?? "",
       })),
+      text,
     );
-
-    const same = all.find((product) => product.nameKey === key);
-    const close = same ?? all.find((product) => isLikelySame(product.nameKey, key));
-    const duplicate = close ? { name: close.name, locationName: await locationName(close) } : null;
-    return { matches, canAdd: !same, name, duplicate };
   },
 });
 
