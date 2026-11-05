@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { needMoreStandIn, oneOffStandIn } from "./standIns";
 import { allActivities, type MemberSession, newKomero, signUp } from "./test.helpers";
 
 /** A household of two Members: Anna signs up first and invites Ben. */
@@ -303,6 +304,88 @@ describe("Lista", () => {
       { group: "Maitotuotteet", entries: ["Maito ×1 (Stock 1)"] },
       { group: "In the bag: Maitotuotteet", entries: ["Maito ×1 (Stock 1)"] },
     ]);
+  });
+});
+
+describe("taps on an Entry whose add hasn't reached the server yet", () => {
+  test("a Need More Entry is ticked, unticked, stepped, ticked again and put away by its stand-in", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Maitotuotteet");
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    const standIn = needMoreStandIn(maito);
+
+    await anna.mutation(api.shoppingList.tick, { entryId: standIn });
+    expect(await lista(anna)).toEqual([{ group: "In the bag: Maitotuotteet", entries: ["Maito ×1 (Stock 1)"] }]);
+
+    await anna.mutation(api.shoppingList.untick, { entryId: standIn });
+    await anna.mutation(api.shoppingList.setQuantity, { entryId: standIn, quantity: 2 });
+    expect(await lista(anna)).toEqual([{ group: "Maitotuotteet", entries: ["Maito ×2 (Stock 1)"] }]);
+
+    await anna.mutation(api.shoppingList.tick, { entryId: standIn });
+    await anna.mutation(api.shoppingList.putAway, { entryId: standIn });
+    expect(await stock(anna, "Maito")).toBe(3);
+    expect(await lista(anna)).toEqual([]);
+  });
+
+  test("with the Product both on the list and in the Bag, each tap finds the Entry it acts on", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Maitotuotteet");
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    await anna.mutation(api.shoppingList.tick, { entryId: await entryId(anna, "Maito") });
+    await anna.mutation(api.shoppingList.needMore, { productId: maito });
+    const standIn = needMoreStandIn(maito);
+
+    await anna.mutation(api.shoppingList.setQuantity, { entryId: standIn, quantity: 3 });
+    await anna.mutation(api.shoppingList.putAway, { entryId: standIn });
+
+    expect(await stock(anna, "Maito")).toBe(2);
+    expect(await lista(anna)).toEqual([{ group: "Maitotuotteet", entries: ["Maito ×3 (Stock 2)"] }]);
+  });
+
+  test("a One-off is found by its name in any case, and is ticked and deleted", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    await anna.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
+    await anna.mutation(api.shoppingList.addOneOff, { name: "Ilmapallot" });
+
+    await anna.mutation(api.shoppingList.tick, { entryId: oneOffStandIn("synttärikynttilät") });
+    expect(await lista(anna)).toEqual([
+      { group: "Other", entries: ["Ilmapallot ×1"] },
+      { group: "In the bag: Other", entries: ["Synttärikynttilät ×1"] },
+    ]);
+
+    await anna.mutation(api.shoppingList.remove, { entryId: oneOffStandIn("Ilmapallot") });
+    expect(await lista(anna)).toEqual([{ group: "In the bag: Other", entries: ["Synttärikynttilät ×1"] }]);
+  });
+
+  test("a One-off gets its Category by its stand-in", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    await anna.mutation(api.shoppingList.addOneOff, { name: "Synttärikynttilät" });
+
+    await anna.mutation(api.shoppingList.setOneOffCategory, {
+      entryId: oneOffStandIn("Synttärikynttilät"),
+      categoryId: await categoryId(anna, "Kuivatuotteet"),
+    });
+
+    expect(await lista(anna)).toEqual([{ group: "Kuivatuotteet", entries: ["Synttärikynttilät ×1"] }]);
+  });
+
+  test("a One-off stand-in naming a Product finds that Product's Entry, as adding it linked it", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    await product(anna, "Maito", "Maitotuotteet");
+    await anna.mutation(api.shoppingList.addOneOff, { name: "maito" });
+
+    await anna.mutation(api.shoppingList.tick, { entryId: oneOffStandIn("maito") });
+
+    expect(await lista(anna)).toEqual([{ group: "In the bag: Maitotuotteet", entries: ["Maito ×1 (Stock 1)"] }]);
+  });
+
+  test("an id that names no Entry is not found", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    const maito = await product(anna, "Maito", "Maitotuotteet");
+
+    for (const entryId of [needMoreStandIn(maito), oneOffStandIn("Kynttilät"), "needMore:nonsense", "nonsense"]) {
+      await expect(anna.mutation(api.shoppingList.tick, { entryId })).rejects.toThrow(/ENTRY_NOT_FOUND/);
+    }
   });
 });
 

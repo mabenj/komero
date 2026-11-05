@@ -5,6 +5,7 @@ import { recordActivity } from "./activities";
 import { requireMemberId } from "./members";
 import { findOrCreateProduct } from "./newProduct";
 import { nameKey, tidyName } from "./productNames";
+import { readStandIn } from "./standIns";
 import { applyRestock, applyUndo, isDate, stockChange } from "./stock";
 
 type ListedEntry = { _id: Id<"entries">; name: string; quantity: number; categoryId: Id<"categories"> | null };
@@ -112,13 +113,13 @@ type OneOff = { name: string; categoryId?: Id<"categories"> };
 
 /** A One-off's Category, chosen on Lista; null takes it away. */
 export const setOneOffCategory = mutation({
-  args: { entryId: v.id("entries"), categoryId: v.union(v.id("categories"), v.null()) },
+  args: { entryId: v.string(), categoryId: v.union(v.id("categories"), v.null()) },
   handler: async (ctx, { entryId, categoryId }) => {
     await requireMemberId(ctx);
     const entry = await requireEntry(ctx, entryId);
     if (entry.productId !== undefined) throw new ConvexError("NOT_A_ONE_OFF");
     if (categoryId !== null && (await ctx.db.get(categoryId)) === null) throw new ConvexError("CATEGORY_NOT_FOUND");
-    await ctx.db.patch(entryId, { categoryId: categoryId ?? undefined });
+    await ctx.db.patch(entry._id, { categoryId: categoryId ?? undefined });
   },
 });
 
@@ -185,17 +186,17 @@ async function deleteEntry(ctx: MutationCtx, memberId: Id<"users">, entry: Doc<"
 
 /** The Entry's quantity stepper. The quantity stays at least 1; removing an Entry is `remove`. */
 export const setQuantity = mutation({
-  args: { entryId: v.id("entries"), quantity: v.number() },
+  args: { entryId: v.string(), quantity: v.number() },
   handler: async (ctx, { entryId, quantity }) => {
     await requireMemberId(ctx);
-    await requireEntry(ctx, entryId);
-    await ctx.db.patch(entryId, { quantity: Math.max(1, Math.round(quantity)) });
+    const entry = await requireEntry(ctx, entryId, "toBuy");
+    await ctx.db.patch(entry._id, { quantity: Math.max(1, Math.round(quantity)) });
   },
 });
 
 /** Deletes an Entry from the list. Returns what `restore` needs for the undo toast. */
 export const remove = mutation({
-  args: { entryId: v.id("entries") },
+  args: { entryId: v.string() },
   handler: async (ctx, { entryId }) => {
     const memberId = await requireMemberId(ctx);
     const entry = await requireEntry(ctx, entryId);
@@ -230,12 +231,12 @@ export const restore = mutation({
 
 /** Ticks an Entry off in the shop: it moves to the Bag. Stock is unchanged until it is put away. */
 export const tick = mutation({
-  args: { entryId: v.id("entries") },
+  args: { entryId: v.string() },
   handler: async (ctx, { entryId }) => {
     const memberId = await requireMemberId(ctx);
-    const entry = await requireEntry(ctx, entryId);
+    const entry = await requireEntry(ctx, entryId, "toBuy");
     if (entry.state === "inBag") return;
-    await ctx.db.patch(entryId, { state: "inBag" });
+    await ctx.db.patch(entry._id, { state: "inBag" });
     await recordActivity(ctx, memberId, "tick", await named(ctx, entry), { quantity: entry.quantity });
   },
 });
@@ -245,13 +246,13 @@ export const tick = mutation({
  * If the same thing was put on the list again meanwhile, the quantities add up.
  */
 export const untick = mutation({
-  args: { entryId: v.id("entries") },
+  args: { entryId: v.string() },
   handler: async (ctx, { entryId }) => {
     const memberId = await requireMemberId(ctx);
-    const entry = await requireEntry(ctx, entryId);
+    const entry = await requireEntry(ctx, entryId, "inBag");
     if (entry.state === "toBuy") return;
     const productOrOneOff = await named(ctx, entry);
-    await ctx.db.delete(entryId);
+    await ctx.db.delete(entry._id);
     const listed = "_id" in productOrOneOff ? { product: productOrOneOff } : productOrOneOff;
     await addToList(ctx, memberId, listed, entry.quantity);
     await recordActivity(ctx, memberId, "untick", productOrOneOff, { quantity: entry.quantity });
@@ -274,10 +275,10 @@ type PutAwayRecord = Infer<typeof putAwayRecord>;
  * a One-off just disappears. Returns what `undoPutAway` needs.
  */
 export const putAway = mutation({
-  args: { entryId: v.id("entries"), expiryDate: v.optional(v.string()) },
+  args: { entryId: v.string(), expiryDate: v.optional(v.string()) },
   handler: async (ctx, { entryId, expiryDate }) => {
     const memberId = await requireMemberId(ctx);
-    const entry = await requireEntry(ctx, entryId);
+    const entry = await requireEntry(ctx, entryId, "inBag");
     if (entry.state !== "inBag") throw new ConvexError("ENTRY_NOT_IN_BAG");
     return { putAway: [await putAwayEntry(ctx, memberId, entry, requireDate(expiryDate))] };
   },
@@ -378,7 +379,7 @@ export const undoPutAway = mutation({
  */
 export const makeProduct = mutation({
   args: {
-    entryId: v.id("entries"),
+    entryId: v.string(),
     name: v.string(),
     locationId: v.id("locations"),
     categoryId: v.optional(v.union(v.id("categories"), v.null())),
@@ -394,10 +395,10 @@ export const makeProduct = mutation({
       stock: 0,
     });
     if (entry.state === "toBuy") {
-      await ctx.db.delete(entryId);
+      await ctx.db.delete(entry._id);
       await addToList(ctx, memberId, { product }, entry.quantity);
     } else {
-      await ctx.db.patch(entryId, { productId: product._id, name: undefined, categoryId: undefined });
+      await ctx.db.patch(entry._id, { productId: product._id, name: undefined, categoryId: undefined });
     }
     return product._id;
   },
@@ -414,10 +415,47 @@ async function existingCategory(ctx: MutationCtx, categoryId: Id<"categories"> |
   return categoryId && (await ctx.db.get(categoryId)) ? categoryId : undefined;
 }
 
-async function requireEntry(ctx: MutationCtx, entryId: Id<"entries">) {
-  const entry = await ctx.db.get(entryId);
-  if (entry === null) throw new ConvexError("ENTRY_NOT_FOUND");
+/**
+ * The Entry an id names, a real one or a stand-in (see standIns.ts). A stand-in
+ * for a Product on the list and in the Bag names both; `state` picks the one
+ * the tap acts on.
+ */
+async function requireEntry(ctx: MutationCtx, entryId: string, state: Doc<"entries">["state"] = "toBuy") {
+  const entries = await entriesNamedBy(ctx, entryId);
+  const entry = entries.find((e) => e.state === state) ?? entries[0];
+  if (entry === undefined) throw new ConvexError("ENTRY_NOT_FOUND");
   return entry;
+}
+
+async function entriesNamedBy(ctx: MutationCtx, entryId: string): Promise<Doc<"entries">[]> {
+  const standIn = readStandIn(entryId);
+  if (standIn === null) {
+    const id = ctx.db.normalizeId("entries", entryId);
+    const entry = id && (await ctx.db.get(id));
+    return entry ? [entry] : [];
+  }
+  const product = await productNamedBy(ctx, standIn);
+  if (product) {
+    return await ctx.db
+      .query("entries")
+      .withIndex("by_product", (q) => q.eq("productId", product._id))
+      .collect();
+  }
+  if ("productId" in standIn) return [];
+  const entries = await ctx.db.query("entries").collect();
+  return entries.filter((e) => e.productId === undefined && nameKey(e.name ?? "") === standIn.nameKey);
+}
+
+async function productNamedBy(ctx: MutationCtx, standIn: { productId: string } | { nameKey: string }) {
+  if ("productId" in standIn) {
+    const id = ctx.db.normalizeId("products", standIn.productId);
+    return id && (await ctx.db.get(id));
+  }
+  // As in addOneOff, a One-off's name that is a Product's means that Product.
+  return await ctx.db
+    .query("products")
+    .withIndex("by_nameKey", (q) => q.eq("nameKey", standIn.nameKey))
+    .first();
 }
 
 /** What a deleted Product's undo needs to put its Entries back. */

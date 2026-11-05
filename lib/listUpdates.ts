@@ -7,7 +7,8 @@ import type { OptimisticLocalStore } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { nameKey } from "../convex/productNames";
+import { nameKey, tidyName } from "../convex/productNames";
+import { needMoreStandIn, oneOffStandIn } from "../convex/standIns";
 import { applyRestock, type StockState } from "../convex/stock";
 
 type ShoppingList = FunctionReturnType<typeof api.shoppingList.get>;
@@ -20,9 +21,11 @@ type ProductEntry = Groups["categories"][number]["entries"][number];
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "fi");
 
-/** The Product with this id, in whichever Location it is. */
-function findProduct(inventory: Inventory | undefined, productId: Id<"products">) {
-  return inventory?.flatMap((location) => location.products).find((p) => p._id === productId);
+type Product = Inventory[number]["products"][number];
+
+/** The Product that `matches`, in whichever Location it is. */
+function findProduct(inventory: Inventory | undefined, matches: (product: Product) => boolean) {
+  return inventory?.flatMap((location) => location.products).find(matches);
 }
 
 type EntryChange = <E extends Entry>(entry: E) => E;
@@ -46,11 +49,11 @@ function updateList(store: OptimisticLocalStore, change: (list: ShoppingList) =>
 
 /** Need More: the Product's Entry on the list gets one more, or it goes on the list once. */
 export function needMoreLocally(store: OptimisticLocalStore, { productId }: { productId: Id<"products"> }) {
-  const product = findProduct(store.getQuery(api.inventory.get, {}), productId);
+  const product = findProduct(store.getQuery(api.inventory.get, {}), (p) => p._id === productId);
   if (!product) return;
   const entry = {
-    // The server makes the real Entry; until then it goes by its Product.
-    _id: `needMore:${productId}` as Id<"entries">,
+    // The server makes the real Entry; until then it goes by a stand-in for its Product.
+    _id: needMoreStandIn(productId),
     productId,
     categoryId: product.categoryId,
     name: product.name,
@@ -62,6 +65,17 @@ export function needMoreLocally(store: OptimisticLocalStore, { productId }: { pr
   updateList(store, (list) => ({ ...(withEntryAdded(list, entry, categories) ?? list), bag: list.bag }));
 }
 
+/** Lista's "+ Add": a One-off goes on the list, unless it names a Product after all, which is Need More of it. */
+export function addOneOffLocally(store: OptimisticLocalStore, { name }: { name: string }) {
+  const tidy = tidyName(name);
+  if (tidy === "") return;
+  const product = findProduct(store.getQuery(api.inventory.get, {}), (p) => nameKey(p.name) === nameKey(tidy));
+  if (product) return needMoreLocally(store, { productId: product._id });
+  // The server makes the real Entry; until then it goes by a stand-in for its name.
+  const entry = { _id: oneOffStandIn(tidy), name: tidy, quantity: 1, categoryId: null };
+  updateList(store, (list) => ({ ...(withEntryAdded(list, entry, undefined) ?? list), bag: list.bag }));
+}
+
 /** How many of a Product are on the list after Need More, for the toast shown at the tap. */
 export function quantityAfterNeedMore(list: ShoppingList | undefined, productId: Id<"products">) {
   const entry = list && entriesIn(list).find((e) => "productId" in e && e.productId === productId);
@@ -71,14 +85,14 @@ export function quantityAfterNeedMore(list: ShoppingList | undefined, productId:
 /** An Entry's quantity stepper, on the list or in the Bag. */
 export function setQuantityLocally(
   store: OptimisticLocalStore,
-  { entryId, quantity }: { entryId: Id<"entries">; quantity: number },
+  { entryId, quantity }: { entryId: string; quantity: number },
 ) {
   const update: EntryChange = (e) => (e._id === entryId ? { ...e, quantity } : e);
   updateList(store, (list) => ({ ...changeEntries(list, update), bag: changeEntries(list.bag, update) }));
 }
 
 /** Ticking an Entry off in the shop: it moves into its group in the Bag. */
-export function tickLocally(store: OptimisticLocalStore, { entryId }: { entryId: Id<"entries"> }) {
+export function tickLocally(store: OptimisticLocalStore, { entryId }: { entryId: string }) {
   const categories = store.getQuery(api.categories.list, {});
   updateList(store, (list) => {
     const ticked = entriesIn(list).find((e) => e._id === entryId);
@@ -88,7 +102,7 @@ export function tickLocally(store: OptimisticLocalStore, { entryId }: { entryId:
 }
 
 /** Taking an Entry out of the Bag: it goes back on the list. */
-export function untickLocally(store: OptimisticLocalStore, { entryId }: { entryId: Id<"entries"> }) {
+export function untickLocally(store: OptimisticLocalStore, { entryId }: { entryId: string }) {
   const categories = store.getQuery(api.categories.list, {});
   updateList(store, (list) => {
     const entry = entriesIn(list.bag).find((e) => e._id === entryId);
@@ -142,7 +156,7 @@ export function setCategoryLocally(
  */
 export function setOneOffCategoryLocally(
   store: OptimisticLocalStore,
-  { entryId, categoryId }: { entryId: Id<"entries">; categoryId: Id<"categories"> | null },
+  { entryId, categoryId }: { entryId: string; categoryId: Id<"categories"> | null },
 ) {
   const categories = store.getQuery(api.categories.list, {});
   if (!categories) return;
@@ -155,12 +169,12 @@ export function setOneOffCategoryLocally(
 }
 
 /** Deleting an Entry, wherever it is. */
-export function removeLocally(store: OptimisticLocalStore, { entryId }: { entryId: Id<"entries"> }) {
+export function removeLocally(store: OptimisticLocalStore, { entryId }: { entryId: string }) {
   updateList(store, (list) => ({ ...withoutEntry(list, entryId), bag: withoutEntry(list.bag, entryId) }));
 }
 
 /** The groups without an Entry; a Category left with no Entries is left out, as the server does. */
-function withoutEntry(groups: Groups, entryId: Id<"entries">): Groups {
+function withoutEntry(groups: Groups, entryId: string): Groups {
   const others = (e: Entry) => e._id !== entryId;
   return {
     categories: groups.categories
@@ -205,7 +219,7 @@ function withEntryPlaced(groups: Groups, entry: Entry, categories: Categories | 
 /** Put Away of one Entry from the Bag: its Product is Restocked by its quantity, with the date given. */
 export function putAwayLocally(
   store: OptimisticLocalStore,
-  { entryId, expiryDate }: { entryId: Id<"entries">; expiryDate?: string },
+  { entryId, expiryDate }: { entryId: string; expiryDate?: string },
 ) {
   const bag = store.getQuery(api.shoppingList.get, {})?.bag;
   const entry = bag && entriesIn(bag).find((e) => e._id === entryId);
@@ -239,7 +253,7 @@ export function changeStockLocally(
 ) {
   const inventory = store.getQuery(api.inventory.get, {});
   const page = store.getQuery(api.products.get, { productId });
-  const product = findProduct(inventory, productId) ?? page;
+  const product = findProduct(inventory, (p) => p._id === productId) ?? page;
   if (!product) return;
   const next = rule({
     stock: product.stock,

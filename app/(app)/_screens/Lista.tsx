@@ -20,6 +20,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey, tidyName } from "@/convex/productNames";
 import { useT } from "@/lib/i18n";
 import {
+  addOneOffLocally,
   entriesIn,
   type Groups,
   putAwayAllLocally,
@@ -154,7 +155,7 @@ function AddToList({ list }: { list: Groups }) {
   const t = useT();
   const [text, setText] = useState("");
   const result = useProductSearch(text);
-  const addOneOff = useMutation(api.shoppingList.addOneOff);
+  const addOneOff = useMutation(api.shoppingList.addOneOff).withOptimisticUpdate(addOneOffLocally);
   const needMore = useNeedMore();
   const name = tidyName(text);
   const matches = result?.matches ?? [];
