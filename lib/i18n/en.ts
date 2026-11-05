@@ -51,6 +51,8 @@ export const en = {
   "koti.search": "Search Komero",
   "koti.noMatches": "No Products match “{text}”",
   "koti.all": "All",
+  "koti.inStock": "In stock",
+  "koti.noneInStock": "Nothing is in stock right now",
   "koti.useSoon": "Use soon",
   "koti.noneUseSoon": "Nothing is expiring soon",
   "koti.noneRunningLow": "Nothing is running low",

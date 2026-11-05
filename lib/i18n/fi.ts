@@ -51,6 +51,8 @@ export const fi = {
   "koti.search": "Hae komerosta",
   "koti.noMatches": "Ei tuotteita haulla ”{text}”",
   "koti.all": "Kaikki",
+  "koti.inStock": "Komerossa",
+  "koti.noneInStock": "Komerossa ei ole nyt mitään",
   "koti.useSoon": "Käytä pian",
   "koti.noneUseSoon": "Mikään ei vanhene pian",
   "koti.noneRunningLow": "Mikään ei ole vähissä",

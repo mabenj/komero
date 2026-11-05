@@ -33,8 +33,10 @@ type ProductRowData = {
   expiryDate: string | null;
   minimumStock: number | null;
 };
-/** Komero's filter tiles: everything, what to use soon (by its Expiry Date), or what is Running Low. */
-type Filter = "all" | "useSoon" | "runningLow";
+/** Komero's filter tiles: everything, what is in Stock, what to use soon (by its Expiry Date), or what is Running Low. */
+type Filter = "all" | "inStock" | "useSoon" | "runningLow";
+
+const inStock = (product: ProductRowData) => product.stock > 0;
 
 const usesSoon = (product: ProductRowData, today: string) => expiryStatus(toAttentionState(product), today) !== null;
 const runningLow = (product: ProductRowData) => isRunningLow(toAttentionState(product));
@@ -42,8 +44,8 @@ const runningLow = (product: ProductRowData) => isRunningLow(toAttentionState(pr
 const lowAgainstMinimum = (product: ProductRowData) => product.minimumStock !== null && runningLow(product);
 
 /**
- * Komero: three tiles that count and filter (everything, use soon, Running
- * Low against a Minimum Stock), a search, and tabs to see one Location or all
+ * Komero: four tiles that count and filter (everything, in Stock, use soon,
+ * Running Low against a Minimum Stock), a search, and tabs to see one Location or all
  * of them, kept at the top while scrolling. Each Location is a grouped list of
  * its Products, with their Expiry Date and a Stock stepper. A row opens its
  * Product page. The floating + adds a Product to the Location in view.
@@ -64,9 +66,13 @@ export default function KotiScreen() {
   const searching = searchText.trim() !== "";
   const narrowed = searching || filter !== "all";
   const searchKey = nameKey(searchText);
-  const shows = (product: ProductRowData) =>
-    nameKey(product.name).includes(searchKey) &&
-    (filter === "all" || (filter === "useSoon" ? usesSoon(product, today) : lowAgainstMinimum(product)));
+  const filtered = {
+    all: () => true,
+    inStock,
+    useSoon: (product: ProductRowData) => usesSoon(product, today),
+    runningLow: lowAgainstMinimum,
+  }[filter];
+  const shows = (product: ProductRowData) => nameKey(product.name).includes(searchKey) && filtered(product);
   const locations = (inventory ?? [])
     .filter((location) => locationTab === null || location._id === locationTab)
     .map((location) => ({
@@ -89,12 +95,18 @@ export default function KotiScreen() {
         <EmptyKoti />
       ) : (
         <div className="flex flex-col gap-5">
-          <div role="group" aria-label={t("koti.filters")} className="grid grid-cols-3 gap-2.5">
+          <div role="group" aria-label={t("koti.filters")} className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <FilterTile
               label={t("koti.all")}
               count={all.length}
               chosen={filter === "all"}
               onClick={() => setFilter("all")}
+            />
+            <FilterTile
+              label={t("koti.inStock")}
+              count={all.filter(inStock).length}
+              chosen={filter === "inStock"}
+              onClick={() => setFilter(filter === "inStock" ? "all" : "inStock")}
             />
             <FilterTile
               label={t("koti.useSoon")}
@@ -120,6 +132,7 @@ export default function KotiScreen() {
           {locations.length === 0 && (
             <p className="px-1 text-sm text-stone-500">
               {searching ? t("koti.noMatches", { text: searchText.trim() })
+                : filter === "inStock" ? t("koti.noneInStock")
                 : filter === "useSoon" ? t("koti.noneUseSoon")
                 : t("koti.noneRunningLow")}
             </p>
