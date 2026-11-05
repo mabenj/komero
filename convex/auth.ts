@@ -23,6 +23,10 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   ],
   // Members stay signed in for months (the proxy's cookie maxAge matches).
   session: { totalDurationMs: 365 * DAY, inactiveDurationMs: 180 * DAY },
+  // The Convex client can't refresh its token while the phone is locked, so with the
+  // default hour, unlocking meant a token refresh before reconnecting. A week covers
+  // the time between shop trips; the cost is that a leaked token stays valid as long.
+  jwt: { durationMs: 7 * DAY },
   callbacks: {
     // Runs only when a new account is created, inside the same transaction as the
     // account insert, so throwing here rejects the sign-up without leaving anything behind.
