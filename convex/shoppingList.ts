@@ -88,7 +88,8 @@ export const needMore = mutation({
 
 /**
  * Lista's add field. Picking a Product from autocomplete calls `needMore`; any
- * other text lands here and becomes a One-off, unless it is a Product's name
+ * other text asks whether it is a One-off (here) or a new Product
+ * (`addAsProduct`). A One-off is added, unless it is a Product's name
  * after all (in any case), which links it. The same One-off again raises its quantity.
  */
 export const addOneOff = mutation({
@@ -401,6 +402,33 @@ export const makeProduct = mutation({
       await ctx.db.patch(entry._id, { productId: product._id, name: undefined, categoryId: undefined });
     }
     return product._id;
+  },
+});
+
+/**
+ * Lista's "New Product" for text that isn't a Product yet: makes it one in
+ * the chosen Location (and Category), Out of Stock, and puts it on the list.
+ * A One-off already on the list under `text` becomes the Product's Entry,
+ * keeping its quantity. A name that is already a Product's links to that Product.
+ */
+export const addAsProduct = mutation({
+  args: {
+    text: v.string(),
+    name: v.string(),
+    locationId: v.id("locations"),
+    categoryId: v.optional(v.id("categories")),
+  },
+  handler: async (ctx, { text, name, locationId, categoryId }) => {
+    const memberId = await requireMemberId(ctx);
+    const product = await findOrCreateProduct(ctx, memberId, { name, locationId, categoryId, stock: 0 });
+    const oneOff = (
+      await ctx.db
+        .query("entries")
+        .withIndex("by_state", (q) => q.eq("state", "toBuy"))
+        .collect()
+    ).find((entry) => entry.productId === undefined && nameKey(entry.name ?? "") === nameKey(text));
+    if (oneOff) await ctx.db.delete(oneOff._id);
+    return await needMoreOf(ctx, memberId, product, 1 + (oneOff?.quantity ?? 0));
   },
 });
 

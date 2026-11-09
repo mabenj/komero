@@ -23,6 +23,8 @@ export function KeepOfflineData() {
   useQuery(api.categories.list);
   useQuery(api.members.list);
   useQuery(api.activities.recent);
+  // Komero's Frequently Bought tile counts from it.
+  useQuery(api.frequentlyBought.get);
 
   const pathname = usePathname();
   const opened = pathname.match(/^\/koti\/([^/]+)$/)?.[1] as Id<"products"> | undefined;

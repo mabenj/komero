@@ -10,7 +10,8 @@ import { CategorySelect } from "@/components/CategorySelect";
 import { useProductSearch } from "@/components/Combobox";
 import { CupboardNote } from "@/components/Cupboard";
 import { ExpiryKindSelect } from "@/components/ExpiryKindSelect";
-import { CloseIcon, ScanIcon, SearchIcon } from "@/components/icons";
+import { CloseIcon, ListIcon, ScanIcon, SearchIcon } from "@/components/icons";
+import { useNeedMore } from "@/components/NeedMore";
 import { Sheet } from "@/components/Sheet";
 import { Stepper } from "@/components/Stepper";
 import { useStockChange } from "@/components/StockToasts";
@@ -19,6 +20,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey, tidyName } from "@/convex/productNames";
 import { type ExpiryKind, expiryStatus, isRunningLow, toAttentionState } from "@/convex/stock";
 import { localToday, relativeExpiry } from "@/lib/dates";
+import { entriesIn } from "@/lib/listUpdates";
 import { useLang, useT } from "@/lib/i18n";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
 import { field, group, groupHeader, groupRow, primaryButton, segment, statusTone } from "@/lib/styles";
@@ -33,8 +35,13 @@ type ProductRowData = {
   expiryDate: string | null;
   minimumStock: number | null;
 };
-/** Komero's filter tiles: everything, what is in Stock, what to use soon (by its Expiry Date), or what is Running Low. */
-type Filter = "all" | "inStock" | "useSoon" | "runningLow";
+/**
+ * Komero's filter tiles: everything, what is in Stock, what to use soon (by its
+ * Expiry Date), what is Running Low, or what is Frequently Bought.
+ */
+type Filter = "all" | "inStock" | "useSoon" | "runningLow" | "frequentlyBought";
+/** How a row shows under Frequently Bought: its Location, how often it was restocked, and how many are on the list. */
+type Frequent = { locationName: string; days: number; onList: number | undefined };
 
 const inStock = (product: ProductRowData) => product.stock > 0;
 
@@ -44,16 +51,20 @@ const runningLow = (product: ProductRowData) => isRunningLow(toAttentionState(pr
 const lowAgainstMinimum = (product: ProductRowData) => product.minimumStock !== null && runningLow(product);
 
 /**
- * Komero: four tiles that count and filter (everything, in Stock, use soon,
- * Running Low against a Minimum Stock), a search, and tabs to see one Location or all
- * of them, kept at the top while scrolling. Each Location is a grouped list of
- * its Products, with their Expiry Date and a Stock stepper. A row opens its
- * Product page. The floating + adds a Product to the Location in view.
+ * Komero: five tiles that count and filter (everything, in Stock, use soon,
+ * Running Low against a Minimum Stock, Frequently Bought), a search, and tabs
+ * to see one Location or all of them, kept at the top while scrolling. Each
+ * Location is a grouped list of its Products, with their Expiry Date and a
+ * Stock stepper; Frequently Bought is one list instead, most often restocked
+ * first, each row with a Need More. A row opens its Product page. The
+ * floating + adds a Product to the Location in view.
  */
 export default function KotiScreen() {
   const t = useT();
   const lang = useLang();
   const inventory = useQuery(api.inventory.get);
+  const restockDays = new Map((useQuery(api.frequentlyBought.get) ?? []).map((p) => [p.productId, p.days]));
+  const list = useQuery(api.shoppingList.get);
   const [filter, setFilter] = useState<Filter>("all");
   const [chosenLocation, setChosenLocation] = useState<Id<"locations"> | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -71,6 +82,7 @@ export default function KotiScreen() {
     inStock,
     useSoon: (product: ProductRowData) => usesSoon(product, today),
     runningLow: lowAgainstMinimum,
+    frequentlyBought: (product: ProductRowData) => restockDays.has(product._id),
   }[filter];
   const shows = (product: ProductRowData) => nameKey(product.name).includes(searchKey) && filtered(product);
   const locations = (inventory ?? [])
@@ -82,6 +94,16 @@ export default function KotiScreen() {
     // An empty Location shows only while nothing narrows the list.
     .filter((location) => !narrowed || location.products.length > 0);
   const locationInView = useLocationInView(locations.map((location) => location._id).join());
+  const onList = new Map(
+    (list ? entriesIn(list) : []).flatMap((entry) => ("productId" in entry ? [[entry.productId, entry.quantity]] : [])),
+  );
+  const frequentRows = locations
+    .flatMap((location) => location.products.map((product) => ({ product, locationName: location.name })))
+    .map(({ product, locationName }) => ({
+      product,
+      frequent: { locationName, days: restockDays.get(product._id) ?? 0, onList: onList.get(product._id) },
+    }))
+    .sort((a, b) => b.frequent.days - a.frequent.days || a.product.name.localeCompare(b.product.name, lang));
 
   if (inventory === undefined) return <p className="text-stone-500">{t("common.loading")}</p>;
 
@@ -95,7 +117,7 @@ export default function KotiScreen() {
         <EmptyKoti />
       ) : (
         <div className="flex flex-col gap-5">
-          <div role="group" aria-label={t("koti.filters")} className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <div role="group" aria-label={t("koti.filters")} className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
             <FilterTile
               label={t("koti.all")}
               count={all.length}
@@ -122,6 +144,13 @@ export default function KotiScreen() {
               chosen={filter === "runningLow"}
               onClick={() => setFilter(filter === "runningLow" ? "all" : "runningLow")}
             />
+            <FilterTile
+              label={t("koti.frequentlyBought")}
+              count={all.filter((product) => restockDays.has(product._id)).length}
+              chosen={filter === "frequentlyBought"}
+              onClick={() => setFilter(filter === "frequentlyBought" ? "all" : "frequentlyBought")}
+              className="col-span-2 sm:col-span-1"
+            />
           </div>
           <Search value={searchText} onChange={setSearchText} />
           <LocationTabs
@@ -134,10 +163,18 @@ export default function KotiScreen() {
               {searching ? t("koti.noMatches", { text: searchText.trim() })
                 : filter === "inStock" ? t("koti.noneInStock")
                 : filter === "useSoon" ? t("koti.noneUseSoon")
+                : filter === "frequentlyBought" ? t("koti.noneFrequentlyBought")
                 : t("koti.noneRunningLow")}
             </p>
           )}
-          {locations.map((location) => (
+          {filter === "frequentlyBought" && frequentRows.length > 0 && (
+            <ul aria-label={t("koti.frequentlyBought")} className={group}>
+              {frequentRows.map(({ product, frequent }) => (
+                <ProductRow key={product._id} product={product} today={today} justAdded={false} frequent={frequent} />
+              ))}
+            </ul>
+          )}
+          {filter !== "frequentlyBought" && locations.map((location) => (
             <section key={location._id} data-location-id={location._id}>
               <h2 className={`${groupHeader} flex justify-between`}>
                 <span>{location.name}</span>
@@ -198,19 +235,21 @@ function FilterTile({
   tone = "",
   chosen,
   onClick,
+  className = "",
 }: {
   label: string;
   count: number;
   tone?: string;
   chosen: boolean;
   onClick: () => void;
+  className?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={chosen}
-      className={`flex flex-col items-start gap-0.5 rounded-2xl px-3.5 py-3 text-left transition-colors duration-150 ${segment(chosen)}`}
+      className={`flex flex-col items-start gap-0.5 rounded-2xl px-3.5 py-3 text-left transition-colors duration-150 ${segment(chosen)} ${className}`}
     >
       <span className={`font-display text-[28px] leading-none tabular-nums ${tone}`}>{count}</span>
       <span className="text-xs font-semibold">{label}</span>
@@ -481,14 +520,17 @@ function ProductRow({
   product,
   today,
   justAdded,
+  frequent,
 }: {
   product: ProductRowData;
   today: string;
   justAdded: boolean;
+  frequent?: Frequent;
 }) {
   const t = useT();
   const lang = useLang();
   const changeStock = useStockChange();
+  const needMore = useNeedMore();
   const row = useRef<HTMLLIElement>(null);
   const reduced = useReducedMotion();
   useEffect(() => {
@@ -505,8 +547,19 @@ function ProductRow({
         aria-label={t("koti.productLabel", { name: product.name, stock: product.stock })}
         className="flex min-h-11 min-w-0 flex-1 items-center gap-3 self-stretch py-2.5 pr-2 pl-4 active:bg-stone-100"
       >
-        <span className={`min-w-0 flex-1 truncate text-[17px] ${outOfStock ? "text-secondary" : ""}`}>
-          {product.name}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className={`truncate text-[17px] ${outOfStock ? "text-secondary" : ""}`}>{product.name}</span>
+          {frequent && (
+            <span className="truncate text-xs text-secondary">
+              {[
+                frequent.locationName,
+                t("koti.restockDays", { days: frequent.days }),
+                frequent.onList && t("lista.onListCount", { quantity: frequent.onList }),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
         </span>
         {product.expiryKind && product.expiryDate && (
           <span className={`shrink-0 text-[15px] tabular-nums ${status ? statusTone[status].text : "text-secondary"}`}>
@@ -514,6 +567,16 @@ function ProductRow({
           </span>
         )}
       </AppLink>
+      {frequent && (
+        <button
+          type="button"
+          onClick={() => needMore(product)}
+          aria-label={t("koti.needMore", { name: product.name })}
+          className="flex h-11 w-11 shrink-0 items-center justify-center text-accent"
+        >
+          <ListIcon width={22} height={22} />
+        </button>
+      )}
       <Stepper
         value={product.stock}
         pillLabel={t("koti.stockOf", { name: product.name, stock: product.stock })}

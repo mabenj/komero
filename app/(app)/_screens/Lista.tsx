@@ -20,6 +20,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { nameKey, tidyName } from "@/convex/productNames";
 import { useT } from "@/lib/i18n";
 import {
+  addAsProductLocally,
   addOneOffLocally,
   entriesIn,
   type Groups,
@@ -30,7 +31,7 @@ import {
   untickLocally,
 } from "@/lib/listUpdates";
 import { lastLocation, rememberLocation } from "@/lib/remembered";
-import { field, primaryButton, raisedCard, textLink } from "@/lib/styles";
+import { field, primaryButton, raisedCard, secondaryButton, textLink } from "@/lib/styles";
 
 type Entry = {
   _id: Id<"entries">;
@@ -147,21 +148,35 @@ function ListNote({ allPutAway }: { allPutAway: boolean }) {
 
 /**
  * The search/add field in the + sheet: Products matching the text, picked for
- * Need More, or "+ Add" for a One-off (which links itself if it names a
- * Product). The field keeps focus after a pick, so the next thing can be typed
- * at once.
+ * Need More, or "+ Add" for text that isn't a Product, which asks whether it
+ * is a One-off or a new Product. The field keeps focus after a pick, so the
+ * next thing can be typed at once.
  */
 function AddToList({ list }: { list: Groups }) {
   const t = useT();
   const [text, setText] = useState("");
+  // The text being asked about, while the One-off or new Product question shows.
+  const [asking, setAsking] = useState<string | null>(null);
   const result = useProductSearch(text);
-  const addOneOff = useMutation(api.shoppingList.addOneOff).withOptimisticUpdate(addOneOffLocally);
   const needMore = useNeedMore();
   const name = tidyName(text);
   const matches = result?.matches ?? [];
   const onList = new Map(
     entriesIn(list).flatMap((entry) => ("productId" in entry && entry.productId ? [[entry.productId, entry.quantity]] : [])),
   );
+
+  if (asking !== null) {
+    return (
+      <AddChoice
+        text={asking}
+        list={list}
+        onDone={(restored) => {
+          setText(restored);
+          setAsking(null);
+        }}
+      />
+    );
+  }
 
   const options: ComboboxOption[] = matches.map((product) => {
     const quantity = onList.get(product._id);
@@ -181,16 +196,120 @@ function AddToList({ list }: { list: Groups }) {
   if (name !== "" && !matches.some((product) => nameKey(product.name) === nameKey(name))) {
     options.push({
       key: "add",
-      label: t("lista.addOneOff", { name }),
+      label: t("lista.add", { name }),
       add: true,
       onPick: () => {
         setText("");
-        addOneOff({ name }).catch(() => setText((current) => current || name));
+        setAsking(name);
       },
     });
   }
 
-  return <Combobox value={text} onChange={setText} label={t("lista.search")} options={options} keepFocus inline />;
+  return (
+    <Combobox value={text} onChange={setText} label={t("lista.search")} options={options} keepFocus autoFocus inline />
+  );
+}
+
+/**
+ * Text that isn't a Product yet: a One-off, or a new Product with its name,
+ * Location and Category, which goes on the list at once (even offline).
+ * A One-off already on the list under the text gets one more either way, and
+ * lends the new Product its Category. Cancel gives the text back to the field.
+ */
+function AddChoice({ text, list, onDone }: { text: string; list: Groups; onDone: (restored: string) => void }) {
+  const t = useT();
+  const inventory = useQuery(api.inventory.get);
+  const addOneOff = useMutation(api.shoppingList.addOneOff).withOptimisticUpdate(addOneOffLocally);
+  const addAsProduct = useMutation(api.shoppingList.addAsProduct).withOptimisticUpdate(addAsProductLocally);
+  const oneOff = entriesIn(list).find((entry) => !("productId" in entry) && nameKey(entry.name) === nameKey(text));
+  const [asProduct, setAsProduct] = useState(false);
+  const [name, setName] = useState(text);
+  const [pickedLocation, setPickedLocation] = useState<Id<"locations"> | null>(null);
+  const [categoryId, setCategoryId] = useState<Id<"categories"> | null>(oneOff?.categoryId ?? null);
+
+  const remembered = inventory?.find((location) => location._id === lastLocation())?._id;
+  const locationId = pickedLocation ?? remembered ?? inventory?.[0]?._id;
+
+  const asOneOff = () => {
+    onDone("");
+    addOneOff({ name: text }).catch(() => onDone(text));
+  };
+  const save = () => {
+    if (!locationId || tidyName(name) === "") return;
+    rememberLocation(locationId);
+    onDone("");
+    addAsProduct({ text, name, locationId, categoryId: categoryId ?? undefined }).catch(() => onDone(name));
+  };
+
+  return (
+    <section className="flex flex-col gap-3 text-sm">
+      <h3 className="text-base font-semibold">{text}</h3>
+      {!asProduct ? (
+        <>
+          <p className="text-stone-500">{t("lista.addChoiceHint")}</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={asOneOff} className={`${secondaryButton} min-h-11 flex-1 px-4`}>
+              {t("lista.oneOff")}
+            </button>
+            <button type="button" onClick={() => setAsProduct(true)} className={`${primaryButton} min-h-11 flex-1 px-4`}>
+              {t("lista.newProduct")}
+            </button>
+          </div>
+          <button type="button" className="min-h-11 text-stone-500" onClick={() => onDone(text)}>
+            {t("common.cancel")}
+          </button>
+        </>
+      ) : (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            save();
+          }}
+        >
+          <label className="flex flex-col gap-1">
+            <span className="text-stone-500">{t("product.name")}</span>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              autoComplete="off"
+              autoFocus
+              enterKeyHint="done"
+              className={`${field} w-full px-3`}
+            />
+          </label>
+          <div className="flex gap-2">
+            <label className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="text-stone-500">{t("product.homeLocation")}</span>
+              <select
+                value={locationId}
+                onChange={(event) => setPickedLocation(event.target.value as Id<"locations">)}
+                className={`${field} w-full px-3`}
+              >
+                {inventory?.map((location) => (
+                  <option key={location._id} value={location._id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="text-stone-500">{t("product.category")}</span>
+              <CategorySelect value={categoryId} onChange={setCategoryId} className={`${field} w-full px-3`} />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="min-h-11 px-3 text-stone-500" onClick={() => onDone(text)}>
+              {t("common.cancel")}
+            </button>
+            <button type="submit" className={`${primaryButton} min-h-11 px-4`}>
+              {t("lista.addButton")}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
 }
 
 /**

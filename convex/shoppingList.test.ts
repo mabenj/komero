@@ -612,3 +612,48 @@ async function stock(member: MemberSession, name: string) {
   const inventory = await member.query(api.inventory.get, {});
   return inventory.flatMap((location) => location.products).find((product) => product.name === name)!.stock;
 }
+
+describe("New Product from Lista", () => {
+  test("text that isn't a Product becomes one, Out of Stock, and goes on the list under its Category", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+
+    await anna.mutation(api.shoppingList.addAsProduct, {
+      text: "kahvi",
+      name: " Kahvi ",
+      locationId: await locationId(anna, "Kaappi"),
+      categoryId: await categoryId(anna, "Kuivatuotteet"),
+    });
+
+    expect(await lista(anna)).toEqual([{ group: "Kuivatuotteet", entries: ["Kahvi ×1 (Stock 0)"] }]);
+    expect(await stock(anna, "Kahvi")).toBe(0);
+  });
+
+  test("a One-off already on the list under the text becomes the Product's Entry, one more", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    await anna.mutation(api.shoppingList.addOneOff, { name: "Kahvi" });
+    await anna.mutation(api.shoppingList.addOneOff, { name: "kahvi" });
+
+    await anna.mutation(api.shoppingList.addAsProduct, {
+      text: "KAHVI",
+      name: "Kahvipavut",
+      locationId: await locationId(anna, "Kaappi"),
+    });
+
+    expect(await lista(anna)).toEqual([{ group: "Other", entries: ["Kahvipavut ×3 (Stock 0)"] }]);
+  });
+
+  test("a name that is already a Product's links to it instead of making a second", async () => {
+    const anna = await signUp(newKomero(), "anna@example.com");
+    await product(anna, "Maito", "Maitotuotteet");
+
+    await anna.mutation(api.shoppingList.addAsProduct, {
+      text: "maitoa",
+      name: "maito",
+      locationId: await locationId(anna, "Kaappi"),
+    });
+
+    expect(await lista(anna)).toEqual([{ group: "Maitotuotteet", entries: ["Maito ×1 (Stock 1)"] }]);
+    const products = (await anna.query(api.inventory.get, {})).flatMap((location) => location.products);
+    expect(products.map((p) => p.name)).toEqual(["Maito"]);
+  });
+});

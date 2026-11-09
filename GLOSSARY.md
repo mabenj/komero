@@ -101,5 +101,9 @@ Moving an Entry from the Bag into Stock at home, which Restocks its Product. A O
 Putting a Product on the Shopping List, or increasing its Entry's quantity if it is already there.
 
 **Restock**:
-Increasing a Product's Stock because packages were put away from the Bag or scanned in. Scanning never takes from the Bag: groceries reach Stock through Put Away.
+Increasing a Product's Stock because packages were put away from the Bag, scanned in, or added by hand at home. Scanning never takes from the Bag: groceries reach Stock through Put Away. The Stock a Product is created with is not a Restock.
 _Avoid_: Purchase, add
+
+**Frequently Bought**:
+The Products restocked in the last 90 days (usein ostetut), ranked by how many different days each was restocked on. Several Restocks of one Product on the same day count once.
+_Avoid_: Usual, staples, favourites

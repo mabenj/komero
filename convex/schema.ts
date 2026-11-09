@@ -113,5 +113,7 @@ export default defineSchema({
     fromName: v.optional(v.string()),
     // The Entry's quantity on the Shopping List, for list changes.
     quantity: v.optional(v.number()),
-  }).index("by_product", ["productId"]),
+  })
+    .index("by_product", ["productId"])
+    .index("by_kind", ["kind"]),
 });

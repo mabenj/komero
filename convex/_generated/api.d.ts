@@ -13,6 +13,7 @@ import type * as auth from "../auth.js";
 import type * as barcodes from "../barcodes.js";
 import type * as categories from "../categories.js";
 import type * as crons from "../crons.js";
+import type * as frequentlyBought from "../frequentlyBought.js";
 import type * as http from "../http.js";
 import type * as inventory from "../inventory.js";
 import type * as invites from "../invites.js";
@@ -23,6 +24,7 @@ import type * as productNames from "../productNames.js";
 import type * as products from "../products.js";
 import type * as scanModes from "../scanModes.js";
 import type * as shoppingList from "../shoppingList.js";
+import type * as standIns from "../standIns.js";
 import type * as stock from "../stock.js";
 
 import type {
@@ -37,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   barcodes: typeof barcodes;
   categories: typeof categories;
   crons: typeof crons;
+  frequentlyBought: typeof frequentlyBought;
   http: typeof http;
   inventory: typeof inventory;
   invites: typeof invites;
@@ -47,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   products: typeof products;
   scanModes: typeof scanModes;
   shoppingList: typeof shoppingList;
+  standIns: typeof standIns;
   stock: typeof stock;
 }>;
 

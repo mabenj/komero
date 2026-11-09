@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import {
+  addAsProductLocally,
   addOneOffLocally,
   needMoreLocally,
   putAwayAllLocally,
@@ -432,6 +433,42 @@ describe("adding a One-off", () => {
       other: [],
       bag: empty,
     });
+  });
+});
+
+describe("adding as a new Product", () => {
+  test("its Entry goes under its Category at once, under a stand-in for its name", () => {
+    const store = withList({ categories: [], other: [], bag: empty });
+
+    addAsProductLocally(store, { text: "kahvi", name: " Kahvi ", categoryId: dry._id });
+
+    expect(listIn(store)).toEqual({
+      categories: [{ ...dry, entries: [{ _id: "addOneOff:kahvi", name: "Kahvi", quantity: 1, categoryId: dry._id }] }],
+      other: [],
+      bag: empty,
+    });
+  });
+
+  test("a One-off under the typed text is taken over, one more", () => {
+    const store = withList({ categories: [], other: [candles], bag: empty });
+
+    addAsProductLocally(store, { text: "KYNTTILÄT", name: "Kynttilät" });
+
+    expect(listIn(store)).toEqual({
+      categories: [],
+      other: [{ _id: "addOneOff:kynttilät", name: "Kynttilät", quantity: 2, categoryId: null }],
+      bag: empty,
+    });
+  });
+
+  test("a Product's name is Need More of that Product", () => {
+    const store = withList({ categories: [], other: [], bag: empty });
+
+    addAsProductLocally(store, { text: "kaura", name: "kaurahiutaleet" });
+
+    expect(listIn(store)?.categories).toEqual([
+      { ...dry, entries: [{ ...oatsEntry, _id: expect.any(String), quantity: 1 }] },
+    ]);
   });
 });
 

@@ -51,18 +51,47 @@ function updateList(store: OptimisticLocalStore, change: (list: ShoppingList) =>
 export function needMoreLocally(store: OptimisticLocalStore, { productId }: { productId: Id<"products"> }) {
   const product = findProduct(store.getQuery(api.inventory.get, {}), (p) => p._id === productId);
   if (!product) return;
-  const entry = {
+  const categories = store.getQuery(api.categories.list, {});
+  const entry = productEntry(product, 1);
+  updateList(store, (list) => ({ ...(withEntryAdded(list, entry, categories) ?? list), bag: list.bag }));
+}
+
+/** A Product's Entry as Need More shows it before the server has made it. */
+function productEntry(product: Product, quantity: number) {
+  return {
     // The server makes the real Entry; until then it goes by a stand-in for its Product.
-    _id: needMoreStandIn(productId),
-    productId,
+    _id: needMoreStandIn(product._id),
+    productId: product._id,
     categoryId: product.categoryId,
     name: product.name,
-    quantity: 1,
+    quantity,
     stock: product.stock,
     asksForDate: product.expiryKind !== null,
   };
+}
+
+/**
+ * Lista's "New Product": its Entry goes on the list under its Category,
+ * taking over a One-off under the typed text with that One-off's quantity.
+ * Until the server has made the Product, the Entry looks like a One-off and
+ * goes by a stand-in for its name, which the server reads as the Product.
+ */
+export function addAsProductLocally(
+  store: OptimisticLocalStore,
+  { text, name, categoryId }: { text: string; name: string; categoryId?: Id<"categories"> },
+) {
+  const tidy = tidyName(name);
+  const list = store.getQuery(api.shoppingList.get, {});
+  if (tidy === "" || !list) return;
+  const oneOff = entriesIn(list).find((e) => !("productId" in e) && nameKey(e.name) === nameKey(text));
+  const quantity = 1 + (oneOff?.quantity ?? 0);
+  const product = findProduct(store.getQuery(api.inventory.get, {}), (p) => nameKey(p.name) === nameKey(tidy));
+  const entry = product
+    ? productEntry(product, quantity)
+    : { _id: oneOffStandIn(tidy), name: tidy, quantity, categoryId: categoryId ?? null };
+  const without = oneOff ? withoutEntry(list, oneOff._id) : list;
   const categories = store.getQuery(api.categories.list, {});
-  updateList(store, (list) => ({ ...(withEntryAdded(list, entry, categories) ?? list), bag: list.bag }));
+  store.setQuery(api.shoppingList.get, {}, { ...(withEntryAdded(without, entry, categories) ?? without), bag: list.bag });
 }
 
 /** Lista's "+ Add": a One-off goes on the list, unless it names a Product after all, which is Need More of it. */
